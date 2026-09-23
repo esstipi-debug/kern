@@ -829,3 +829,106 @@ def test_implements_keeps_the_bridges_the_filename_discount_earns(
     impl = kb.implements(concept)
     assert impl is not None
     assert impl.source == expected
+
+
+# -- bridge().implementation is "where it lives": implementations, ranked by name --
+
+
+def _stub(nid: str, label: str) -> dict:
+    """graphify's per-file stub for an imported name: code, but no source_file."""
+    return {"id": nid, "label": label, "norm_label": label.lower(),
+            "file_type": "code", "source_file": ""}
+
+
+def test_search_skips_a_sourceless_stub_whose_id_carries_the_query(tmp_path: Path) -> None:
+    """The stub's ID inherits its file's words, so it matched with nowhere to point.
+
+    Measured 2026-09-23: two of the top three code hits for "vehicle routing" were
+    ``DataFrame`` stubs minted as ``jobs_vehicle_routing_job_py_dataframe``.
+    """
+    code = _write_graph(tmp_path / "c.json", [
+        _stub("jobs_vehicle_routing_job_py_dataframe", "DataFrame"),
+        _code_node("r", "vehicle routing sweep", "src/vehicle_routing.py"),
+    ])
+    kb = KnowledgeBase(books_path=BOOKS, code_path=code)
+    for hits in (kb.search("vehicle routing", graph="code"),
+                 kb.bridge("vehicle routing").implementation):
+        assert [h.source for h in hits] == ["src/vehicle_routing.py"]
+
+
+def test_bridge_implementation_drops_tests_docs_and_stubs_that_outscore_src(
+    tmp_path: Path,
+) -> None:
+    """Each decoy scores ABOVE the module, so only the filter can put src/ alone.
+
+    Tests are still found by ``search()`` itself: they left the bridge because
+    they are not where a concept lives, not because they are unfindable.
+    """
+    code = _write_graph(tmp_path / "c.json", [
+        _code_node("t", "newsvendor critical ratio newsvendor test",
+                   "tests/test_newsvendor.py"),
+        {**_code_node("d", "newsvendor critical ratio guide", "documentation/METHODOLOGY.md"),
+         "file_type": "document"},
+        _code_node("e", "newsvendor critical ratio demo", "examples/run_newsvendor.py"),
+        _stub("jobs_newsvendor_job_py_newsvendor_critical_ratio", "DataFrame"),
+        _code_node("s", "newsvendor", "src/newsvendor.py"),
+    ])
+    kb = KnowledgeBase(books_path=BOOKS, code_path=code)
+
+    impl = kb.bridge("newsvendor critical ratio").implementation
+    assert [c.source for c in impl] == ["src/newsvendor.py"]
+
+    found = [c.source for c in kb.search("newsvendor critical ratio", graph="code")]
+    assert "tests/test_newsvendor.py" in found
+
+
+def test_bridge_breaks_a_score_tie_toward_the_file_named_after_the_term(
+    tmp_path: Path,
+) -> None:
+    """Ties are the norm: 35 nodes tie at the top for "safety stock" on the real
+    graph, and alphabetical order ("Compose..." < "Tune...") used to decide them."""
+    code = _write_graph(tmp_path / "c.json", [
+        _code_node("j", "Compose safety stock", "jobs/multi_echelon_job.py"),
+        _code_node("s", "Tune safety stock", "src/safety_stock.py"),
+    ])
+    kb = KnowledgeBase(books_path=BOOKS, code_path=code)
+    assert kb.bridge("safety stock").implementation[0].source == "src/safety_stock.py"
+    # search() keeps its plain order: the tiebreak belongs to the bridge only.
+    assert kb.search("safety stock", graph="code")[0].source == "jobs/multi_echelon_job.py"
+
+
+def test_bridge_tiebreak_never_outranks_a_better_score(tmp_path: Path) -> None:
+    """The name only breaks ties; a node matching MORE of the query still wins."""
+    code = _write_graph(tmp_path / "c.json", [
+        _code_node("j", "safety stock buffer placement", "jobs/multi_echelon_job.py"),
+        _code_node("s", "safety stock", "src/safety_stock.py"),
+    ])
+    kb = KnowledgeBase(books_path=BOOKS, code_path=code)
+    impl = kb.bridge("safety stock buffer placement").implementation
+    assert impl[0].source == "jobs/multi_echelon_job.py"
+
+
+def test_bridge_prefers_src_when_no_file_is_named_after_the_term(tmp_path: Path) -> None:
+    code = _write_graph(tmp_path / "c.json", [
+        _code_node("j", "reorder point", "jobs/inventory_optimization.py"),
+        _code_node("s", "reorder point", "src/decision_support.py"),
+    ])
+    kb = KnowledgeBase(books_path=BOOKS, code_path=code)
+    assert kb.bridge("reorder point").implementation[0].source == "src/decision_support.py"
+
+
+@pytest.mark.skipif(not CODE.exists(), reason="code graph is gitignored")
+@pytest.mark.parametrize("term,expected", [
+    ("safety stock", "src/safety_stock.py"),
+    ("landed cost", "src/landed_cost.py"),
+    ("newsvendor", "src/newsvendor.py"),
+    ("ddmrp buffer", "src/ddmrp.py"),
+])
+def test_bridge_leads_with_the_module_on_the_real_code_graph(
+    kb: KnowledgeBase, term: str, expected: str
+) -> None:
+    impl = kb.bridge(term).implementation
+    assert impl, f"no implementation for {term!r}"
+    assert impl[0].source == expected
+    assert not any(_looks_like_a_non_implementation(c.source or "") for c in impl)
+    assert all(c.source for c in impl)

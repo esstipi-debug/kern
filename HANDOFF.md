@@ -65,6 +65,13 @@ Tambien: `GRAPHIFY_NO_BACKUP=1` en el hook (graphify copiaba ~36 MB a `graphify-
 por cada dia con cambios). La version de graphify no se fija: el hook instala la ultima
 solo cuando falta o esta rota (medido con 0.9.66).
 
+**Segunda parte, el lector (`scm_agent/knowledge.py`):** `bridge().implementation` ya no es
+`search(graph="code")` pelado. Filtra con `_is_code_implementation` (sin tests, demos,
+scripts, documentos ni stubs sin `source_file`) antes de cortar al top-5, y rompe los
+EMPATES como `implements()`: archivo con el nombre del termino, despues `src/`. Sobre los
+mismos 20 terminos: implementacion 59% -> 100% del top-5; top-1 en el modulo con el nombre
+del termino 7/20 -> 14/20. `search()` sigue devolviendo tests, pero ya no stubs sin origen.
+
 ## 2026-09-08 — Preventa / busqueda de productos Mercado Libre (catalogo oficial, solo lectura)
 
 **Leer esto primero si se retoma el hilo ML.** No es reposicion de canal
