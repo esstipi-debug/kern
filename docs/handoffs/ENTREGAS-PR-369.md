@@ -7,8 +7,8 @@ El cuerpo de un PR de GitHub topea en **65.536 caracteres**, y esta rama lo alca
 decimonovena entrega: quedó en 65.227, o sea 309 de margen, y la vigésima no entraba. Este
 documento es la mitad vieja de ese historial, movida acá para que las siguientes entren.
 
-**Qué hay acá:** las entregas **segunda a vigesimotercera**, verbatim y en orden cronológico
-—de los términos del proveedor hasta la fecha de fin por SKU—. No se resumió nada al mudarlas:
+**Qué hay acá:** las entregas **segunda a vigesimocuarta**, verbatim y en orden cronológico
+—de los términos del proveedor hasta la regrabación de la línea base de 25 mundos—. No se resumió nada al mudarlas:
 un historial que se resume cuando se archiva deja de ser un historial.
 
 **Qué NO hay acá, y dónde está:**
@@ -16,7 +16,7 @@ un historial que se resume cuando se archiva deja de ser un historial.
 | | dónde |
 |---|---|
 | Primera entrega (el quinto sombrero, `transporte`) | el cuerpo del PR, como marco: *Qué problema cierra*, *El modelo*, *El quinto sombrero es condicional*, *Cambio de comportamiento*, *Alcance*, *Verificación* |
-| Vigesimocuarta a vigesimosexta | el cuerpo del PR |
+| Vigesimoquinta a vigesimoséptima | el cuerpo del PR |
 | Verificación de la rama completa, estado del diseño de las cuatro brechas y los dos anexos | el cuerpo del PR |
 
 **La regla, para que el cuerpo del PR no se vuelva a llenar:** lleva las **tres últimas**
@@ -376,3 +376,33 @@ Gasta 12.311 menos y paga 368 más de quiebre; el servicio no se mueve. Es la **
 **⚠️ El límite que vuelve honesto al titular.** En el marcador **todos los SKU mueren la misma semana**, así que +16,2 es el **techo de la idea** sobre una cartera donde toda la línea se discontinúa a la vez. Una cartera real tiene fechas escalonadas y la mayoría de sus SKU **no tiene ninguna**: lo realizable es proporcional a la fracción que traiga la fecha, y este número **no se le promete a nadie**. Falta además medir qué pasa con una fecha **equivocada**, que es la pregunta de seguridad de la capacidad.
 
 **Verificación:** `tests/test_horizonte_por_sku_publicado.py`, 5 tests —que pague en **cada** mundo y no en promedio, que los dos carriles sigan siendo equivalentes (nombrando las dos semillas donde difieren), que el ahorro siga siendo puro, que el documento declare que todos los SKU mueren juntos, y que el tope cubra las dos mitades dejando intacto al SKU sin dato—. Suite completa **8.870 passed, 32 skipped, 19 deselected, 0 failed**. `ruff` limpio.
+
+## Vigesimocuarta entrega: la línea base ya no está vencida — y la mitad que no se pudo regrabar es el hallazgo (`6db47a4`, `bd77cec`)
+
+El titular vendible del repo —*"Kern decide peor que un punto de reorden fijo en las dos condiciones"*— era del **18-sep** (`b1e3293`), **anterior** a la cobertura provisional. O sea que describía un código que ya no existe. Esto lo vuelve a medir.
+
+**La mitad limpia: −40,6 % → −13,8 %. +26,8 puntos.** Y no es una media que esconda dispersión, que es el criterio que esta rama se exige:
+
+| | 18-sep | hoy | Δ |
+|---|---:|---:|---:|
+| media | −40,6 % | **−13,8 %** | **+26,8** |
+| mediana | −36,4 % | −6,3 % | +30,1 |
+| p90 | −26,3 % | **+1,0 %** | +27,2 |
+| mejor mundo | −15,9 % | **+12,7 %** | +28,7 |
+| peor mundo | −71,9 % | −59,6 % | +12,3 |
+
+**Mejora en 25 de 25 mundos** (mínimo +9,4, máximo +42,6, t = 13,5) y **cuatro mundos** (1005, 1010, 1016, 1022) salen con captura **positiva**: ahí la política de Kern cuesta *menos* que el piso. Con datos limpios el titular ya no se sostiene sin matizar; en los niveles sucios sigue costando mucho más.
+
+**El control es lo que hace creíble el delta.** El mismo barrido corrido hoy en un worktree de `b1e3293` reproduce su archivo grabado **bit a bit**: 48 campos, **cero diferencias**. Las dependencias de este repo se resuelven frescas en cada corrida —ya se puso rojo por un release de upstream sin un commit propio—, así que la deriva del entorno era una explicación viva. No lo es: los +26,8 son producto. Segundo amarre: las dos capturas por semilla que `5408b2f` dejó escritas (1003 y 1004) coinciden al dígito.
+
+**Y solo incluye UNA de las tres palancas medidas en la rama.** La cobertura provisional está en el motor; el nivel de servicio (+18,9) es un *carril* de `scripts/residuo_de_la_brecha.py` y la fecha de fin por SKU (+16,2) un *post-proceso* en `scripts/horizonte_por_sku.py` — ninguna existe fuera de `scripts/`. La predicción escrita **antes** de medir era −21,2 % extrapolando desde cinco mundos: se quedó corta por 7,4 puntos.
+
+**⚠️ La mitad bajo disrupción NO se pudo regrabar, y eso vale más que el número.** `verify_fidelidad.py --shock` salió con **código 1 y se negó a grabar** porque `degrada_con_la_suciedad` disparó: `L3 captura -70.0% > L2 -92.9%`. Esa compuerta no se puentea. El diagnóstico, y **no es una fuga** —la lente no toca el marcador—: al pasar de L2 a L3 Kern compra **466.062 → 888.718 (+91 %)** y el quiebre baja 857.000. Mejora porque el error que corrige es enorme: **en los niveles sucios Kern colapsa a casi-no-pedir** (semilla 1013: compra 19.780 donde el piso compra 202.167, fill 0,22 contra 0,79). Cualquier cosa que infle la demanda ayuda. No es nuevo —el orden invertido ya estaba en las dos líneas base del 18-sep (+10,2 y +7,7)—, la cobertura lo llevó a cruzar el umbral de ruido.
+
+**Y la columna limpia pasó esa misma compuerta por 0,6 puntos** (+24,9 contra un margen de 25,5). El documento lo declara: el aviso vale para sus filas L2 y L3. La fila **L0 —el titular— no está implicada**, porque de L0 a L1 la captura se desploma 103 puntos.
+
+**Segundo hallazgo, de paso: una fecha ambigua apaga la negativa del motor.** L1 salió **idéntico bit a bit** en los 25 mundos (delta +0,0), y eso es un mecanismo, no ruido. `06/01/2025`, escrito `dd/mm/yyyy` por `inject_mixed_date_formats`, es ambigua y se parsea **month-first** → 1 de junio, cuyo lunes es 2025-05-26. La grilla semanal pasa de **4 semanas a 21** rellenas de ceros fabricados, y 21 ≥ `MIN_PERIODS_FOR_POLICY` hace que el motor **deje de negarse**: donde en L0 emite ocho `provisional_cover` honestas, en L1 emite **quince `(R, S)`** con pronóstico 0,22 para un SKU que vende ~16 por semana. Por eso la cobertura provisional compra exactamente cero a L1: **solo se dispara cuando el motor se niega**. La ambigüedad ya estaba documentada y aceptada en `jobs/intake.py::_parse_dates` (se revirtió un `dayfirst=True` peor); lo que ese comentario acota mal no es la causa sino el **radio**: declara *"una fila mal etiquetada"* y lo medido es *"la negativa deja de existir"*.
+
+**Artefactos.** `captura_limpia_pareada.json` (la captura **por mundo** en las dos épocas — sostiene el "25 de 25" y no se puede rehacer desde un solo checkout, así que lleva los dos sha adentro) y `captura_bajo_shock_RECHAZADA.json` (la corrida rechazada con su motivo en el propio contexto: **evidencia, no referencia**). Las dos líneas base del 18-sep quedan congeladas con su nombre de commit.
+
+**Verificación:** `tests/test_captura_bajo_disrupcion_publicada.py` pasa de **7 a 16 tests** — que los congelados sean comparables con los vigentes, que el documento cite sus frases verbatim, que el +26,8 y los cuatro extremos sean la **resta de los dos archivos** y no números tipeados, que el pareado diga 25/25 y reproduzca los agregados, que la rechazada se declare rechazada, que la columna con shock vigente siga siendo la congelada (**se pone rojo el día que se logre regrabarla**, que es cuando el documento tiene que volver a publicar el costo del shock) y que el documento declare que la columna limpia rozó la compuerta, recalculando brecha y margen. Suite completa **8.879 passed, 32 skipped, 19 deselected, 0 failed**. `ruff check .` limpio.
