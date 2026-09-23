@@ -109,8 +109,8 @@ def test_explain_answers_a_concept_name_with_that_concept(tmp_path: Path, name: 
     The words of a concept's name weigh little in the books graph, where many
     nodes repeat them, and more in the code graph, where few do. So a src/
     docstring that says the same words outranked the concept named in full:
-    measured 2026-09-23, 330 of the 2,881 books labels with a space answered
-    with code, "safety stock" with a docstring of jobs/multi_echelon_job.py.
+    measured 2026-09-23 on main, 332 of the 2,881 books labels with a space
+    answered with code, "reorder point" with a docstring of src/connectors/odoo.py.
     """
     kb = _explain_graphs(tmp_path, [
         _code_node("src_sop_engine_rationale_1", "Sales and operations planning engine",
@@ -164,8 +164,8 @@ def test_explain_prefers_the_curated_concept_among_equal_names(tmp_path: Path) -
 
 @pytest.mark.skipif(not CODE.exists(), reason="code graph is gitignored")
 @pytest.mark.parametrize("name, concept_id", [
+    ("reorder point", "reorder_point"),
     ("safety stock", "safety_stock"),
-    ("fill rate", "fill_rate"),
     ("cost to serve", "cost_to_serve"),
     ("Croston's Method", "crostons_method"),
     ("learning curve", "learning_curve_model"),
@@ -173,10 +173,10 @@ def test_explain_prefers_the_curated_concept_among_equal_names(tmp_path: Path) -
 def test_explain_answers_a_concept_name_on_the_real_graphs(
     kb: KnowledgeBase, name: str, concept_id: str
 ) -> None:
-    """Measured 2026-09-23: the first four answered with a code docstring
-    (jobs/multi_echelon_job, src/bateria/comprobaciones, src/cost_to_serve,
-    src/forecasting); "learning curve", in a first cut of the name lookup, with
-    the node Kern's own atlas carries under that bare name."""
+    """Measured 2026-09-23 on main: the first four answered with a code docstring
+    (src/connectors/odoo, src/safety_stock, src/cost_to_serve, src/forecasting);
+    "learning curve", in a first cut of the name lookup, with the node Kern's own
+    atlas carries under that bare name."""
     detail = kb.explain(name)
 
     assert detail is not None and (detail.concept.graph, detail.concept.id) == (

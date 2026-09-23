@@ -753,9 +753,10 @@ class KnowledgeBase:
         # A concept's name is not a search. Its words weigh less in the books
         # graph, where many nodes repeat them, than in the code graph, where few
         # do, so code prose saying the same words outranked the concept: measured
-        # 2026-09-23 over the 2,881 books labels with a space, 330 answered with
-        # code ("safety stock" with a docstring of jobs/multi_echelon_job.py) and
-        # 78 with another concept.
+        # 2026-09-23 on main (4bc6018) over the 2,881 books labels with a space,
+        # 332 answered with code ("reorder point" with a docstring of
+        # src/connectors/odoo.py) and 78 with another concept. By name, all 2,881
+        # answer with their own; the code stays one ``bridge`` away.
         named = self._resolve_name(concept_id)
         if named is not None:
             return self._detail(named, "books")
