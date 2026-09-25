@@ -1074,3 +1074,112 @@ def test_announced_is_true_when_a_column_was_fully_synthesized_with_zero_rows_dr
     result = JobResult(status=STATUS_OK, tool="x", confidence=1.0, deliverables={},
                        summary="", guided=guided, report=report)
     assert _announced(result) is True
+
+
+def test_kern_minimum_history_covers_the_engines_policy_gate():
+    """Guard, not documentation: the engine refuses to size any SKU with fewer
+    than ``MIN_PERIODS_FOR_POLICY`` periods (``jobs/inventory_optimization.py``,
+    PR #242), so the harness must not hand Kern its first real replan before
+    that. In September 2026 the harness replanned at week 4 against a gate of
+    6: every SKU came back refused, the Policy read as "never order", and the
+    clean-data lane lost to the fixed-reorder floor for four weeks. The two
+    numbers live in different modules; this test is what fails if they drift
+    apart again."""
+    from src.forecasting import MIN_PERIODS_FOR_POLICY
+    from src.simworld.runners import KERN_MIN_HISTORY_WEEKS, NAIVE_LOOKBACK_WEEKS
+
+    assert KERN_MIN_HISTORY_WEEKS >= MIN_PERIODS_FOR_POLICY
+    assert KERN_MIN_HISTORY_WEEKS >= NAIVE_LOOKBACK_WEEKS
+
+
+def test_pre_kern_policy_is_the_floor_wearing_its_own_status():
+    """Until Kern has its minimum history it operates like the floor -- the
+    client keeps their fixed rule, nobody stops ordering -- but the week must
+    NOT be counted as a Kern decision. Same reorder points as ``naive_policy``
+    on the same history, distinct status so the report's status table shows
+    the first replan was the floor, not Kern."""
+    from src.simworld.runners import PRE_KERN_STATUS, naive_policy, pre_kern_policy
+
+    w, outs = _history(weeks=4, n_skus=3, seed=2)
+    pre = pre_kern_policy(w, outs)
+    floor = naive_policy(w, outs)
+
+    assert pre.reorder_point == floor.reorder_point
+    assert pre.order_up_to == floor.order_up_to
+    assert pre.status == PRE_KERN_STATUS
+    assert pre.status != floor.status
+
+
+def test_kern_policy_counts_refused_skus_instead_of_reading_their_zero_as_a_policy(tmp_path):
+    """An ``insufficient_history`` recommendation carries ``reorder_point=0.0``
+    and no order-up-to: that is a REFUSAL to size the SKU, not a policy of
+    zero. ``kern_policy`` must leave the SKU out of the policy dicts and count
+    it in ``extras["refused_skus"]`` so the run report can say "120 SKUs
+    unplanned this replan" instead of ``ok``. Mutant caught: reading the
+    refusal as ``{"SKU-2": 0.0}`` (the pre-fix behaviour, indistinguishable
+    from a real zero to everything downstream)."""
+    w, outs = _history(weeks=4, n_skus=2, seed=1)
+    report = SimpleNamespace(
+        recommendations=[
+            SimpleNamespace(product_id="SKU-1", policy_kind="(R, S)",
+                            reorder_point=30.0, order_quantity=None,
+                            order_up_to=40.0, forecast=15.0),
+            SimpleNamespace(product_id="SKU-2", policy_kind="insufficient_history",
+                            reorder_point=0.0, order_quantity=None,
+                            order_up_to=None, forecast=0.0),
+        ],
+        intake_quality=None,
+        intake_quality_threshold=0.20,
+    )
+    guided = guided_mod.as_executed("ok")
+    result = JobResult(status=STATUS_OK, tool="inventory_optimization", confidence=1.0,
+                       deliverables={}, summary="stub ok", guided=guided, report=report)
+
+    with patch.object(Orchestrator, "run", lambda self, brief, **kw: result):
+        pol = kern_policy(w, outs, level=0, seed=0, out_dir=tmp_path, forced=True)
+
+    assert pol.reorder_point == {"SKU-1": 30.0}
+    assert pol.order_up_to == {"SKU-1": 40.0}
+    assert "SKU-2" not in pol.forecast
+    assert pol.extras["refused_skus"] == 1
+
+
+def test_carry_over_refused_keeps_the_previous_policy_for_skus_kern_did_not_size():
+    """In production a refused SKU is simply absent from the write-back changeset,
+    so the client's existing reorder rule stays in force. The harness must model
+    the same thing: a SKU missing from this replan's Policy keeps the reorder
+    point / order-up-to it had from the previous one (which may be the floor's,
+    at Kern's first real replan). Without this, a refusal reads as "reorder point
+    0" -- the SKU is never ordered again -- and the harness charges Kern for a
+    stockout that no real client would see. SKUs Kern DID size take the new
+    values; announced/status/extras stay those of the current replan."""
+    from src.simworld.runners import Policy, carry_over_refused
+
+    previous = Policy(reorder_point={"SKU-1": 10.0, "SKU-2": 20.0},
+                      order_up_to={"SKU-1": 15.0, "SKU-2": 25.0}, status="ok")
+    current = Policy(reorder_point={"SKU-1": 30.0}, order_up_to={"SKU-1": 40.0},
+                     announced=True, status="ok", extras={"refused_skus": 1.0})
+
+    merged = carry_over_refused(previous, current)
+
+    assert merged.reorder_point == {"SKU-1": 30.0, "SKU-2": 20.0}
+    assert merged.order_up_to == {"SKU-1": 40.0, "SKU-2": 25.0}
+    assert merged.announced is True
+    assert merged.extras == {"refused_skus": 1.0}
+
+
+def test_carry_over_refused_does_not_resurrect_skus_when_kern_blocked_the_whole_week():
+    """A blocking replan (HANDOFF/ESCALATED, or a non-ok status) is a Policy with
+    EMPTY dicts on purpose: that week must place no orders at all (see the
+    HANDOFF translation test above). Carry-over applies only to per-SKU refusals
+    inside an ok replan; a blocked week stays empty."""
+    from src.simworld.runners import Policy, carry_over_refused
+
+    previous = Policy(reorder_point={"SKU-1": 10.0}, order_up_to={"SKU-1": 15.0})
+    blocked = Policy(reorder_point={}, order_up_to={}, announced=True, status="escalated")
+
+    merged = carry_over_refused(previous, blocked)
+
+    assert merged.reorder_point == {}
+    assert merged.order_up_to == {}
+    assert merged.status == "escalated"

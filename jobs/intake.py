@@ -310,6 +310,46 @@ def _parse_dates(series: pd.Series) -> pd.Series:
     instant) and drop the tz so the result matches the naive dtype the rest
     of this module assumes.
     """
+    if _slash_dates_are_day_first(series):
+        # La columna PRUEBA su convencion: cada fecha con barra que solo puede
+        # leerse dia-primero (dia > 12) vota, y ninguna vota mes-primero. Solo
+        # entonces las fechas con barra se leen con formato explicito d/m/Y --
+        # las ISO de la misma columna siguen por el camino mixto, intactas. Sin
+        # esto, un exporte LATAM con "06/01/2025" se lee como 1 de junio y las
+        # ventas de enero aterrizan cinco meses despues: el pronostico no falla,
+        # se divide por tres, y ningun QA lo ve.
+        text = series.astype("string").str.strip()
+        is_slash = text.str.match(_SLASH_DATE_RE.pattern).fillna(False).astype(bool)
+        parsed = _parse_mixed_dates(series.where(~is_slash))
+        parsed[is_slash] = pd.to_datetime(text[is_slash], errors="coerce", format="%d/%m/%Y")
+        return parsed
+    return _parse_mixed_dates(series)
+
+
+_SLASH_DATE_RE = re.compile(r"^(\d{1,2})/(\d{1,2})/(\d{4})$")
+
+
+def _slash_dates_are_day_first(series: pd.Series) -> bool:
+    """True solo con evidencia unanime: al menos una fecha con barra que solo
+    puede ser dia-primero (primer numero > 12) y ninguna que solo pueda ser
+    mes-primero (segundo numero > 12). Evidencia mixta o nula -> False, y la
+    columna queda en el comportamiento por defecto de ``format="mixed"``.
+    """
+    day_first = month_first = 0
+    for value in series.dropna().astype(str):
+        m = _SLASH_DATE_RE.match(value.strip())
+        if m is None:
+            continue
+        a, b = int(m.group(1)), int(m.group(2))
+        if a > 12 and b <= 12:
+            day_first += 1
+        elif b > 12 and a <= 12:
+            month_first += 1
+    return day_first > 0 and month_first == 0
+
+
+def _parse_mixed_dates(series: pd.Series) -> pd.Series:
+    """El parse por valor de ``format="mixed"`` -- ver ``_parse_dates``."""
     try:
         parsed = pd.to_datetime(series, errors="coerce", format="mixed")
     except ValueError as exc:

@@ -39,12 +39,15 @@ if str(ROOT) not in sys.path:
 import numpy as np  # noqa: E402
 
 from src.simworld.runners import (  # noqa: E402
+    KERN_MIN_HISTORY_WEEKS,
     NAIVE_LOOKBACK_WEEKS,
     Policy,
     apply_policy,
+    carry_over_refused,
     kern_policy,
     naive_policy,
     oracle_orders,
+    pre_kern_policy,
 )
 from src.simworld.scorer import capture, degradation, score_run, weekly_cost  # noqa: E402
 from src.simworld.world import WeekOutcome, World, advance, generate_world, initial_state  # noqa: E402
@@ -277,20 +280,38 @@ def run_grid(
             forced = lane == "forced"
             for level in levels:
                 status_counts: dict[str, int] = {}
+                refused_skus: list[int] = []   # SKUs rechazadas por replanificacion
+                last_policy: list[Policy] = [EMPTY_POLICY]  # la vigente, para las rechazadas
 
                 def kern_plan(
                     w: World, outs: list[WeekOutcome], week: int,
                     _level: int = level, _lane: str = lane, _forced: bool = forced,
                     _counts: dict[str, int] = status_counts,
+                    _refused: list[int] = refused_skus,
+                    _last: list[Policy] = last_policy,
                 ) -> tuple[Policy, bool]:
                     if len(outs) < WARMUP_WEEKS:
                         return EMPTY_POLICY, False
+                    if len(outs) < KERN_MIN_HISTORY_WEEKS:
+                        # El motor rechazaria todas las SKUs (historia corta):
+                        # Kern opera como el piso y la semana no cuenta como suya.
+                        pol = pre_kern_policy(w, outs)
+                        _counts[pol.status] = _counts.get(pol.status, 0) + 1
+                        _last[0] = pol
+                        return pol, False
                     pol = kern_policy(
                         w, outs, level=_level, seed=seed,
                         out_dir=out / f"{_lane}-L{_level}" / f"w{week:03d}",
                         forced=_forced, omit=omit,
                     )
                     _counts[pol.status] = _counts.get(pol.status, 0) + 1
+                    _refused.append(int(pol.extras.get("refused_skus", 0.0)))
+                    # Las rechazadas conservan la regla vigente (la del piso, si es
+                    # la primera replanificacion real); una semana bloqueada sigue
+                    # vacia -- ver carry_over_refused.
+                    pol = carry_over_refused(_last[0], pol)
+                    if pol.status == "ok":
+                        _last[0] = pol
                     return pol, pol.announced
 
                 outs, flags = simulate(world, kern_plan, replan_every=replan_every)
@@ -303,12 +324,22 @@ def run_grid(
                 # nunca es negativo (`advance()` levanta si algun llamador
                 # intenta lo contrario), asi que la suma es 0 unicamente
                 # cuando NINGUNA semana ordeno nada.
-                total_ordered = float(sum(o.ordered.sum() for o in outs))
+                # Solo las semanas que goberno Kern: antes de
+                # KERN_MIN_HISTORY_WEEKS el carril opera como el piso, y esas
+                # ordenes son del piso, no de Kern -- contarlas taparia un Kern
+                # que nunca pidio nada por si mismo.
+                total_ordered = float(sum(
+                    o.ordered.sum() for o in outs if o.week >= KERN_MIN_HISTORY_WEEKS
+                ))
 
                 entry: dict = {
                     "lane": lane, "level": level,
                     "kpis": asdict(kpis),
                     "replan_status_counts": dict(status_counts),
+                    # SKUs que el motor se nego a dimensionar, por replanificacion
+                    # (suma y maximo). Un "ok" con 120 rechazos no es un ok.
+                    "refused_skus_total": int(sum(refused_skus)),
+                    "refused_skus_max": int(max(refused_skus)) if refused_skus else 0,
                 }
 
                 if span <= 0:
@@ -411,7 +442,8 @@ def _markdown(report: dict) -> str:
     )
 
     status_rows = [
-        (name, entry["replan_status_counts"])
+        (name, entry["replan_status_counts"], entry.get("refused_skus_total", 0),
+         entry.get("refused_skus_max", 0))
         for name, entry in report.get("kern", {}).items()
         if entry.get("replan_status_counts")
     ]
@@ -421,11 +453,16 @@ def _markdown(report: dict) -> str:
                   "adivinar -- ordena cero esa semana en vez de arriesgar una "
                   "cantidad inventada. Es un resultado legitimo del arnes, no "
                   "una falla.", "",
-                  "| Carril-Nivel | Estados observados en replanificaciones |",
-                  "|---|---|"]
-        for name, counts in status_rows:
+                  "Una SKU *rechazada* es una que el motor se nego a dimensionar por "
+                  "historia corta (`insufficient_history`): queda sin politica esa "
+                  "replanificacion. Se cuenta aparte porque un `ok` con cien rechazos "
+                  "no es un ok.", "",
+                  "| Carril-Nivel | Estados observados en replanificaciones | "
+                  "SKUs rechazadas (total / max por replan) |",
+                  "|---|---|---:|"]
+        for name, counts, refused_total, refused_max in status_rows:
             txt = ", ".join(f"{k}={v}" for k, v in sorted(counts.items()))
-            lines.append(f"| {name} | {txt} |")
+            lines.append(f"| {name} | {txt} | {refused_total} / {refused_max} |")
 
     degs = [(n, e) for n, e in report.get("kern", {}).items() if "degradation" in e]
     if degs:
@@ -494,7 +531,8 @@ def main() -> None:
         cap_txt = f"{cap:.3f}" if cap is not None else "N/D"
         print(f"  Kern  {name:<16} costo {entry['kpis']['total_cost']:>14,.0f}  "
               f"fill {entry['kpis']['fill_rate']:.3f}  captura {cap_txt}  "
-              f"estados {entry['replan_status_counts']}")
+              f"estados {entry['replan_status_counts']}  "
+              f"rechazadas {entry.get('refused_skus_total', 0)}")
     print(f"  Techo (oraculo)       costo {report['ceiling']['total_cost']:>14,.0f}  "
           f"fill {report['ceiling']['fill_rate']:.3f}")
     print("")
