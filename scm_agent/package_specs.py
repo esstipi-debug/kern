@@ -187,7 +187,7 @@ _ENVIOS = PackageInput(
 _LINEAS_PEDIDO = PackageInput(
     slot="lineas_pedido", filename="lineas_pedido.csv",
     description="lineas de pedido (pedido x SKU) para el slotting COI + afinidad",
-    columns="order_id, product_id (+ unit_volume opcional)",
+    columns="order_id, product_id (+ unit_volume, on_hand opcionales)",
 )
 _ESTACIONES = PackageInput(
     slot="estaciones", filename="estaciones.csv",

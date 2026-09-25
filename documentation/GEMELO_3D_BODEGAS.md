@@ -289,23 +289,32 @@ circulación de robots (eso sigue siendo Isaac Sim u otra, fuera de Kern).
 
 | Peldaño | Qué ya hace Kern | Qué no hace |
 |---|---|---|
-| 4.1 Diagnóstico de espacio | `slotting` calcula utilización = cubo almacenado / volumen útil cuando recibe `warehouse_volume` (`jobs/slotting_job.py`). `warehouse_layout` arma un modelo 3D con capacidad por slot (`warehouse/generator.py`). | No lee nubes de puntos, planos CAD/PDF ni ortomosaicos. La utilización es un solo número para toda la bodega, no por zona. Ver A.2 antes de usarla. |
+| 4.1 Diagnóstico de espacio | `slotting` calcula utilización = cubo almacenado / volumen útil cuando recibe `warehouse_volume` (`jobs/slotting_job.py`). `warehouse_layout` arma un modelo 3D con capacidad por slot (`warehouse/generator.py`). | No lee nubes de puntos, planos CAD/PDF ni ortomosaicos. La utilización es un solo número para toda la bodega, no por zona. Ver A.2 para qué columnas pide. |
 | 4.2 Factibilidad de automatización | `queuing` dimensiona estaciones (p. ej. puestos goods-to-person) si se conocen tasas de llegada y de servicio. | Nada evalúa si un robot calza (ancho de pasillo, piso, altura libre) ni calcula inversión vs. ahorro o plazo de retorno. Hoy el caso de negocio se arma fuera de Kern. |
 | 4.3 Layout y slotting | `slotting`: zona A/B/C por Cube-per-Order Index (Kallina & Lynn 1976) más co-ubicación por *lift* de afinidad, desde líneas de pedido (`order_id`, `product_id`; volumen opcional). `abc_xyz` clasifica por valor y variabilidad. `warehouse_layout` entrega un visor 3D navegable. | El slotting asigna **zona**, no ubicación física: el paso "1b" del roadmap de `warehouse/README.md` (poner SKUs reales en los slots del layout) no está construido. El generador solo produce racks uniformes (mismo largo, orientación y ancho de pasillo): no representa una bodega real con zonas mixtas. |
 | 4.4 Representante en implementación | `earned_value` consolida control de plazo y costo por paquete de trabajo: sirve para seguir al integrador. | La supervisión es servicio humano. `acceptance_sampling` es muestreo de recepción de lotes, no pruebas de aceptación de un sistema robótico. |
 | 4.5 Servicio recurrente | — | No hay comparación entre escaneos ni volumetría de pilas. |
 | 4.6 Plataforma de software | `warehouse/html_export.py` ya genera un visor 3D autocontenido (Three.js, sin build) y la webapp lo sirve en `GET /warehouse` y `GET /api/warehouse` (FastAPI). | Ver A.3. |
 
-### A.2 Advertencia: la utilización del slotting con volumen unitario
+### A.2 La utilización del slotting y el volumen unitario (corregido en este PR)
 
-`jobs/slotting_job.py` toma la columna de volumen (`unit_volume`, `volume`,
-`required_space`, `cube`…) y la usa **tal cual** como espacio requerido del SKU; no la
-multiplica por las unidades almacenadas (`src/space.py` tiene `required_space()` para eso,
-pero el job no la llama). Si se le pasa el volumen **unitario** de un export de WMS, la
-utilización sale absurdamente baja. Probado: tres SKU de 0,02 / 0,05 / 0,10 m³ contra una
-bodega de 1.000 m³ dan **0,017 %** de utilización. Mientras no se corrija, la columna debe
-traer el cubo total almacenado por SKU (volumen unitario × unidades en stock), o el número
-no se muestra al cliente.
+Hasta este PR, `jobs/slotting_job.py` tomaba cualquier columna de volumen (`unit_volume`,
+`volume`, `required_space`, `cube`…) **tal cual** como espacio requerido del SKU, sin
+multiplicarla por las unidades almacenadas. Con el volumen **unitario** de un export de WMS
+la utilización salía absurdamente baja: tres SKU de 0,02 / 0,05 / 0,10 m³ contra una bodega
+de 1.000 m³ daban **0,017 %**.
+
+Ahora el cubo almacenado de cada SKU sale de una de dos fuentes:
+
+- `unit_volume` × `on_hand` (volumen unitario por unidades en stock, vía
+  `src/space.py:required_space`), o
+- `required_space`, tomado como cubo **total** ya calculado.
+
+Si falta el cubo de algún SKU (solo volumen unitario, sin volumen, o `on_hand` incompleto),
+la utilización **no se calcula**: el resumen y el informe dicen por qué y qué columna
+falta, en vez de mostrar un número inventado. El ranking COI sigue funcionando con el
+volumen unitario como aproximación. Para el diagnóstico beta, el export del WMS tiene que
+traer `on_hand` por SKU.
 
 ### A.3 Decisiones que este documento toca y el repo ya tomó
 
@@ -326,10 +335,10 @@ no se muestra al cliente.
 
 La ruta beta de 8.1 (planos + export WMS, $0) calza con Kern casi sin código nuevo: las
 medidas del plano entran como parámetros de `warehouse_layout`, y el export del WMS entra
-a `slotting` con el cubo total por SKU. Lo que falta, en orden de dependencia:
+a `slotting` con `unit_volume` y `on_hand` por SKU (A.2). Lo que falta, en orden de
+dependencia:
 
-1. Corregir la semántica de volumen del slotting (A.2).
-2. Capacidad y utilización **por zona**, no solo total (lo pide 4.1).
-3. Poner los SKUs en los slots del layout (roadmap 1b de `warehouse/`).
-4. Un adaptador nube de puntos / plano → parámetros medidos (Open3D, 5.2), para que el
+1. Capacidad y utilización **por zona**, no solo total (lo pide 4.1).
+2. Poner los SKUs en los slots del layout (roadmap 1b de `warehouse/`).
+3. Un adaptador nube de puntos / plano → parámetros medidos (Open3D, 5.2), para que el
    modelo deje de ser una grilla uniforme.
