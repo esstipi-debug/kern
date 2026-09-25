@@ -81,3 +81,73 @@ def test_orchestrator_runs_slotting_with_ranked_options(tmp_path):
     assert Path(res.deliverables["csv"]).exists()
     assert res.guided is not None and res.guided.status == OPTIONS
     assert sum(1 for o in res.guided.options if o.recommended) == 1
+
+
+# ---- warehouse utilization: only from a real stored cube ---------------------
+# A per-unit volume is not a stored cube. Summing one unit of each SKU against the
+# building's volume used to report ~0% utilization as if it had been measured.
+
+def _with(**cols) -> pd.DataFrame:
+    df = _orders_df()
+    for name, by_sku in cols.items():
+        df[name] = df["product_id"].map(by_sku)
+    return df
+
+
+_UNIT = {"P1": 0.02, "P2": 0.05, "P3": 0.10, "P4": 0.04, "P5": 0.01}
+_ON_HAND = {"P1": 500, "P2": 200, "P3": 100, "P4": 50, "P5": 1000}
+
+
+def test_unit_volume_times_on_hand_is_the_stored_cube():
+    report = sj.run(sj.prepare_records(_with(unit_volume=_UNIT, on_hand=_ON_HAND), {"warehouse_volume": 100}))
+    stored = sum(_UNIT[s] * _ON_HAND[s] for s in _UNIT)          # 10 + 10 + 10 + 2 + 10 = 42 m3
+    assert report.total_required_space == pytest.approx(stored)
+    assert report.utilization == pytest.approx(stored / 100)
+    assert report.utilization_note == ""
+    assert {s.product_id: s.required_space for s in report.slots}["P3"] == pytest.approx(10.0)
+    assert sj.verify(report) == []
+
+
+def test_unit_volume_alone_does_not_report_utilization():
+    report = sj.run(sj.prepare_records(_with(unit_volume=_UNIT), {"warehouse_volume": 1000}))
+    assert report.utilization is None
+    assert "unit_volume" in report.utilization_note and "on_hand" in report.utilization_note
+    assert "not computed" in report.summary
+    # COI still ranks by the unit volume (the pre-existing proxy): P1 is densest per pick.
+    assert report.slots[0].product_id == "P1"
+    assert sj.verify(report) == []
+
+
+def test_no_volume_column_does_not_report_utilization():
+    # A uniform 1.0 per SKU ranks COI by pick frequency; divided by the building it
+    # would be "SKU count / m3", which is not a utilization.
+    report = sj.run(sj.prepare_records(_orders_df(), {"warehouse_volume": 1000}))
+    assert report.utilization is None
+    assert "no volume column" in report.utilization_note
+
+
+def test_required_space_is_taken_as_the_total_cube():
+    report = sj.run(sj.prepare_records(_with(required_space=_ON_HAND), {"warehouse_volume": 5000}))
+    assert report.utilization == pytest.approx(sum(_ON_HAND.values()) / 5000)
+
+
+def test_partial_on_hand_withholds_utilization():
+    on_hand = {k: v for k, v in _ON_HAND.items() if k != "P5"}
+    report = sj.run(sj.prepare_records(_with(unit_volume=_UNIT, on_hand=on_hand), {"warehouse_volume": 100}))
+    assert report.utilization is None
+    assert "1 of 5" in report.utilization_note
+
+
+def test_negative_on_hand_is_zero_cube_not_negative_space():
+    on_hand = dict(_ON_HAND, P4=-30)
+    report = sj.run(sj.prepare_records(_with(unit_volume=_UNIT, on_hand=on_hand), {"warehouse_volume": 100}))
+    assert {s.product_id: s.required_space for s in report.slots}["P4"] == 0.0
+    assert report.utilization == pytest.approx(40 / 100)
+
+
+def test_deck_says_utilization_was_not_measured():
+    report = sj.run(sj.prepare_records(_with(unit_volume=_UNIT), {"warehouse_volume": 1000}))
+    md = sj.build_deck(report, client="Acme").to_markdown()
+    assert md.isascii()
+    assert "Space utilization not measured" in md
+    assert "of the usable warehouse volume" not in md      # no measured-utilization finding
