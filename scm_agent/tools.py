@@ -2730,7 +2730,7 @@ def fefo_tool() -> Tool:
 def _slotting_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
     if not request.data_path:
         return Prepared(status="needs_data",
-                        messages=["an order-lines CSV (order_id, product_id + optional unit_volume) is required"])
+                        messages=["an order-lines CSV (order_id, product_id + optional unit_volume, on_hand) is required"])
     try:
         payload = slotting_job.prepare(request.data_path, request.params)
     except (ValueError, FileNotFoundError) as exc:
@@ -2763,7 +2763,9 @@ def slotting_tool() -> Tool:
         # though jobs/intake.py lists that spelling among po_id's aliases: a picking
         # basket is not a purchase order, and exact names resolve before aliases.
         required_columns=("order_id", "product_id"),
-        optional_columns=("unit_volume",),
+        # unit_volume ranks COI alone; with on_hand it becomes the stored cube that
+        # warehouse utilization needs (jobs/slotting_job.py, _cube_note).
+        optional_columns=("unit_volume", "on_hand"),
         options=tool_options.slotting_options,
         prepare=_slotting_prepare,
         run=_slotting_run,
