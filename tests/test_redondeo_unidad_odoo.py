@@ -434,3 +434,31 @@ def test_la_consola_muestra_las_dos_cifras_y_la_oc_sale_entera(monkeypatch, tmp_
     assert lineas[1]["product_uom"] == 1
     assert lineas[4]["product_qty"] == math.floor(lineas[4]["product_qty"])
     assert lineas[4]["product_uom"] == 3
+
+
+# -- revision 2026-10-08: sin conversion legible, una OC por docena no se escribe ------
+
+
+def test_un_sku_por_docena_sin_conversion_legible_no_se_escribe_en_unidades():
+    """``uom.uom`` se puede leer pero la fila de la docena no llega (regla de registro,
+    multiempresa). Antes el GUANTE quedaba en ``missing`` y su linea salia SIN unidad:
+    Odoo completa ``product_uom`` con la unidad de compra (docena) y leia las 24
+    unidades del plan como 24 DOCENAS, 288 guantes, en una OC irreversible."""
+    odoo = _odoo_con_unidades()
+    del odoo.records("uom.uom")[3]
+    conector = OdooConnector(odoo)
+
+    assert conector.unit_step_by_sku(["GUANTE"]).purchase_unreadable == ("GUANTE",)
+    with pytest.raises(OdooError, match="GUANTE"):
+        conector.stage_draft_purchase_orders({"GUANTE": 24.0})
+    assert odoo.records("purchase.order") == {}
+
+
+def test_un_sku_sin_unidad_que_se_compra_en_la_misma_sigue_escribiendose():
+    """El freno es solo para el que se compra en OTRA unidad: un SKU sin unidad legible
+    que se compra en la misma sale sin redondear, como ya declaraba F4."""
+    conector = OdooConnector(_odoo_con_unidades())
+
+    assert conector.unit_step_by_sku(["RARO"]).purchase_unreadable == ()
+    cs, unsourced = conector.stage_draft_purchase_orders({"RARO": 2.5})
+    assert unsourced == () and cs.changes

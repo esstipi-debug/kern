@@ -560,6 +560,11 @@ class OdooUnitSteps:
     #: OC borrador escribe esos SKU en esa unidad. Un SKU que se compra en otra unidad
     #: sin conversion legible queda en ``missing``.
     purchase: dict[str, OdooPurchaseUnit] = _dc_field(default_factory=dict)
+    #: SKU que se compran en OTRA unidad (``uom_po_id`` distinto de ``uom_id``) y cuya
+    #: conversion no se pudo leer. Su linea de OC no se puede escribir: sin unidad,
+    #: Odoo completa ``product_uom`` con la de compra y lee la cantidad de stock como
+    #: docenas o cajas (24 guantes -> 24 docenas).
+    purchase_unreadable: tuple[str, ...] = ()
 
     @property
     def purchase_uom_differs(self) -> tuple[str, ...]:
@@ -1208,7 +1213,8 @@ class OdooConnector:
                 compras[sku] = compra
             pasos[sku] = paso
         faltan = tuple(sorted(sku for sku in pedidos if sku not in pasos))
-        return OdooUnitSteps(pasos, faltan, con_categoria or not stock_de, compras)
+        sin_conversion = tuple(sorted(sku for sku in compra_de if sku not in compras))
+        return OdooUnitSteps(pasos, faltan, con_categoria or not stock_de, compras, sin_conversion)
 
     def _product_units(self, skus: list[str]) -> tuple[dict[str, int], dict[str, int]]:
         """SKU -> unidad de stock, y SKU -> unidad de compra solo donde es OTRA. Una lectura.
@@ -1691,6 +1697,14 @@ class OdooConnector:
         # (_purchasable_line). Sin poder leer la unidad NO se escribe: la OC es
         # irreversible y Odoo leeria la cantidad en la unidad de compra.
         unidades = self.unit_step_by_sku(list(restock))
+        sin_conversion = sorted(sku for sku in unidades.purchase_unreadable if sku in suppliers)
+        if sin_conversion:
+            raise OdooError(
+                f"{len(sin_conversion)} SKU(s) se compran en otra unidad que la de stock y no se "
+                f"pudo leer su conversion ({', '.join(sin_conversion)}): sin ella Odoo leeria la "
+                "cantidad en la unidad de compra (una docena por cada unidad). No se escribe "
+                "ninguna OC; revisar el acceso del usuario de API a uom.uom."
+            )
         self._po_store.uom_field = self._po_line_uom_field()
         self.last_moq_adjustments = {}
         self.last_lot_adjustments = {}
