@@ -33,7 +33,10 @@ product.supplierinfo  delay (days) -> el plazo DECLARADO, la promesa de la ficha
 stock.move +          date (state=done) menos purchase.order.date_order -> el
 purchase.order        plazo OBSERVADO, una fila por recepcion
 stock.warehouse.      product_min_qty (reorder point) <- restock target write
-  orderpoint          (reversible)
+  orderpoint          (reversible), subido al paso de la unidad del producto
+product.product +     uom_id / uom_po_id y sus uom.uom (rounding, categoria,
+  uom.uom             factor) -> el paso de cantidad de cada SKU y la unidad
+                      en que se le compra (``unit_step_by_sku``)
 ===================== =========================================================
 
 Las dos ultimas filas son el par que da sentido al producto: sin la segunda, el
@@ -68,7 +71,7 @@ from src.connectors import (
     WriteSurface,
     health,
 )
-from src.constraints import apply_order_rules
+from src.constraints import PurchasableQty, purchasable_quantity
 from src.supplier_scorecard import LEAD_TIME_MEASURED
 
 # Odoo ORM methods that only read: safe to retry on a transient transport error,
@@ -93,6 +96,17 @@ _M_PO_LINE = "purchase.order.line"
 _M_MOVE = "stock.move"
 _M_PICKING_TYPE = "stock.picking.type"
 _M_PARTNER = "res.partner"
+_M_UOM = "uom.uom"
+_M_UOM_CATEGORY = "uom.category"
+
+#: La categoria de unidad que se cuenta por PIEZAS. Hace falta porque la unidad sola no
+#: alcanza: "Units" viene de fabrica con ``rounding=0.01`` (default del campo en
+#: uom/models/uom_uom.py de Odoo 17), asi que para Odoo 187.6 rollos es una cantidad
+#: legal. Se compara el nombre leido en en_US y no el xmlid
+#: ``uom.product_uom_categ_unit``: ``ir.model.data`` no lo puede leer un usuario
+#: interno (base/security/ir.model.access.csv: group_user 0,0,0,0) y
+#: ``get_external_id`` devuelve claves enteras que XML-RPC no serializa.
+_DISCRETE_UOM_CATEGORY = "Unit"
 
 _SALE_STATES = ("sale", "done")  # confirmed/locked sales count as realized demand
 # Ordenes de compra COMPROMETIDAS. `draft`/`sent` son cotizaciones: contarlas
@@ -502,6 +516,58 @@ class OdooOpenPurchases:
 
 
 @dataclass(frozen=True)
+class OdooPurchaseUnit:
+    """La unidad en que se le COMPRA un SKU al proveedor, cuando no es la de stock.
+
+    Es ``product.template.uom_po_id`` (Odoo 17/18), y es la que manda en la linea de
+    OC: ``product.supplierinfo.product_uom`` es un related a ella, asi que el
+    ``min_qty`` y el precio del proveedor estan en esta unidad, y es la que Odoo pone
+    en la linea cuando nadie nombra otra (purchase_order_line.py:
+    ``_product_id_change`` y ``_suggest_quantity``).
+    """
+
+    uom_id: int
+    name: str
+    #: Unidades de stock que trae UNA unidad de compra (12 en una docena): ``factor``
+    #: de la unidad de stock sobre ``factor`` de la de compra, la misma cuenta que
+    #: ``uom.uom._compute_quantity``.
+    stock_per_unit: float
+    #: El paso en la unidad de compra: 1.0 si es de la categoria "Unit" (no se compra
+    #: media docena), su ``rounding`` si no.
+    step: float
+
+
+@dataclass(frozen=True)
+class OdooUnitSteps:
+    """Lo que `OdooConnector.unit_step_by_sku()` devuelve: el paso minimo de cantidad de
+    cada SKU en su unidad de stock, los SKU sobre los que no se pudo saber, y los que
+    se compran en otra unidad.
+
+    Un objeto y no un `dict` pelado por la misma razon que `OdooOpenPurchases`: un SKU
+    que falta del mapa sale SIN redondear, y eso tiene que llegar al entregable.
+    """
+
+    #: SKU -> paso. ``max(rounding, 1.0)`` para una unidad de la categoria "Unit" (una
+    #: pieza no se parte); ``uom.uom.rounding`` para el resto (0.001 en un kilo).
+    by_sku: dict[str, float]
+    #: SKU sin unidad o sin precision legible, ordenados: sus cantidades NO se redondean
+    #: y su linea de OC no nombra unidad.
+    missing: tuple[str, ...]
+    #: False cuando la base no expone ``uom.uom.category_id``: ahi no se puede reconocer
+    #: una pieza y el paso es solo la precision de Odoo (0.01 en "Units" de fabrica).
+    category_readable: bool
+    #: SKU -> su unidad de compra, solo donde NO es la de stock y se pudo convertir. La
+    #: OC borrador escribe esos SKU en esa unidad. Un SKU que se compra en otra unidad
+    #: sin conversion legible queda en ``missing``.
+    purchase: dict[str, OdooPurchaseUnit] = _dc_field(default_factory=dict)
+
+    @property
+    def purchase_uom_differs(self) -> tuple[str, ...]:
+        """Los SKU que se compran en otra unidad que la de stock, ordenados."""
+        return tuple(sorted(self.purchase))
+
+
+@dataclass(frozen=True)
 class _OpenPoLine:
     """Una linea de OC confirmada con algo pendiente de recibir, ya en unidades del producto."""
 
@@ -529,10 +595,18 @@ class DraftPOResult:
     purchase_orders: dict[int, tuple[str, ...]]   # new PO id -> the SKUs on it
     unsourced: tuple[str, ...]                     # SKUs with no supplier in Odoo (skipped, not dropped)
     #: sku -> (lo que pedia el plan, lo que se pidio al proveedor) cuando el minimo
-    #: de pedido del proveedor (product.supplierinfo.min_qty) obligo a subir.
-    #: Solo el minimo: el multiplo de caja no se lee de Odoo (no es campo estandar
-    #: de supplierinfo); esa correccion la hace el comprador al confirmar.
+    #: de pedido del proveedor (product.supplierinfo.min_qty) obligo a subir, en la
+    #: unidad de la linea (la de compra para los SKU de ``purchase_units``).
+    #: El multiplo de caja no se lee de Odoo (``product.packaging``); esa correccion la
+    #: hace el comprador al confirmar.
     raised_to_min: dict[str, tuple[float, float]] = _dc_field(default_factory=dict)
+    #: sku -> el ajuste completo (lo pedido, lo escrito, la regla) de TODO SKU cuya
+    #: linea no dice lo mismo que el plan: movida por el minimo, por el paso de la
+    #: unidad, o escrita en otra unidad. En la unidad de la linea. ``raised_to_min``
+    #: sigue siendo el subconjunto que movio el minimo.
+    lot_adjustments: dict[str, PurchasableQty] = _dc_field(default_factory=dict)
+    #: sku -> la unidad de compra en que salio su linea, cuando no es la de stock.
+    purchase_units: dict[str, OdooPurchaseUnit] = _dc_field(default_factory=dict)
 
     @property
     def n_orders(self) -> int:
@@ -566,6 +640,46 @@ def _aviso_plazos(missing: tuple[str, ...], n_con_linea: int) -> tuple[str, ...]
         "que no se reporta plazo para esos SKU en vez de reportar cero. El plazo "
         "observado se mide aparte, con receipts().",
     )
+
+
+def _uom_step(fila: dict | None) -> float | None:
+    """El paso de cantidad de una fila de `OdooConnector._read_uoms`, o ``None``.
+
+    ``max(rounding, 1.0)`` si la unidad se cuenta por piezas (una escalera no se parte
+    aunque "Units" traiga ``rounding=0.01``), ``rounding`` si no. Sin precision legible
+    no hay paso: ``None``, nunca uno inventado.
+    """
+    precision = _as_qty_or_none((fila or {}).get("rounding"))
+    if fila is None or precision is None or precision <= 0:
+        return None
+    return max(precision, 1.0) if fila.get("_pieza") else precision
+
+
+def _purchase_unit(uom_id: int, compra: dict | None, stock: dict) -> OdooPurchaseUnit | None:
+    """La unidad de compra con su conversion, o ``None`` si falta su paso o un ``factor``.
+
+    ``stock_per_unit`` es ``factor`` de stock sobre ``factor`` de compra, la cuenta de
+    ``uom.uom._compute_quantity``, limpia a 9 decimales: 1/0.08333... es 12, no
+    12.000000000000002.
+    """
+    paso = _uom_step(compra)
+    f_compra = _as_qty_or_none((compra or {}).get("factor"))
+    f_stock = _as_qty_or_none(stock.get("factor"))
+    if compra is None or paso is None or not f_compra or not f_stock or f_compra < 0 or f_stock < 0:
+        return None
+    return OdooPurchaseUnit(uom_id, str(compra.get("name") or uom_id), round(f_stock / f_compra, 9), paso)
+
+
+def _to_unit_step(value: float, step: float | None) -> float:
+    """Una cantidad de punto de reorden llevada HACIA ARRIBA al paso de la unidad.
+
+    Sin paso conocido, o con un valor que no es positivo (un estante negativo en Odoo
+    puede dejar el minimo en cero o debajo), se escribe como antes: a 4 decimales. No es
+    un lote de compra, asi que el minimo del proveedor no entra aca.
+    """
+    if step is None or value <= 0:
+        return round(value, 4)
+    return purchasable_quantity(value, unit_step=step).quantity
 
 
 def _collapse_shipments(filas: list[dict]) -> list[dict]:
@@ -619,6 +733,11 @@ class OdooConnector:
         #: escena de PO, solo para los SKU que subieron al minimo. Lo lee el
         #: entregable para decirlo; el numero del plan no se toca.
         self.last_moq_adjustments: dict[str, tuple[float, float]] = {}
+        #: sku -> ajuste de la ultima puesta en escena de PO, para todo SKU cuya linea no
+        #: dice lo mismo que el plan (minimo, paso de la unidad u otra unidad de compra).
+        self.last_lot_adjustments: dict[str, PurchasableQty] = {}
+        #: sku -> unidad de compra de la ultima puesta en escena, cuando no es la de stock.
+        self.last_purchase_units: dict[str, OdooPurchaseUnit] = {}
         self._rules = _ReorderRuleStore(rpc, self._id_by_sku, ledger=ledger)
         self._po_store = _DraftPoStore(rpc, self._id_by_sku, ledger=ledger)
 
@@ -1059,6 +1178,113 @@ class OdooConnector:
             self._uom_by_product[product_id] = _m2o_id(rows[0].get("uom_id")) if rows else None
         return self._uom_by_product[product_id] == line_uom_id
 
+    def unit_step_by_sku(self, skus: list[str] | None = None) -> OdooUnitSteps:
+        """El paso minimo de cantidad de cada SKU en su unidad de stock, y en que unidad se compra.
+
+        Lee ``product.product.uom_id`` (y ``uom_po_id`` donde existe) y, de esas
+        unidades, ``uom.uom.rounding``, ``category_id`` y ``factor``. Una unidad de la
+        categoria "Unit" (`_DISCRETE_UOM_CATEGORY`) tiene paso ``max(rounding, 1.0)``:
+        una escalera no se parte aunque Odoo acepte centesimos. Cualquier otra tiene paso
+        ``rounding`` (0.001 kg). Un SKU que se compra en otra unidad (docena, caja) entra
+        ademas en ``purchase`` con su conversion. Lecturas en lote, no una por SKU. Un
+        SKU sin unidad o sin precision legible queda FUERA de ``by_sku`` y dentro de
+        ``missing``: ausente, nunca un paso inventado. Una lectura que falla levanta
+        ``OdooError`` y decide quien llama.
+        """
+        self._ensure_catalog(skus)
+        pedidos = list(skus) if skus is not None else sorted(self._id_by_sku)
+        stock_de, compra_de = self._product_units(pedidos)
+        filas, con_categoria = self._read_uoms(set(stock_de.values()) | set(compra_de.values()))
+        pasos: dict[str, float] = {}
+        compras: dict[str, OdooPurchaseUnit] = {}
+        for sku, uom in stock_de.items():
+            paso = _uom_step(filas.get(uom))
+            if paso is None:
+                continue
+            if sku in compra_de:
+                compra = _purchase_unit(compra_de[sku], filas.get(compra_de[sku]), filas[uom])
+                if compra is None:
+                    continue  # se compra en otra unidad y no hay como convertir: se declara
+                compras[sku] = compra
+            pasos[sku] = paso
+        faltan = tuple(sorted(sku for sku in pedidos if sku not in pasos))
+        return OdooUnitSteps(pasos, faltan, con_categoria or not stock_de, compras)
+
+    def _product_units(self, skus: list[str]) -> tuple[dict[str, int], dict[str, int]]:
+        """SKU -> unidad de stock, y SKU -> unidad de compra solo donde es OTRA. Una lectura.
+
+        ``uom_po_id`` se pide solo si la base lo tiene y ademas expone ``uom.uom.factor``
+        para convertir (Odoo 17/18; Odoo 19 no tiene ninguno de los dos). La unidad de
+        stock queda en ``_uom_by_product``, la cache que ya usa `_uom_matches_product`.
+        """
+        pids = {sku: self._id_by_sku[sku] for sku in skus if sku in self._id_by_sku}
+        if not pids:
+            return {}, {}
+        campos = ["uom_id"]
+        if self._has_field(_M_PRODUCT, "uom_po_id") and self._has_field(_M_UOM, "factor"):
+            campos.append("uom_po_id")
+        leidas = self._rpc.execute_kw(_M_PRODUCT, "read", [sorted(set(pids.values()))], {"fields": campos})
+        filas = {r["id"]: r for r in leidas}
+        stock_de: dict[str, int] = {}
+        compra_de: dict[str, int] = {}
+        for sku, pid in pids.items():
+            fila = filas.get(pid, {})
+            stock = _m2o_id(fila.get("uom_id"))
+            compra = _m2o_id(fila.get("uom_po_id"))
+            self._uom_by_product[pid] = stock
+            if stock is None:
+                continue
+            stock_de[sku] = stock
+            if compra is not None and compra != stock:
+                compra_de[sku] = compra
+        return stock_de, compra_de
+
+    def _read_uoms(self, uom_ids: set[int]) -> tuple[dict[int, dict], bool]:
+        """Las filas de ``uom.uom`` pedidas, cada una marcada ``_pieza``, y si se leyo la categoria.
+
+        Pide solo los campos que la base expone: Odoo 19 no tiene ``category_id`` ni
+        ``factor``. ``_pieza`` es True cuando la categoria es `_DISCRETE_UOM_CATEGORY`.
+        """
+        if not uom_ids:
+            return {}, False
+        campos = [f for f in ("rounding", "category_id", "factor", "name") if self._has_field(_M_UOM, f)]
+        con_categoria = "category_id" in campos
+        if "rounding" not in campos:
+            return {}, con_categoria
+        leidas = self._rpc.execute_kw(_M_UOM, "read", [sorted(uom_ids)], {"fields": campos})
+        filas = {r["id"]: dict(r) for r in leidas}
+        categorias = {c for r in filas.values() if (c := _m2o_id(r.get("category_id"))) is not None}
+        piezas = self._discrete_categories(categorias) if con_categoria else set()
+        for fila in filas.values():
+            fila["_pieza"] = _m2o_id(fila.get("category_id")) in piezas
+        return filas, con_categoria
+
+    def _discrete_categories(self, category_ids: set[int]) -> set[int]:
+        """Las categorias de ``category_ids`` que se cuentan por piezas.
+
+        El nombre se lee con ``lang=en_US`` porque ``uom.category.name`` es traducible:
+        en una base en espanol el mismo registro se muestra "Unidad".
+        """
+        if not category_ids:
+            return set()
+        rows = self._rpc.execute_kw(
+            _M_UOM_CATEGORY, "read", [sorted(category_ids)],
+            {"fields": ["name"], "context": {"lang": "en_US"}},
+        )
+        return {r["id"] for r in rows if r.get("name") == _DISCRETE_UOM_CATEGORY}
+
+    def _po_line_uom_field(self) -> str | None:
+        """El campo de unidad de ``purchase.order.line`` en esta base, o ``None``.
+
+        ``product_uom`` hasta Odoo 18 y ``product_uom_id`` en 19
+        (purchase/models/purchase_order_line.py de cada version). Mandar el nombre que
+        la base no tiene hace fallar el ``create`` de la OC entera, asi que se sondea.
+        """
+        for campo in ("product_uom", "product_uom_id"):
+            if self._has_field(_M_PO_LINE, campo):
+                return campo
+        return None
+
     def receipts(
         self, *, since: str | None = None, unit: str = "shipment", max_moves: int = 20_000
     ) -> OdooReceipts:
@@ -1288,11 +1514,23 @@ class OdooConnector:
 
         The restock delta from the engines is interpreted as the *target* cover level, so
         Odoo's own replenishment generates the POs. Reversible: applying only edits a field.
+
+        El minimo sube al paso de la unidad de stock del producto (`unit_step_by_sku`): un
+        punto de reorden de 227.6 rollos es 228. Todo campo de cantidad que se escriba en
+        ``stock.warehouse.orderpoint`` pasa por `_to_unit_step`, tambien un
+        ``product_max_qty`` si se agrega. Si la unidad no se puede leer, el minimo sale
+        como antes y el motivo viaja en ``reason``: es una escritura reversible y el
+        entregable ya lo declara (``jobs.odoo_job.read_unit_steps``).
         """
         self._ensure_catalog()
         on_hand = {lvl.sku: lvl.available for lvl in self.inventory_levels()}
+        try:
+            pasos = self.unit_step_by_sku(list(restock)).by_sku
+        except OdooError as exc:
+            pasos = {}
+            reason = f"{reason} [sin redondear a la unidad de Odoo: {exc}]".strip()
         edits = {
-            sku: {"product_min_qty": round(on_hand.get(sku, 0.0) + float(qty), 4)}
+            sku: {"product_min_qty": _to_unit_step(on_hand.get(sku, 0.0) + float(qty), pasos.get(sku))}
             for sku, qty in restock.items()
         }
         return writeback.stage(
@@ -1384,25 +1622,30 @@ class OdooConnector:
         # proveedor con minimo 100 es una PO que nadie va a aceptar. Se sube al
         # minimo y se deja anotado en last_moq_adjustments para que el entregable
         # lo diga; el plan sigue diciendo 37, que es lo que la demanda pide.
-        # Solo el MINIMO: el multiplo de caja/pack no se lee de Odoo porque
-        # product.supplierinfo no lo tiene como campo estandar (vive en
-        # product.packaging, que no todos usan). Si un proveedor vende por cajas,
-        # hoy el comprador lo redondea en Odoo al confirmar la PO borrador.
+        # El multiplo de caja/pack no se lee de Odoo porque product.supplierinfo no lo
+        # tiene como campo estandar (vive en product.packaging, que no todos usan). Si
+        # un proveedor vende por cajas, hoy el comprador lo redondea al confirmar.
+        # Ademas del minimo, la cantidad sube al paso de la unidad del producto y un
+        # SKU que se compra en otra unidad (docena, caja) se escribe en ella
+        # (_purchasable_line). Sin poder leer la unidad NO se escribe: la OC es
+        # irreversible y Odoo leeria la cantidad en la unidad de compra.
+        unidades = self.unit_step_by_sku(list(restock))
+        self._po_store.uom_field = self._po_line_uom_field()
         self.last_moq_adjustments = {}
-        ordered: dict[str, float] = {}
-        for sku in restock:
-            asked = float(restock[sku])
-            qty = apply_order_rules(asked, minimum_order_quantity=self._min_qty_by_sku.get(sku, 0.0))
-            ordered[sku] = qty
-            if qty > asked:
-                self.last_moq_adjustments[sku] = (asked, qty)
+        self.last_lot_adjustments = {}
+        self.last_purchase_units = {}
+        ordered = {
+            sku: self._purchasable_line(sku, float(restock[sku]), float(prices.get(sku, 0.0)), unidades)
+            for sku in restock
+            if sku in suppliers  # un SKU sin proveedor no tiene linea: nada que ajustar
+        }
 
         changes = tuple(
             writeback.Change(
                 f"supplier:{partner}",
                 "draft_po_lines",
                 None,  # nothing existed before (a create, not an edit) - matches stage()'s convention
-                tuple(sorted((sku, ordered[sku], float(prices.get(sku, 0.0))) for sku in skus)),
+                tuple(sorted((sku, *ordered[sku]) for sku in skus)),
             )
             for partner, skus in sorted(by_supplier.items())
         )
@@ -1425,6 +1668,40 @@ class OdooConnector:
         cs = writeback.Changeset(_WB_TARGET, changes, writeback.TIER_IRREVERSIBLE, idempotency_key="pending", reason=reason)
         cs = _dc_replace(cs, idempotency_key=cs.content_hash[:32])
         return cs, tuple(unsourced)
+
+    def _purchasable_line(
+        self, sku: str, asked: float, price: float, unidades: OdooUnitSteps
+    ) -> tuple[float, float]:
+        """La cantidad y el precio de UNA linea de OC, en la unidad en que se escriben.
+
+        Un SKU que se compra en otra unidad (``unidades.purchase``: 12 por docena) pasa
+        entero a ella -- cantidad dividida, precio multiplicado, como
+        ``uom.uom._compute_quantity`` y ``_compute_price`` -- porque en esa unidad estan
+        el ``min_qty`` del proveedor y el precio que completa Odoo. Despues sube al paso
+        de la unidad y al minimo con `purchasable_quantity`. Deja el ajuste en
+        ``last_*`` y la unidad de la linea en el store; un SKU sin unidad legible sale
+        como antes y su linea no nombra unidad.
+        """
+        minimo = self._min_qty_by_sku.get(sku, 0.0)
+        paso = unidades.by_sku.get(sku)
+        pid = self._id_by_sku.get(sku)
+        uom = self._uom_by_product.get(pid) if pid is not None else None
+        compra = unidades.purchase.get(sku)
+        if compra is not None:
+            asked = round(asked / compra.stock_per_unit, 9)
+            price = round(price * compra.stock_per_unit, 9)
+            paso, uom = compra.step, compra.uom_id
+            self.last_purchase_units[sku] = compra
+        lote = purchasable_quantity(asked, unit_step=paso or 0.0, minimum_order_quantity=minimo)
+        if lote.adjusted or compra is not None:
+            self.last_lot_adjustments[sku] = lote
+        if 0 < lote.asked < minimo:
+            self.last_moq_adjustments[sku] = (lote.asked, lote.quantity)
+        if paso is not None and uom is not None:
+            self._po_store.line_uom_by_sku[sku] = uom
+        else:
+            self._po_store.line_uom_by_sku.pop(sku, None)
+        return lote.quantity, price
 
     def apply_draft_purchase_orders(
         self,
@@ -1489,6 +1766,8 @@ class OdooConnector:
             purchase_orders=purchase_orders,
             unsourced=unsourced,
             raised_to_min=dict(self.last_moq_adjustments),
+            lot_adjustments=dict(self.last_lot_adjustments),
+            purchase_units=dict(self.last_purchase_units),
         )
 
     # -- internals ------------------------------------------------------------
@@ -1708,6 +1987,13 @@ class _DraftPoStore:
     def __init__(self, rpc: OdooRPC, id_by_sku: dict[str, int], *, ledger: object | None = None) -> None:
         self._rpc = rpc
         self._id_by_sku = id_by_sku
+        #: sku -> la unidad (``uom.uom`` id) en que viene la cantidad de su linea: la de
+        #: compra si se convirtio, la de stock si no. La llena
+        #: ``OdooConnector.stage_draft_purchase_orders``; un SKU ausente sale sin unidad.
+        self.line_uom_by_sku: dict[str, int] = {}
+        #: El campo de unidad de purchase.order.line en esta base (``product_uom`` en
+        #: 17/18, ``product_uom_id`` en 19); ``None`` = no tiene, y no se manda.
+        self.uom_field: str | None = None
         self._audit = writeback.AuditBookkeeping(ledger)
         # idempotency_key -> {entity_id: created po_id}, for the caller to map lines
         # back to the PO id and for rollback to know what to unlink.
@@ -1737,10 +2023,7 @@ class _DraftPoStore:
                 if c.is_noop:
                     continue
                 partner = int(c.entity_id.split(":", 1)[1])
-                order_lines = [
-                    (0, 0, {"product_id": self._id_by_sku[sku], "product_qty": qty, "price_unit": price, "name": sku})
-                    for sku, qty, price in c.after
-                ]
+                order_lines = [(0, 0, self._line_vals(sku, qty, price)) for sku, qty, price in c.after]
                 po_id = self._rpc.execute_kw(_M_PO, "create", [{"partner_id": partner, "order_line": order_lines}])
                 created[c.entity_id] = int(po_id)
                 restore.append((c.entity_id, c.field, writeback.ABSENT))  # nothing existed before
@@ -1787,6 +2070,22 @@ class _DraftPoStore:
         self._unlink_all(created.values())
         self._audit.forget(idempotency_key)
         self._created.pop(idempotency_key, None)
+
+    def _line_vals(self, sku: str, qty: float, price: float) -> dict:
+        """Los valores de una ``purchase.order.line``, con su unidad cuando se conoce.
+
+        La cantidad viene en la unidad que fijo la puesta en escena (``line_uom_by_sku``).
+        Si la linea no la nombra, Odoo 17 completa ``product_uom`` con la unidad de COMPRA
+        (purchase_order_line.py: ``_product_id_change`` usa ``uom_po_id or uom_id``, y
+        ``_prepare_add_missing_fields`` solo rellena lo que falta): 24 unidades saldrian
+        como 24 docenas. Sin unidad conocida, o sin campo de unidad en la linea, sale
+        como antes y Odoo decide.
+        """
+        vals: dict = {"product_id": self._id_by_sku[sku], "product_qty": qty, "price_unit": price, "name": sku}
+        uom = self.line_uom_by_sku.get(sku)
+        if uom is not None and self.uom_field is not None:
+            vals[self.uom_field] = uom
+        return vals
 
     def _unlink_all(self, po_ids) -> None:
         for po_id in po_ids:
