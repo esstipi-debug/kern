@@ -1557,9 +1557,10 @@ class OdooConnector:
         A ``max`` below ``min`` is refused here and not written: Odoo accepts it
         and then orders ``max(min, max) - forecast``, a rule nobody meant.
 
-        Rollback restores min and max; ``trigger`` is not read back
-        (``_ReorderRuleStore.read`` reads min/max only) and stays ``manual``, the
-        side that cannot buy by itself.
+        Rollback restores an existing rule ENTIRELY -- min, max and ``trigger``
+        (``_ReorderRuleStore.read`` reads the three), so the approver's dry-run shows an
+        ``auto -> manual`` flip instead of ``None -> manual``. A rule Kern CREATED stays
+        in Odoo after a rollback (manual, so it cannot buy by itself).
 
         min y max pasan por `_to_unit_step` (paso de STOCK, F4); trigger va primero
         porque el primer campo crea la regla.
@@ -1965,14 +1966,21 @@ class _ReorderRuleStore:
             _M_ORDERPOINT,
             "search_read",
             [[["product_id", "=", pid]]],
-            {"fields": ["product_min_qty", "product_max_qty"], "limit": 1},
+            {"fields": ["product_min_qty", "product_max_qty", "trigger"], "limit": 1},
         )
         if not rows:
             return {}
-        return {
+        actual = {
             "product_min_qty": float(rows[0].get("product_min_qty") or 0.0),
             "product_max_qty": float(rows[0].get("product_max_qty") or 0.0),
         }
+        # El trigger se lee como min y max: sin el, el dry-run mostraba "None -> manual"
+        # sobre una regla en "auto" (el cambio que apaga la reposicion automatica de Odoo
+        # quedaba invisible para quien aprueba) y el rollback no lo devolvia. Solo si la
+        # regla lo trae: un trigger ausente queda ABSENT y no se restaura un valor inventado.
+        if rows[0].get("trigger"):
+            actual["trigger"] = rows[0]["trigger"]
+        return actual
 
     def applied_keys(self) -> set[str]:
         return self._audit.applied_keys()
@@ -2474,6 +2482,6 @@ WRITE_SURFACE = WriteSurface(
         'purchase.order (estado borrador, con sus purchase.order.line)',
     ),
     means=(
-        'los reorder points se escriben con aprobacion firmada, idempotencia y trigger manual; el rollback restaura min/max de una regla que existia, pero una regla NUEVA queda en Odoo (hay que archivarla a mano); las ordenes de compra quedan EN BORRADOR y las confirma un comprador en Odoo (irreversibles: aprobacion con nombre obligatoria). Cada escritura deja fila en el ledger.'
+        'los reorder points se escriben con aprobacion firmada, idempotencia y trigger manual; el rollback restaura min, max y trigger de una regla que existia, pero una regla NUEVA queda en Odoo (hay que archivarla a mano); las ordenes de compra quedan EN BORRADOR y las confirma un comprador en Odoo (irreversibles: aprobacion con nombre obligatoria). Cada escritura deja fila en el ledger.'
     ),
 )

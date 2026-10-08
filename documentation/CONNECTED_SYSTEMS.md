@@ -53,7 +53,7 @@ Fuente: `Odoo (XML-RPC, modelos estandar de Ventas e Inventario)`
 - `stock.warehouse.orderpoint.product_max_qty y trigger=manual (politica min/max)`
 - `purchase.order (estado borrador, con sus purchase.order.line)`
 
-los reorder points se escriben con aprobacion firmada, idempotencia y trigger manual; el rollback restaura min/max de una regla que existia, pero una regla NUEVA queda en Odoo (hay que archivarla a mano); las ordenes de compra quedan EN BORRADOR y las confirma un comprador en Odoo (irreversibles: aprobacion con nombre obligatoria). Cada escritura deja fila en el ledger.
+los reorder points se escriben con aprobacion firmada, idempotencia y trigger manual; el rollback restaura min, max y trigger de una regla que existia, pero una regla NUEVA queda en Odoo (hay que archivarla a mano); las ordenes de compra quedan EN BORRADOR y las confirma un comprador en Odoo (irreversibles: aprobacion con nombre obligatoria). Cada escritura deja fila en el ledger.
 
 ## Unleashed (ERP de inventario)
 

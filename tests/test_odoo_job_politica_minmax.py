@@ -208,3 +208,33 @@ def test_el_plan_min_max_hereda_la_clave_del_contenido():
                               lead_time_days_by_sku={"SKU-1": 7.0, "SKU-3": 21.0})
     assert plan.changeset is not None
     assert plan.changeset.idempotency_key == plan.changeset.content_hash[:32]
+
+
+# -- revision 2026-10-08: la regla que ya existia vuelve ENTERA, trigger incluido ------
+
+
+def test_una_regla_existente_en_auto_se_ve_pasar_a_manual_y_el_rollback_la_devuelve():
+    """El trigger se lee como min y max. Sin leerlo, el dry-run que firma el aprobador
+    mostraba ``trigger: None -> manual`` sobre una regla que estaba en ``auto`` -- el
+    cambio que apaga la reposicion automatica de Odoo quedaba invisible -- y el rollback
+    dejaba la regla en manual: la marcha atras no devolvia la configuracion del cliente.
+    Importa porque el nivel T1 de ``scm_agent/autonomy.py`` aplica solo los cambios
+    reversibles, sin una persona delante."""
+    rpc = demo_odoo()
+    conector = OdooConnector(rpc)
+    conector.list_products()
+    pid = conector._id_by_sku["SKU-1"]
+    rpc.records("stock.warehouse.orderpoint")[900] = {
+        "product_id": [pid, "SKU-1"], "product_min_qty": 5.0, "product_max_qty": 10.0, "trigger": "auto",
+    }
+
+    cs = conector.stage_reorder_policy({"SKU-1": (20.0, 20.0)}, idempotency_key="k-auto")
+    antes = {c.field: c.before for c in cs.changes}
+    assert antes == {"trigger": "auto", "product_min_qty": 5.0, "product_max_qty": 10.0}
+
+    conector.apply_restock(cs, approval=writeback.approve(cs, "ana"), auto_apply_reversible=False)
+    assert rpc.records("stock.warehouse.orderpoint")[900]["trigger"] == "manual"
+
+    conector.rollback("k-auto")
+    regla = rpc.records("stock.warehouse.orderpoint")[900]
+    assert (regla["trigger"], regla["product_min_qty"], regla["product_max_qty"]) == ("auto", 5.0, 10.0)
