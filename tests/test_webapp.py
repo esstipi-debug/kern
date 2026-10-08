@@ -391,14 +391,14 @@ def test_jobs_response_guided_handoff_for_needs_data():
 
 @requires_multipart
 def test_jobs_response_guided_escalation_for_an_over_threshold_restock():
-    """odoo_replenishment's demo stand-in restocks ~$916 by default (see
+    """odoo_replenishment's demo stand-in restocks ~$96 by default (see
     tests/test_connector_odoo_tool.py) - a low financial_threshold forces the
     ESCALATED path, and the API caller must see route_to/sla/reason, not just
     a generic 'ok' with no signal that finance sign-off is required."""
     r = client.post("/api/jobs", data={
         "brief": "connect odoo and plan replenishment from odoo",
         "job_type": "odoo_replenishment",
-        "params": '{"financial_threshold": 500}',
+        "params": '{"financial_threshold": 50}',
     })
     assert r.status_code == 200
     body = r.json()

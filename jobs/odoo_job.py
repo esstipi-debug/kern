@@ -21,7 +21,11 @@ from pathlib import Path
 from nosilo_core.escalation import escalation_banner, maybe_escalate_financial
 from nosilo_core.guided import ExecutionOption, GuidedOutcome, as_options, verify_guided
 from src.connectors.odoo import OdooClient, OdooConnector, OdooError, OdooRPC, demo_odoo
-from src.connectors.replenish import ReplenishmentLine, plan_replenishment
+from src.connectors.replenish import (
+    ReplenishmentLine,
+    plan_replenishment,
+    resolve_policy_defaults,
+)
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.export import write_summary_csv
 
@@ -63,6 +67,23 @@ class OdooReplenishmentReport:
     #: con las fechas reales: quien despues pronostica sobre esos puntos no puede
     #: inventarles un dia.
     demand_points: dict[str, tuple[tuple[str, float], ...]] = field(default_factory=dict)
+    #: "min_max" when the plan ran the periodic-review policy (always, from
+    #: :func:`run`); "cover" is kept for a report built by hand from a cover plan.
+    policy: str = "cover"
+    #: Cycle service level and review period the minimums were sized with, already
+    #: resolved (params > client_profile > the engine's declared default).
+    service_level: float | None = None
+    review_days: float | None = None
+    #: True when ``service_level`` is the engine's 0.95 and not a number the client
+    #: gave. The deck has to say so: a default is not a client decision.
+    service_level_assumed: bool = True
+    #: ``ReplenishmentPlan.assumptions``: the window, every default used and what the
+    #: position leaves out. The deliverable lists them under the method.
+    assumptions: tuple[str, ...] = ()
+    #: SKUs the plan did NOT size for want of a declared lead time (status
+    #: "sin_plazo"). Wider than ``lead_time_missing``: it also holds SKUs with no
+    #: supplier line at all.
+    unsized_no_lead_time: tuple[str, ...] = ()
     #: Lo que el lector tiene que saber del redondeo a la unidad de Odoo: SKU sin unidad
     #: legible (quedaron sin redondear), base sin categoria de unidad, lectura fallida, y
     #: SKU que se compran en otra unidad que la de stock. Vacio cuando no hay nada de
@@ -180,6 +201,40 @@ def read_measured_lead_times(connector: OdooConnector) -> tuple[dict[str, list[f
     return por_sku, "; ".join(partes)
 
 
+def politica_min_max(
+    connector: OdooConnector,
+    lead_times: dict[str, float],
+    *,
+    service_level: float | None,
+    review_days: float | None,
+) -> dict:
+    """Los argumentos que pasan ``plan_replenishment`` a la politica min/max.
+
+    Los plazos son los DECLARADOS (``declared_lead_times().declared``): un SKU sin
+    plazo no entra y el plan lo devuelve ``sin_plazo``, nunca con un plazo inventado.
+    El minimo del proveedor sale de ``primary_supplier_by_sku``, que lo guarda en
+    ``_min_qty_by_sku`` al elegir el proveedor: se llama aca para que el plan compre
+    en lotes que el proveedor acepta y no solo la PO borrador. Se pasa una copia convertida a unidad de stock: el
+    conector reescribe ese mapa en cada llamada.
+    """
+    skus = [p.sku for p in connector.list_products()]
+    connector.primary_supplier_by_sku(skus)
+    # min_qty esta en la unidad de COMPRA (supplierinfo.product_uom = uom_po_id, F4);
+    # el plan razona en unidad de STOCK: 3 docenas son 36 unidades, no 3.
+    try:
+        compra = connector.unit_step_by_sku(skus).purchase
+    except OdooError:
+        compra = {}  # read_unit_steps ya lo declara en rounding_note
+    minimos = {sku: q * compra[sku].stock_per_unit if sku in compra else q
+               for sku, q in connector._min_qty_by_sku.items()}
+    return {
+        "lead_time_days_by_sku": dict(lead_times),
+        "min_qty_by_sku": minimos,
+        "service_level": service_level,
+        "review_days": review_days,
+    }
+
+
 def _make_rpc(params: dict) -> tuple[OdooRPC, str]:
     """Resolve the Odoo transport: an injected RPC (tests) -> live OdooClient -> stand-in."""
     injected = params.get("odoo_rpc")
@@ -207,7 +262,8 @@ def prepare(data_path: str | None = None, params: dict | None = None) -> dict:
 
 
 def _build_outcome(
-    n_restock: int, total_restock: float, *, restock_value: float = 0.0, financial_threshold: float = 50_000.0
+    n_restock: int, total_restock: float, *, restock_value: float = 0.0, financial_threshold: float = 50_000.0,
+    n_unsized: int = 0,
 ) -> GuidedOutcome:
     """Replenishment as >=2 ranked, executable options (first = recommended default).
 
@@ -242,6 +298,27 @@ def _build_outcome(
         ]
         summary = f"{n_restock} SKU(s) below target cover ({total_restock:,.0f} units short): choose how to replenish."
         return maybe_escalate_financial(as_options(summary, options), restock_value, financial_threshold)
+    elif n_unsized > 0:
+        # Nada que comprar entre los SKU dimensionados NO es "todo sobre el objetivo":
+        # un SKU sin plazo o sin historia no se midio. Decir "Hold" ahi es el cero
+        # que se lee como medicion.
+        options = [
+            ExecutionOption(
+                label="Load the missing lead times",
+                summary=f"{n_unsized} SKU(s) were NOT sized (no supplier lead time or too little "
+                        "history); load the supplier delay in Odoo and re-run.",
+                score=3.0, recommended=True,
+                action="load product.supplierinfo.delay for the unsized SKU(s), then re-run",
+                tradeoffs="the only way to size them; manual step in Odoo",
+            ),
+            ExecutionOption(
+                label="Export the current position",
+                summary="Export the stock position, with the unsized SKUs named, for the review file.",
+                score=1.0,
+                action="export the replenishment position (no write-back)", tradeoffs="zero risk",
+            ),
+        ]
+        summary = f"Nothing to buy on the sized SKUs; {n_unsized} SKU(s) were not sized."
     else:
         options = [
             ExecutionOption(
@@ -268,7 +345,8 @@ def _build_outcome(
 
 
 def run(
-    payload: dict, *, cover_periods: float = 8.0, financial_threshold: float = 50_000.0
+    payload: dict, *, cover_periods: float = 8.0, financial_threshold: float = 50_000.0,
+    service_level: float | None = None, review_days: float | None = None,
 ) -> OdooReplenishmentReport:
     """Forecast each SKU from Odoo sales and plan the restock to ``cover_periods`` of demand.
 
@@ -281,9 +359,12 @@ def run(
     # justamente lo que el deck tiene que decir.
     plazos = connector.declared_lead_times()
     on_order, netting_note = read_on_order(connector)
+    csl, review, _defaults = resolve_policy_defaults(service_level, review_days)
+    politica = politica_min_max(connector, plazos.declared, service_level=service_level,
+                                review_days=review_days)
     pasos, rounding_note = read_unit_steps(connector)
     plan = plan_replenishment(
-        connector, cover_periods=cover_periods, store=connector, on_order_by_sku=on_order,
+        connector, cover_periods=cover_periods, store=connector, on_order_by_sku=on_order, **politica,
         unit_step_by_sku=pasos,
     )
     restock = dict(plan.restock)
@@ -307,12 +388,19 @@ def run(
         total_restock=total,
         cover_periods=cover_periods,
         outcome=_build_outcome(
-            len(restock), total, restock_value=restock_value, financial_threshold=financial_threshold
+            len(restock), total, restock_value=restock_value, financial_threshold=financial_threshold,
+            n_unsized=sum(1 for ln in plan.lines if ln.status != "ok"),
         ),
         summary=summary,
         on_order_by_sku=on_order,
         netting_note=netting_note,
         demand_points=plan.demand_points,
+        policy="min_max",
+        service_level=csl,
+        review_days=review,
+        service_level_assumed=service_level is None,
+        assumptions=plan.assumptions,
+        unsized_no_lead_time=tuple(ln.sku for ln in plan.lines if ln.status == "sin_plazo"),
         rounding_note=rounding_note,
     )
 
@@ -381,9 +469,11 @@ def _rounding_finding(report: OdooReplenishmentReport) -> Finding | None:
         return None
     extra = sum(ln.restock_qty - ln.restock_unrounded for ln in subidas)
     detalle = (
-        f"{len(subidas)} SKU(s) subieron a la unidad de su producto en Odoo ({extra:,.1f} "
-        "unidades mas en total): una pieza no se parte y el resto va a la precision de su "
-        "unidad. La columna restock_unrounded del CSV conserva lo que pidio el plan."
+        f"{len(subidas)} SKU(s) subieron a la unidad de su producto en Odoo o al lote del proveedor "
+        f"(minimo/multiplo) ({extra:,.1f} "
+        "unidades mas en total): una pieza no se parte, el resto va a la precision de su unidad, "
+        "y el proveedor impone su minimo y su multiplo. La columna restock_unrounded del CSV "
+        "conserva lo que pidio el plan."
     )
     if report.rounding_note:
         detalle += f" {report.rounding_note}."

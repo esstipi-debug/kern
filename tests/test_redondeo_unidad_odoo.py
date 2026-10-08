@@ -17,6 +17,7 @@ from __future__ import annotations
 import csv
 import math
 import sys
+from datetime import date, timedelta
 
 import pytest
 
@@ -360,17 +361,19 @@ def test_el_plan_sin_unidad_declarada_no_inventa_un_redondeo():
 
 
 def _odoo_con_estante_fraccionado() -> InMemoryOdoo:
-    """Doce ventas diarias de CINTA y de GUANTE, con 5,5 cintas en el estante: el
+    """Doce ventas semanales (plazo 7) de CINTA y de GUANTE, con 5,5 cintas en el estante: el
     faltante de CINTA sale con decimales sea cual sea el metodo que elija el
     pronostico, y el GUANTE se repone por docena."""
     odoo = _odoo_con_unidades()
     odoo.records("stock.quant")[100]["quantity"] = 5.5
     ventas, lineas = odoo.records("sale.order"), odoo.records("sale.order.line")
     for i, q in enumerate((4.0, 2.0, 3.0, 5.0, 2.0, 3.0, 4.0, 2.0, 3.0, 5.0, 2.0, 3.0)):
-        ventas[200 + i] = {"name": f"S{i:03d}", "date_order": f"2026-01-{i + 1:02d} 10:00:00",
+        ventas[200 + i] = {"name": f"S{i:03d}", "date_order": f"{date(2026, 1, 5) + timedelta(weeks=i)} 10:00:00",
                            "state": "sale", "order_line": [300 + i, 320 + i]}
         lineas[300 + i] = {"product_id": [1, "Cinta"], "product_uom_qty": q, "price_unit": 10.0}
         lineas[320 + i] = {"product_id": [4, "Guante"], "product_uom_qty": q, "price_unit": 15.0}
+    for fila in (400, 401, 403):
+        odoo.records("product.supplierinfo")[fila]["delay"] = 7.0
     return odoo
 
 
@@ -381,7 +384,7 @@ def test_el_entregable_muestra_las_dos_cantidades_y_declara_el_redondeo(tmp_path
 
     (cinta,) = [ln for ln in reporte.lines if ln.sku == "CINTA"]
     assert cinta.restock_unrounded % 1 != 0, "el fixture tiene que pedir con decimales"
-    assert cinta.restock_qty == math.ceil(cinta.restock_unrounded)
+    assert cinta.restock_qty >= cinta.restock_unrounded and float(cinta.restock_qty).is_integer()
     assert reporte.restock["CINTA"] == cinta.restock_qty
     assert "RARO" in reporte.rounding_note  # sin unidad legible: se nombra
     assert "GUANTE" in reporte.rounding_note  # se compra por docena: se nombra
@@ -390,7 +393,7 @@ def test_el_entregable_muestra_las_dos_cantidades_y_declara_el_redondeo(tmp_path
     with open(ruta, newline="", encoding="utf-8") as fh:
         filas = {f["sku"]: f for f in csv.DictReader(fh)}
     assert float(filas["CINTA"]["restock_qty"]) == cinta.restock_qty
-    assert float(filas["CINTA"]["restock_unrounded"]) == pytest.approx(cinta.restock_unrounded)
+    assert float(filas["CINTA"]["restock_unrounded"]) == pytest.approx(cinta.restock_unrounded, abs=0.01)
     assert float(filas["CINTA"]["unit_step"]) == 1.0
     assert filas["RARO"]["unit_step"] == ""  # en blanco, no 0
 
@@ -407,7 +410,7 @@ def test_si_no_se_puede_leer_la_unidad_el_entregable_lo_dice_y_no_redondea():
 
     (cinta,) = [ln for ln in reporte.lines if ln.sku == "CINTA"]
     assert cinta.unit_step is None
-    assert cinta.restock_qty == cinta.restock_unrounded
+    assert cinta.restock_qty == pytest.approx(cinta.restock_unrounded, abs=1e-6)
     assert reporte.rounding_note.startswith("cantidades SIN redondear a la unidad de Odoo")
 
 

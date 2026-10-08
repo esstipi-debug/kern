@@ -25,7 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from jobs.odoo_job import read_on_order, read_unit_steps  # noqa: E402
+from jobs.odoo_job import politica_min_max, read_on_order, read_unit_steps  # noqa: E402
 from nosilo_core import writeback  # noqa: E402
 from nosilo_core.writeback_store import SqliteAuditLedger  # noqa: E402
 from src.connectors.odoo import OdooConnector, OdooPurchaseUnit, OdooRPC, demo_odoo  # noqa: E402
@@ -64,7 +64,13 @@ def _ajuste_oc(sku: str, pedido: float, lote: PurchasableQty, compra: OdooPurcha
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the Odoo connector replenishment loop.")
-    parser.add_argument("--cover", type=float, default=8.0, help="target periods of demand to cover")
+    parser.add_argument("--cover", type=float, default=8.0,
+                        help="ignored by the min/max policy; kept so old command lines still run")
+    parser.add_argument("--service-level", type=float, default=None,
+                        help="cycle service level for the minimum, e.g. 0.95; without it the "
+                             "engine default 0.95 is used AND declared")
+    parser.add_argument("--review-days", type=float, default=None,
+                        help="days between two Kern runs (R); without it 7 is used AND declared")
     parser.add_argument("--draft-po", action="store_true",
                         help="raise draft purchase orders instead of applying reorder points")
     parser.add_argument("--approved-by", default=None,
@@ -111,9 +117,13 @@ def main() -> None:
     plan = plan_replenishment(
         connector, cover_periods=args.cover, store=connector, on_order_by_sku=on_order,
         unit_step_by_sku=pasos,
+        **politica_min_max(connector, lead, service_level=args.service_level, review_days=args.review_days),
     )
+    print("  Supuestos:")
+    for supuesto in plan.assumptions:
+        print(f"    - {supuesto}")
 
-    print("\n  SKU      estante    plazo  plan sin redondear  a pedir")
+    print("\n  SKU      estante    plazo  min=max  plan sin redondear  a pedir")
     restock = plan.restock
     for line in plan.lines:
         gap = restock.get(line.sku, 0.0)
@@ -126,7 +136,9 @@ def main() -> None:
         # Las dos cifras: lo que pidio el plan y lo que se escribe. Antes salia una
         # sola a un decimal y la de la PO se imprimia con .0f -- dos numeros para lo mismo.
         pedido = "-" if line.restock_unrounded is None else f"{line.restock_unrounded:.1f}"
-        print(f"  {line.sku:<8} {on_hand.get(line.sku, 0.0):>7.0f}  {plazo_txt:>7}  {pedido:>18}  {gap:>7g}")
+        # n/a en el minimo de un SKU sin dimensionar: un 0 diria "medido, no hace falta".
+        tope = "n/a" if line.order_up_to is None else f"{line.order_up_to:g}"
+        print(f"  {line.sku:<8} {on_hand.get(line.sku, 0.0):>7.0f}  {plazo_txt:>7}  {tope:>7}  {pedido:>18}  {gap:>7g}")
 
     print(f"\n  Outcome: {plan.outcome.status} - {plan.outcome.summary}")
     if not restock:
@@ -154,6 +166,7 @@ def main() -> None:
     # moved their reorder points, and the ledger row is what answers that.
     if plan.changeset is None:
         return
+    print("  Aviso: una regla NUEVA no se deshace con la marcha atras de Kern (queda en Odoo, trigger manual).")
     print(f"  Staged (dry-run): {plan.changeset.summary()}")
     if not args.approved_by:
         print("  Nothing applied: pass --approved-by <name> to write the reorder points.")

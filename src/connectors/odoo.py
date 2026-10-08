@@ -1542,6 +1542,66 @@ class OdooConnector:
             reason=reason,
         )
 
+    def stage_reorder_policy(
+        self, policy: dict[str, tuple[float, float]], *, idempotency_key: str | None = None,
+        reason: str = "",
+    ) -> writeback.Changeset:
+        """Stage (dry-run) a min/max reorder rule per SKU with ``trigger='manual'``. Does NOT write.
+
+        The writer of ``plan_replenishment``'s min/max policy: ``policy`` is
+        ``{sku: (product_min_qty, product_max_qty)}``, already rounded by the plan to
+        the SKU's purchase step. ``trigger='manual'`` is what keeps the approval
+        promise: with ``auto`` (Odoo's default) the scheduler buys on its own the
+        moment the position crosses the minimum, outside any Kern approval.
+
+        A ``max`` below ``min`` is refused here and not written: Odoo accepts it
+        and then orders ``max(min, max) - forecast``, a rule nobody meant.
+
+        Rollback restores min and max; ``trigger`` is not read back
+        (``_ReorderRuleStore.read`` reads min/max only) and stays ``manual``, the
+        side that cannot buy by itself.
+
+        min y max pasan por `_to_unit_step` (paso de STOCK, F4); trigger va primero
+        porque el primer campo crea la regla.
+        """
+        for sku, (minimo, maximo) in policy.items():
+            if maximo < minimo:
+                raise ValueError(f"{sku}: max {maximo!r} below min {minimo!r}")
+        self._ensure_catalog(list(policy))
+        try:
+            pasos = self.unit_step_by_sku(list(policy)).by_sku
+        except OdooError as exc:
+            pasos = {}
+            reason = f"{reason} [sin redondear a la unidad de Odoo: {exc}]".strip()
+        edits = {
+            sku: {
+                # trigger PRIMERO: _ReorderRuleStore escribe campo por campo y el primero
+                # CREA la regla. Asi nace en manual; si una escritura posterior falla, la
+                # compensacion (restore ABSENT) no deja viva una regla en auto.
+                "trigger": "manual",
+                "product_min_qty": _to_unit_step(float(minimo), pasos.get(sku)),
+                "product_max_qty": _to_unit_step(float(maximo), pasos.get(sku)),
+            }
+            for sku, (minimo, maximo) in sorted(policy.items())
+        }
+        cs = writeback.stage(
+            self._rules,
+            _WB_TARGET,
+            edits,
+            risk_tier=writeback.TIER_REVERSIBLE,
+            idempotency_key=idempotency_key or "pending",
+            reason=reason,
+        )
+        # F8 (D04=b): sin clave del llamador (None, "" o el default "replenish-1" de
+        # plan_replenishment) la clave sale del contenido, como en
+        # stage_draft_purchase_orders. Con la clave fija, la segunda aprobacion de una
+        # politica DISTINTA era un idempotent-skip y Odoo se quedaba con los minimos de
+        # la primera sin avisar. El mismo contenido da la misma clave: un reintento
+        # sigue siendo un skip.
+        if idempotency_key in (None, "", "replenish-1"):
+            cs = _dc_replace(cs, idempotency_key=cs.content_hash[:32])
+        return cs
+
     def apply_restock(
         self,
         changeset: writeback.Changeset,
@@ -2410,9 +2470,10 @@ WRITE_SURFACE = WriteSurface(
     WRITE_APPROVAL_GATED,
     objects=(
         'stock.warehouse.orderpoint.product_min_qty',
+        'stock.warehouse.orderpoint.product_max_qty y trigger=manual (politica min/max)',
         'purchase.order (estado borrador, con sus purchase.order.line)',
     ),
     means=(
-        'los reorder points se escriben con aprobacion firmada, idempotencia y rollback (reversibles); las ordenes de compra quedan EN BORRADOR y las confirma un comprador en Odoo (irreversibles: aprobacion con nombre obligatoria). Cada escritura deja fila en el ledger.'
+        'los reorder points se escriben con aprobacion firmada, idempotencia y trigger manual; el rollback restaura min/max de una regla que existia, pero una regla NUEVA queda en Odoo (hay que archivarla a mano); las ordenes de compra quedan EN BORRADOR y las confirma un comprador en Odoo (irreversibles: aprobacion con nombre obligatoria). Cada escritura deja fila en el ledger.'
     ),
 )

@@ -2213,6 +2213,10 @@ def _odoo_run(payload: object, params: dict) -> Produced:
         payload,
         cover_periods=params.get("cover_periods", 8.0),
         financial_threshold=params.get("financial_threshold", 50_000.0),
+        # params > client_profile > default DECLARADO del motor: `merge_params` ya
+        # resolvio las dos primeras; None llega al plan y el plan declara el 0,95.
+        service_level=params.get("service_level"),
+        review_days=params.get("review_days"),
     )
     report, summary = _record_state(
         report, report.summary, params,
@@ -2245,6 +2249,9 @@ def odoo_replenishment_tool() -> Tool:
         ),
         requires_data=False,
         options=lambda report: report.outcome,
+        # El minimo lleva el nivel de servicio adentro: con strict_params no se corre
+        # con el 0,95 del motor sin que el cliente lo haya dicho.
+        required_client_params=("service_level",),
         prepare=_odoo_prepare,
         run=_odoo_run,
         qa=lambda report: odoo_job.verify(report),
