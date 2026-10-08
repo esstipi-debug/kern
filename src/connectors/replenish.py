@@ -36,7 +36,8 @@ class ReplenishmentLine:
     restock_qty: float
     #: "ok" when the line carries a real, evidence-backed quantity;
     #: "insufficient_history" when the SKU's order history was too short to
-    #: forecast from and the engine declined to size it (restock_qty stays 0).
+    #: forecast from and the engine declined to size it (restock_qty stays 0);
+    #: "sin_plazo" (min/max only) when the SKU has no declared lead time.
     status: str = "ok"
     #: Order-days observed for this SKU. See demand_by_sku()'s docstring on why
     #: this is order-DAYS and not calendar periods.
@@ -66,6 +67,44 @@ class ReplenishmentLine:
     #: ``None`` cuando la fuente no declaro unidad para este SKU: la cantidad sale SIN
     #: redondear, y eso no es lo mismo que "paso cero".
     unit_step: float | None = None
+    #: "cover" (the legacy ``forecast * cover_periods`` path) or "min_max" (the
+    #: periodic-review policy, taken only when ``lead_time_days_by_sku`` is passed).
+    #: In "min_max" the period of ``forecast_per_period`` is a CALENDAR WEEK and
+    #: ``avg_daily_demand`` is that weekly forecast / 7, not the observed daily rate.
+    policy: str = "cover"
+    #: Declared supplier lead time the line was sized with; ``None`` in cover mode
+    #: and on a "sin_plazo" line.
+    lead_time_days: float | None = None
+    #: Review period R the order-up-to level protects, in days (default 7, declared).
+    review_days: float | None = None
+    #: Cycle service level the safety stock was sized for.
+    service_level: float | None = None
+    #: Safety stock over the risk period L+R, in units, unrounded.
+    safety_stock: float | None = None
+    #: Where the position is expected to be when an order placed now lands:
+    #: ``mu*L + SS``, unrounded, the same definition as
+    #: ``jobs/inventory_optimization.py`` (``reorder = mu*L + ss``). It is what the
+    #: Tower compares against (``jobs/state_bridge.py``). It is NOT what Odoo gets.
+    reorder_point: float | None = None
+    #: S = ``mu*(L+R) + SS`` rounded UP to ``unit_step``. The purchase trigger AND the
+    #: level an order brings the position back to; Odoo receives it as BOTH
+    #: ``product_min_qty`` and ``product_max_qty`` (R,S de libro, see ``_plan_min_max``).
+    order_up_to: float | None = None
+    #: "ses" (smooth) or "tasa_media" (intermittent, weekly ADI >= 1.32): fixed per
+    #: demand class, never "auto", so the lab and prod (no statsforecast) agree.
+    forecast_method: str | None = None
+    #: Which dispersion sized the buffer: ``forecast_error_oos`` / ``forecast_error`` /
+    #: ``demand_std_fallback`` (smooth), ``poisson`` or ``demand_std`` (intermittent).
+    sigma_source: str | None = None
+    #: How many out-of-sample one-step errors the sigma rests on (0 = none).
+    n_sigma_errors: int | None = None
+    #: What sized the buffer: "normal" / "gamma" (``safety_stock_risk_period``),
+    #: "poisson" or "gamma_lumpy" (intermittent, see ``_intermittent_sizing``).
+    buffer_distribution: str | None = None
+    #: The supplier rule applied to the purchase ("" when none binds).
+    lot_rule: str | None = None
+    #: Every default this line was sized with, spelled out for the deliverable.
+    defaults_declared: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -83,6 +122,10 @@ class ReplenishmentPlan:
     #: whoever reads those outcomes back has to forecast on them, and a point with an
     #: invented date is a point that cannot be audited against the ERP.
     demand_points: dict[str, tuple[tuple[str, float], ...]] = field(default_factory=dict)
+    #: The assumptions behind every number of a "min_max" plan (window, service
+    #: level, review period, lead-time dispersion, what the position leaves out).
+    #: Empty in cover mode.
+    assumptions: tuple[str, ...] = ()
 
 
 def demand_points_by_sku(orders: list[Order]) -> dict[str, list[tuple[str, float]]]:
@@ -343,12 +386,46 @@ def _refusal_residual(refused: tuple[str, ...]) -> Residual:
     )
 
 
+def _no_lead_time_residual(skus: tuple[str, ...]) -> Residual:
+    return Residual(
+        description=f"{len(skus)} SKU(s) have no declared supplier lead time and were NOT "
+                    f"sized: {', '.join(sorted(skus))}.",
+        risk_if_skipped="a minimum without a lead time is a guess; load the supplier delay "
+                        "in Odoo (product.supplierinfo) and re-run.",
+    )
+
+
+def _unsized_handoff(refused: tuple[str, ...], no_lead_time: tuple[str, ...]) -> GuidedOutcome:
+    """Nothing to buy on the sized SKUs, and some SKUs were never sized: that is a
+    handoff to a human, never an "executed, all fine"."""
+    unsized = tuple(sorted(no_lead_time + refused))
+    packet = HandoffPacket(
+        title=f"Unsized SKUs: {len(unsized)}",
+        steps=["Load the supplier lead time of each SKU without one.",
+               "Review the SKUs with too little history by hand."],
+        artifact="\n".join(f"  {sku}" for sku in unsized),
+        data={"sin_plazo": sorted(no_lead_time), "insufficient_history": sorted(refused)},
+        risk_if_skipped="An unsized SKU stocks out with nobody watching it.",
+    )
+    residuals = [_no_lead_time_residual(no_lead_time)]
+    if refused:
+        residuals.append(_refusal_residual(refused))
+    return as_handoff(
+        f"Nothing to buy on the sized SKUs; {len(no_lead_time)} without lead time and "
+        f"{len(refused)} with too little history were NOT sized.",
+        [packet], residuals=residuals,
+    )
+
+
 def _packet(
     restock: dict[str, float],
     changeset: Changeset | None,
     refused: tuple[str, ...] = (),
+    no_lead_time: tuple[str, ...] = (),
 ) -> GuidedOutcome:
     """Wrap the restock as a protected handoff (or executed when there's nothing to do)."""
+    if not restock and no_lead_time:
+        return _unsized_handoff(refused, no_lead_time)
     if not restock:
         # A portfolio where every SKU was REFUSED is not a portfolio that is well
         # stocked, and must never report as one. Route the refusals to a human
@@ -389,6 +466,8 @@ def _packet(
     )]
     if refused:
         residuals.append(_refusal_residual(refused))
+    if no_lead_time:
+        residuals.append(_no_lead_time_residual(no_lead_time))
     return as_handoff(f"Restock {len(restock)} SKU(s) to target cover.", [packet], residuals=residuals)
 
 
@@ -402,8 +481,23 @@ def plan_replenishment(
     min_observations: int = MIN_PERIODS_FOR_POLICY,
     on_order_by_sku: dict[str, float] | None = None,
     unit_step_by_sku: dict[str, float] | None = None,
+    lead_time_days_by_sku: dict[str, float] | None = None,
+    service_level: float | None = None,
+    review_days: float | None = None,
+    min_qty_by_sku: dict[str, float] | None = None,
+    order_multiple_by_sku: dict[str, float] | None = None,
+    as_of: date | None = None,
 ) -> ReplenishmentPlan:
     """Forecast each SKU and plan the restock to ``cover_periods`` of demand.
+
+    Passing ``lead_time_days_by_sku`` switches to the periodic-review min/max
+    policy (:func:`_plan_min_max`): weekly calendar demand with zeros, lead time
+    and service level inside the order-up-to level, purchases rounded up to the
+    unit step and the supplier's MOQ/multiple. Without it the cover path below
+    runs unchanged, so Shopify, channel and Excel keep their numbers.
+    ``cover_periods`` and ``method`` are ignored in min/max mode;
+    ``service_level``/``review_days``/``min_qty_by_sku``/``order_multiple_by_sku``/
+    ``as_of`` are ignored in cover mode.
 
     Pass ``store`` (a writable SimulatedStore, usually the same object as ``source``) to
     stage the restock as a dry-run; omit it to get a ready-to-execute packet only.
@@ -428,6 +522,15 @@ def plan_replenishment(
     reorden digan el mismo numero. Un SKU fuera del mapa (o el mapa omitido) sale sin
     redondear con ``unit_step=None``: sin unidad conocida no se inventa un entero.
     """
+    if lead_time_days_by_sku is not None:
+        return _plan_min_max(
+            source, lead_time_days_by_sku=lead_time_days_by_sku,
+            service_level=service_level, review_days=review_days,
+            min_qty_by_sku=min_qty_by_sku or {}, order_multiple_by_sku=order_multiple_by_sku or {},
+            unit_step_by_sku=unit_step_by_sku or {}, on_order_by_sku=on_order_by_sku,
+            as_of=as_of, store=store, idempotency_key=idempotency_key,
+            min_observations=min_observations,
+        )
     on_hand = {lvl.sku: lvl.available for lvl in source.inventory_levels()}
     orders = source.orders()
     points = demand_points_by_sku(orders)
@@ -448,7 +551,7 @@ def plan_replenishment(
 
         # Too few observations to forecast from. This path is thinner than the CSV
         # path's (src/forecasting.py's MIN_PERIODS_FOR_POLICY, shared) and needs the
-        # gate MORE, not less: there is no safety stock here at all - the target is
+        # gate MORE, not less: cover mode carries no safety stock - the target is
         # a bare `forecast * cover_periods` - so a forecast built on two order-days
         # goes straight into a purchase quantity with nothing damping it.
         if len(history) < min_observations:
@@ -492,6 +595,151 @@ def plan_replenishment(
         outcome=_packet(restock, changeset, tuple(refused)),
         changeset=changeset,
         demand_points={sku: tuple(pts) for sku, pts in points.items()},
+    )
+
+
+def resolve_policy_defaults(
+    service_level: float | None, review_days: float | None,
+) -> tuple[float, float, tuple[str, ...]]:
+    """Service level and review period of the min/max policy, with every default USED
+    spelled out. Public because ``jobs/odoo_job.py`` reports the same resolved values
+    the plan sized with, instead of re-deriving them."""
+    declared: list[str] = []
+    if service_level is None:
+        service_level = DEFAULT_SERVICE_LEVEL
+        declared.append(f"service_level={DEFAULT_SERVICE_LEVEL:g} (default del motor, no dato del cliente)")
+    if not 0.0 < service_level < 1.0:
+        raise ValueError(f"service_level must be in (0, 1), got {service_level!r}")
+    if review_days is None:
+        review_days = DEFAULT_REVIEW_DAYS
+        declared.append(f"review_days={DEFAULT_REVIEW_DAYS:g} (Kern revisa una vez por semana)")
+    if review_days < 0:
+        raise ValueError(f"review_days must be >= 0, got {review_days!r}")
+    declared.append("lead_time_std=0 (plazo sin dispersion medida)")
+    declared.append("errores de pronostico independientes: sigma*raiz(L+R) (con SES "
+                    "subestima el sigma del periodo de riesgo en plazos largos)")
+    return float(service_level), float(review_days), tuple(declared)
+
+
+def _min_max_line(sku: str, current: float, weeks: tuple[float, ...], lead: float, *,
+                  review: float, csl: float, on_order: float | None, moq: float,
+                  multiple: float, unit_step: float | None,
+                  declared: tuple[str, ...]) -> ReplenishmentLine:
+    """One sized line. S = mu*(L+R)+SS rounded up to the unit step is the trigger and
+    the order-up-to level; buy ``S - position`` (step, MOQ, multiple) only when the
+    position is STRICTLY below S."""
+    from src.constraints import lot_rule
+
+    step = float(unit_step) if unit_step is not None and unit_step > 0 else None
+    if step is None:
+        declared = (*declared, "unit_step no leido (unidad de Odoo ilegible): minimo y compra "
+                               "SIN redondear, misma regla que F4")
+    sz = _size_min_max(weeks, lead, review, csl)
+    position = net_flow_position(current, on_order or 0.0, 0.0)
+    s_level = _to_step(sz.level, step)
+    qty = 0.0
+    if position < s_level:
+        qty = _buyable(s_level - position, step=step, moq=moq, multiple=multiple)
+    return ReplenishmentLine(
+        sku, current, sz.mu_week, s_level, qty, n_observations=len(weeks),
+        on_order=on_order, position=position, avg_daily_demand=sz.mu_week / WEEK_DAYS,
+        restock_unrounded=max(0.0, sz.level - position) if qty > 0 else 0.0, unit_step=step,
+        policy="min_max", lead_time_days=lead, review_days=review, service_level=csl,
+        safety_stock=sz.safety_stock,
+        reorder_point=sz.mu_week * lead / WEEK_DAYS + sz.safety_stock,
+        order_up_to=s_level, forecast_method=sz.method,
+        sigma_source=sz.sigma_source, n_sigma_errors=sz.n_errors,
+        buffer_distribution=sz.distribution, lot_rule=lot_rule(moq, multiple),
+        defaults_declared=declared,
+    )
+
+
+#: What the position of this plan leaves out, said once in every min/max plan: the
+#: quantity Kern proposes and the ``qty_to_order`` Odoo computes for the same minimum
+#: can differ, and the reader has to know which way.
+_POSITION_NOTE = (
+    "posicion = estante + OC confirmadas en camino: no descuenta ventas confirmadas sin "
+    "despachar ni borradores/RFQ abiertos (Odoo si, en qty_forecast), asi que la cantidad "
+    "de Kern puede no coincidir con qty_to_order de Odoo para el mismo minimo"
+)
+
+
+def _unsized_line(sku: str, current: float, n_obs: int, status: str, *,
+                  lead: float | None, daily: float | None,
+                  declared: tuple[str, ...]) -> ReplenishmentLine:
+    return ReplenishmentLine(sku, current, 0.0, 0.0, 0.0, status=status, n_observations=n_obs,
+                             avg_daily_demand=daily, policy="min_max", lead_time_days=lead,
+                             defaults_declared=declared)
+
+
+def _plan_min_max(source: InventorySource, *, lead_time_days_by_sku: dict[str, float],
+                  service_level: float | None, review_days: float | None,
+                  min_qty_by_sku: dict[str, float], order_multiple_by_sku: dict[str, float],
+                  unit_step_by_sku: dict[str, float], on_order_by_sku: dict[str, float] | None,
+                  as_of: date | None, store: object | None, idempotency_key: str,
+                  min_observations: int) -> ReplenishmentPlan:
+    """Periodic-review (R,S) per SKU over calendar weeks; see :func:`_min_max_line`.
+
+    Buys only when the position is STRICTLY below S, like Odoo 17
+    (``stock_orderpoint.py:299``: ``qty_forecast < product_min_qty``), and buys
+    ``S - position`` rounded up to the unit step, the supplier's MOQ and multiple.
+    """
+    csl, review, declared = resolve_policy_defaults(service_level, review_days)
+    on_hand = {lvl.sku: lvl.available for lvl in source.inventory_levels()}
+    orders = source.orders()
+    window = weekly_demand_by_sku(orders, as_of=as_of)
+    daily = daily_demand_by_sku(orders)
+    lines: list[ReplenishmentLine] = []
+    restock: dict[str, float] = {}
+    refused: list[str] = []
+    no_lead: list[str] = []
+    for product in source.list_products():
+        sku = product.sku
+        weeks = window.series.get(sku, ())
+        current = on_hand.get(sku, 0.0)
+        lead = lead_time_days_by_sku.get(sku)
+        if lead is None or lead <= 0:
+            lines.append(_unsized_line(sku, current, len(weeks), "sin_plazo", lead=None,
+                                       daily=daily.get(sku), declared=declared))
+            no_lead.append(sku)
+            continue
+        if len(weeks) < min_observations or sum(1 for q in weeks if q > 0) < MIN_NONZERO_WEEKS:
+            lines.append(_unsized_line(sku, current, len(weeks), "insufficient_history",
+                                       lead=float(lead), daily=daily.get(sku), declared=declared))
+            refused.append(sku)
+            continue
+        line = _min_max_line(
+            sku, current, weeks, float(lead), review=review, csl=csl,
+            on_order=None if on_order_by_sku is None else on_order_by_sku.get(sku),
+            moq=float(min_qty_by_sku.get(sku) or 0.0),
+            multiple=float(order_multiple_by_sku.get(sku) or 0.0),
+            unit_step=unit_step_by_sku.get(sku), declared=declared,
+        )
+        lines.append(line)
+        if line.restock_qty > 0:
+            restock[sku] = line.restock_qty
+
+    # Only a store that writes min AND max may stage this plan. `stage_restock`
+    # writes min = on_hand + qty, which under this policy is neither number. The
+    # rule is staged for every SIZED SKU, buying today or not: min/max is a
+    # standing rule, not this week's order. In Odoo min = max = S.
+    changeset = None
+    policy = {ln.sku: (ln.order_up_to, ln.order_up_to) for ln in lines if ln.status == "ok"}
+    if store is not None and policy and hasattr(store, "stage_reorder_policy"):
+        changeset = store.stage_reorder_policy(
+            policy, idempotency_key=idempotency_key,
+            reason="min/max (R,S) con plazo y nivel de servicio",
+        )
+    window_note = (f"ventana {window.start.isoformat()}..{window.end.isoformat()} "
+                   f"({window.n_weeks} semanas calendario, con ceros; cada SKU desde su "
+                   "primera venta salvo que ya vendiera antes de la ventana)"
+                   if window.start is not None else "ventana vacia: ningun pedido con fecha")
+    return ReplenishmentPlan(
+        lines=tuple(lines), restock=restock,
+        outcome=_packet(restock, changeset, tuple(refused), tuple(no_lead)),
+        changeset=changeset,
+        demand_points={sku: tuple(pts) for sku, pts in demand_points_by_sku(orders).items()},
+        assumptions=(window_note, *declared, _POSITION_NOTE),
     )
 
 
