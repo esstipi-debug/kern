@@ -14,8 +14,10 @@ Either way no task ends in a dead end. Pure orchestration over the existing engi
 
 from __future__ import annotations
 
+import math
+import statistics
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from nosilo_core.guided import GuidedOutcome, HandoffPacket, Residual, as_executed, as_handoff
 from nosilo_core.writeback import Changeset
@@ -155,6 +157,180 @@ def daily_demand_by_sku(orders: list[Order]) -> dict[str, float]:
         sku: totals[sku] / ((last - first).days + 1)
         for sku, (first, last) in spans.items()
     }
+
+
+#: Days per demand bucket in the min/max policy. A week, not a day: a distributor
+#: that ships three orders a week has most DAYS at zero, and that is its order
+#: calendar, not variability that accumulates over a lead time.
+WEEK_DAYS = 7
+#: Declared defaults of the min/max policy. Each one that is USED is written into
+#: the line's ``defaults_declared`` and the plan's ``assumptions``.
+DEFAULT_SERVICE_LEVEL = 0.95
+DEFAULT_REVIEW_DAYS = 7.0
+#: An intermittent SKU needs this many weeks WITH sales before it is sized: six
+#: calendar weeks with a single sale pass the week gate and still say nothing.
+MIN_NONZERO_WEEKS = 3
+#: Weekly variance above this multiple of the mean means sales come in lots, not
+#: one unit at a time, and the Poisson quantile is no longer a safe minimum.
+LUMPY_VARIANCE_RATIO = 1.5
+#: 49.999999997 is 50 units, not 51: float noise must not buy a unit.
+_ROUND_TOL = 1e-9
+
+
+@dataclass(frozen=True)
+class WeeklyWindow:
+    """Demand in 7-day buckets, counted BACKWARD from one shared end date.
+
+    ``end`` is ``as_of`` when given, else the last order date of the WHOLE
+    catalogue: deterministic, and the same for every SKU, so a SKU that stopped
+    selling gets its trailing zero weeks instead of a window that ends at its own
+    last sale. ``start`` drops the leading partial week.
+
+    Where each SKU's series begins: at ``start`` when the SKU already sold BEFORE
+    ``start`` (it existed for the whole window, so its leading zeros are real);
+    otherwise at the bucket of its first sale inside the window. No zeros are
+    invented for weeks before a product is known to exist (same doctrine as
+    ``src/sources.py::_series_from_frame``); the price is a slight upward bias on
+    an intermittent SKU whose first sale falls late, declared in the plan's
+    assumptions. A SKU with no sale inside the window is absent from ``series`` --
+    never a series of zeros.
+    """
+
+    start: date | None
+    end: date | None
+    n_weeks: int
+    series: dict[str, tuple[float, ...]]
+
+
+def weekly_demand_by_sku(
+    orders: list[Order], *, as_of: date | None = None, bucket_days: int = WEEK_DAYS,
+) -> WeeklyWindow:
+    """Per-SKU demand per calendar week, zeros included (see :class:`WeeklyWindow`)."""
+    dated = [(when, line.sku, float(line.quantity))
+             for order in orders
+             if (when := _order_date(order.created_at)) is not None
+             for line in order.lines]
+    if as_of is not None:
+        dated = [row for row in dated if row[0] <= as_of]
+    if not dated:
+        return WeeklyWindow(None, None, 0, {})
+    end = as_of if as_of is not None else max(row[0] for row in dated)
+    n_weeks = ((end - min(row[0] for row in dated)).days + 1) // bucket_days
+    if n_weeks == 0:
+        return WeeklyWindow(None, end, 0, {})
+    start = end - timedelta(days=n_weeks * bucket_days - 1)
+    sold_before = {sku for when, sku, qty in dated if when < start and qty > 0}
+    grid: dict[str, list[float]] = {}
+    for when, sku, qty in dated:
+        if when < start:
+            continue
+        idx = n_weeks - 1 - (end - when).days // bucket_days
+        grid.setdefault(sku, [0.0] * n_weeks)[idx] += qty
+    series = {}
+    for sku, weeks in grid.items():
+        if not any(q > 0 for q in weeks):
+            continue
+        first = 0 if sku in sold_before else next(i for i, q in enumerate(weeks) if q > 0)
+        series[sku] = tuple(weeks[first:])
+    return WeeklyWindow(start, end, n_weeks, series)
+
+
+@dataclass(frozen=True)
+class _Sizing:
+    mu_week: float
+    method: str
+    sigma_source: str
+    n_errors: int
+    safety_stock: float
+    distribution: str
+    level: float          # mu*(L+R) + SS, unrounded
+
+
+def _smooth_sizing(weeks: tuple[float, ...], tau_weeks: float, csl: float) -> _Sizing:
+    """SES (fixed, so lab and prod agree) + SS from the engine over tau = L + R.
+
+    Sigma is the LARGER of the out-of-sample and in-sample one-step error: twelve
+    origins leave ~21% relative error on the OOS estimate, and on half a year of
+    weeks it can come out below the in-sample residual. The smaller one sizes the
+    optimistic buffer. Local imports keep scipy off the import chain of every
+    module that merely imports ``replenish``.
+    """
+    from scipy.stats import skew
+
+    from src.demand_variability import safety_stock_risk_period
+    from src.forecasting import forecast_with_oos_sigma
+    from src.risk_period import demand_over_risk_period
+
+    fc = forecast_with_oos_sigma(list(weeks), method="ses")
+    usable = [(v, name) for v, name in ((fc.error_std_oos, "forecast_error_oos"),
+                                        (fc.error_std, "forecast_error"))
+              if v is not None and math.isfinite(v) and v > 0]
+    sigma, source = max(usable) if usable else (fc.demand_std, "demand_std_fallback")
+    risk = demand_over_risk_period(fc.forecast, sigma, tau_weeks, lead_time_std=0.0)
+    asym = float(skew(weeks, bias=False)) if fc.demand_std > 0 else None
+    ss = safety_stock_risk_period(risk.mean_demand, risk.demand_std, csl, tau_weeks,
+                                  distribution="auto", observed_skewness=asym)
+    return _Sizing(fc.forecast, "ses", source, fc.n_oos_errors, ss.safety_stock,
+                   ss.distribution, risk.mean_demand + ss.safety_stock)
+
+
+def _intermittent_sizing(weeks: tuple[float, ...], tau_weeks: float, csl: float) -> _Sizing:
+    """Poisson quantile of the mean weekly rate over tau = L + R.
+
+    With ~2 units expected over the risk period a normal or gamma band returns a
+    fractional minimum; Poisson answers in whole units with the right tail. It
+    assumes sales of one unit (variance = mean). When the weekly variance runs
+    above ``LUMPY_VARIANCE_RATIO`` times the mean the sales come in lots, Poisson
+    under-protects, and the gamma band of the engine is taken if it is higher.
+    """
+    from scipy.stats import poisson
+
+    from src.demand_variability import safety_stock_risk_period
+
+    rate = statistics.fmean(weeks)
+    mean_tau = rate * tau_weeks
+    level = float(poisson.ppf(csl, mean_tau))
+    distribution = "poisson"
+    variance = statistics.variance(weeks)
+    if variance > LUMPY_VARIANCE_RATIO * rate:
+        gamma = safety_stock_risk_period(mean_tau, math.sqrt(variance * tau_weeks), csl,
+                                         tau_weeks, distribution="gamma")
+        if mean_tau + gamma.safety_stock > level:
+            level, distribution = mean_tau + gamma.safety_stock, "gamma_lumpy"
+    return _Sizing(rate, "tasa_media", "poisson" if distribution == "poisson" else "demand_std",
+                   0, level - mean_tau, distribution, level)
+
+
+def _size_min_max(weeks: tuple[float, ...], lead_days: float, review_days: float,
+                  csl: float) -> _Sizing:
+    """(R,S) de libro sobre semanas calendario: tau = (L + R) / 7 semanas."""
+    from src.forecasting import is_intermittent
+
+    tau_weeks = (lead_days + review_days) / WEEK_DAYS
+    if is_intermittent(weeks):
+        return _intermittent_sizing(weeks, tau_weeks, csl)
+    return _smooth_sizing(weeks, tau_weeks, csl)
+
+
+def _to_step(quantity: float, step: float | None) -> float:
+    """``quantity`` rounded UP to the unit step with F4's rule
+    (``src.constraints.purchasable_quantity``). ``step`` None = unit not read: no rounding."""
+    from src.constraints import purchasable_quantity
+
+    if quantity <= _ROUND_TOL:
+        return 0.0
+    return purchasable_quantity(quantity, unit_step=step or 0.0).quantity
+
+
+def _buyable(quantity: float, *, step: float | None, moq: float, multiple: float) -> float:
+    """What the supplier can be sent, with the SAME rule the draft PO applies: the supplier's
+    case pack (stock units, assumed a multiple of the unit step) or else the unit step, then MOQ."""
+    from src.constraints import purchasable_quantity
+
+    if quantity <= _ROUND_TOL:
+        return 0.0
+    paso = multiple if multiple > 0 else (step or 0.0)
+    return purchasable_quantity(quantity, unit_step=paso, minimum_order_quantity=moq).quantity
 
 
 def _refusal_residual(refused: tuple[str, ...]) -> Residual:
