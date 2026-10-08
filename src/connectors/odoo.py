@@ -127,6 +127,12 @@ _PO_REALIZED_STATES = ("purchase", "done")
 #: cero. Sin este piso, observado 34 contra declarado 1 da 3.300% de brecha
 #: relativa, gana `worst`, y el titular del entregable pasa a ser un artefacto.
 _DECLARED_DELAY_FLOOR = 1
+
+#: Los campos de ``product.supplierinfo`` sin los cuales una fila no se puede
+#: repartir a sus variantes, ordenar como Odoo (``_orden_de_proveedor``) ni
+#: descartar por proveedor archivado. Cada lector agrega encima los suyos
+#: (``delay``).
+_SELLER_KEY_FIELDS = ("product_id", "product_tmpl_id", "partner_id", "sequence", "min_qty", "price")
 _WB_TARGET = "odoo"
 
 
@@ -418,6 +424,23 @@ def _m2o_id(value: Any) -> int | None:
     if isinstance(value, int) and not isinstance(value, bool):
         return value
     return None
+
+
+def _orden_de_proveedor(fila: dict) -> tuple[int, float, float, int]:
+    """La clave con la que Odoo 17 recorre los proveedores de una variante.
+
+    ``product_product._prepare_sellers`` ordena por ``(sequence, -min_qty, price, id)``,
+    que es tambien el ``_order`` de ``product.supplierinfo``. Una fila de variante NO
+    le gana a una de plantilla por serlo: compiten con la misma clave. Se ordena aca
+    en vez de confiar en el orden del ``search_read`` para que el stand-in en memoria,
+    que devuelve en orden de insercion, elija lo mismo que un Odoo real.
+    """
+    return (
+        int(fila.get("sequence") or 0),
+        -float(fila.get("min_qty") or 0.0),
+        float(fila.get("price") or 0.0),
+        int(fila.get("id") or 0),
+    )
 
 
 @dataclass(frozen=True)
@@ -930,8 +953,10 @@ class OdooConnector:
         ``product.supplierinfo.delay`` es la **promesa** del proveedor, no una
         observacion; la contraparte medida es :meth:`receipts`. Alimenta el
         ``lead_time_days`` canonico que consumen los motores de inventario y la
-        diferenciacion del periodo de riesgo. Solo se mapean las lineas con
-        variante.
+        diferenciacion del periodo de riesgo. Las lineas se leen como las lee
+        Odoo: la de la variante y la de la ficha (``product_id`` vacio), que es
+        como las deja el formulario, y ninguna de un proveedor archivado -- ver
+        :meth:`_sellers_by_variant`.
 
         **Un ``delay`` que no supera ``_DECLARED_DELAY_FLOOR`` no se convierte en
         un plazo.** La conversion original era ``float(r.get("delay") or 0.0)``, y
@@ -950,19 +975,13 @@ class OdooConnector:
         del campo compartan la constante es deliberado: dos umbrales distintos
         para el mismo hecho, en el mismo archivo, es como empiezan a divergir.
 
-        Una segunda linea del mismo SKU con plazo utilizable le gana a una
-        primera sin plazo: una linea que no promete nada no tiene por que tapar
-        a una que si. Antes ganaba siempre la primera que llegara.
+        Gana la primera linea con plazo utilizable, en el orden en que Odoo
+        elige proveedor (``_orden_de_proveedor``): una linea que no promete nada
+        no tiene por que tapar a una que si.
         """
-        rows = self._rpc.execute_kw(
-            _M_SUPPLIERINFO, "search_read", [[]], {"fields": ["product_id", "delay"]}
-        )
         declared: dict[str, float] = {}
-        con_linea: list[str] = []          # orden de aparicion, sin repetir
-        for r in rows:
-            pid = _m2o_id(r.get("product_id"))
-            if pid is None:
-                continue
+        con_linea: list[str] = []          # SKU con al menos una linea, sin repetir
+        for pid, filas in self._sellers_by_variant(("delay",)).items():
             sku = self._sku(pid)
             if sku is None:
                 continue
@@ -970,9 +989,11 @@ class OdooConnector:
                 con_linea.append(sku)
             if sku in declared:
                 continue
-            dias = float(r.get("delay") or 0.0)
-            if dias > _DECLARED_DELAY_FLOOR:
-                declared[sku] = dias
+            for fila in filas:
+                dias = float(fila.get("delay") or 0.0)
+                if dias > _DECLARED_DELAY_FLOOR:
+                    declared[sku] = dias
+                    break
         missing = tuple(sorted(s for s in con_linea if s not in declared))
         return OdooLeadTimes(
             declared=declared, missing=missing, qa_issues=_aviso_plazos(missing, len(con_linea))
@@ -1310,25 +1331,26 @@ class OdooConnector:
     # -- write side (draft purchase orders) -----------------------------------
 
     def primary_supplier_by_sku(self, skus: list[str]) -> dict[str, int]:
-        """Map each SKU to its primary supplier's partner id (lowest-sequence product.supplierinfo).
+        """Map each SKU to its primary supplier's partner id: the first product.supplierinfo
+        row in Odoo's own order, whether it names the variant or only the template, and
+        never one of an archived supplier (see ``_sellers_by_variant``).
 
         De paso guarda el minimo de pedido de ese proveedor (``min_qty``) en
         ``_min_qty_by_sku``: es la regla del proveedor que la PO borrador tiene que
         respetar, y vive en la misma fila que el proveedor, asi que se lee una vez.
+
+        Una sola lectura de ``product.supplierinfo`` para todos los SKU, no una por
+        SKU: la fila de la ficha no se encuentra filtrando por variante.
         """
         self._ensure_catalog(skus)
+        filas_por_variante = self._sellers_by_variant()
         out: dict[str, int] = {}
         for sku in skus:
             pid = self._id_by_sku.get(sku)
-            if pid is None:
+            filas = filas_por_variante.get(pid, []) if pid is not None else []
+            if not filas:
                 continue
-            rows = self._rpc.execute_kw(
-                _M_SUPPLIERINFO, "search_read", [[["product_id", "=", pid]]],
-                {"fields": ["partner_id", "sequence", "min_qty"]},
-            )
-            if not rows:
-                continue
-            best = min(rows, key=lambda r: r.get("sequence") or 0)
+            best = filas[0]
             partner = _m2o_id(best.get("partner_id"))
             if partner is not None:
                 out[sku] = partner
@@ -1493,6 +1515,73 @@ class OdooConnector:
             self._sku_by_id[product_id] = str(code)
             self._id_by_sku[str(code)] = product_id
         return self._sku_by_id[product_id]
+
+    def _sellers_by_variant(self, fields: tuple[str, ...] = ()) -> dict[int, list[dict]]:
+        """Cada variante con las filas de ``product.supplierinfo`` que Odoo le aplica, en su orden.
+
+        La regla es la de Odoo 17 (``product_supplierinfo._get_filtered_supplier``):
+        una fila aplica a la variante si su ``product_id`` ES la variante, o si
+        ``product_id`` esta vacio y su ``product_tmpl_id`` es la plantilla de la
+        variante; y en los dos casos solo si el proveedor esta activo. El caso sin
+        variante es el normal: el formulario de la ficha deja ``product_id`` vacio
+        (``purchase/views/product_views.xml``) y la confirmacion de una OC da de alta
+        al proveedor tambien sin variante (``purchase_order._prepare_supplier_info``).
+        Leer solo por ``product_id`` dejaba al cliente tipico sin plazos y con cada
+        SKU "sin proveedor".
+
+        Una fila fijada a OTRA variante de la plantilla no aplica, igual que en Odoo.
+        Lo que Odoo tambien filtra y esto NO: la empresa (``company_id``) y la
+        vigencia (``date_start``/``date_end``).
+
+        Solo dominios planos, que es lo que ``InMemoryOdoo._match`` entiende: la fila
+        de la ficha se reparte en Python con una lectura de las variantes de esas
+        plantillas, y esa lectura no se hace si ninguna fila viene sin variante.
+        """
+        filas = self._rpc.execute_kw(
+            _M_SUPPLIERINFO, "search_read", [[]],
+            {"fields": sorted(set(fields) | set(_SELLER_KEY_FIELDS))},
+        )
+        archivados = self._archived_partners({_m2o_id(f.get("partner_id")) for f in filas})
+        por_variante: dict[int, list[dict]] = {}
+        de_la_ficha: dict[int, list[dict]] = {}
+        for fila in filas:
+            if _m2o_id(fila.get("partner_id")) in archivados:
+                continue
+            pid = _m2o_id(fila.get("product_id"))
+            if pid is not None:
+                por_variante.setdefault(pid, []).append(fila)
+                continue
+            tmpl = _m2o_id(fila.get("product_tmpl_id"))
+            if tmpl is not None:
+                de_la_ficha.setdefault(tmpl, []).append(fila)
+        if de_la_ficha:
+            # Sin referencia interna una variante no tiene SKU y sus lectores la
+            # saltan igual; filtrarla aca evita un ``_sku()`` -- una llamada -- por
+            # cada una, que ``_sku`` no cachea cuando no encuentra codigo.
+            variantes = self._rpc.execute_kw(
+                _M_PRODUCT, "search_read",
+                [[["product_tmpl_id", "in", sorted(de_la_ficha)], ["default_code", "!=", False]]],
+                {"fields": ["product_tmpl_id"]},
+            )
+            for variante in variantes:
+                for fila in de_la_ficha.get(_m2o_id(variante.get("product_tmpl_id")), ()):
+                    por_variante.setdefault(variante["id"], []).append(fila)
+        return {pid: sorted(lista, key=_orden_de_proveedor) for pid, lista in por_variante.items()}
+
+    def _archived_partners(self, partner_ids: set[int | None]) -> set[int]:
+        """Los proveedores archivados entre ``partner_ids``: Odoo no los elige nunca.
+
+        ``_get_filtered_supplier`` exige ``s.partner_id.active``. Se piden con
+        ``active = False`` en el dominio porque nombrar ``active`` apaga el filtro
+        implicito de Odoo (``models._where_calc``); sin nombrarlo, un archivado no
+        sale en ninguna busqueda. No se leen los ids con ``read``: en
+        ``InMemoryOdoo`` un campo ausente vale ``False``, y un proveedor sembrado sin
+        ``active`` saldria archivado cuando en Odoo el default es activo.
+        """
+        ids = {i for i in partner_ids if i is not None}
+        if not ids:
+            return set()
+        return ids & set(self._rpc.execute_kw(_M_PARTNER, "search", [[["active", "=", False]]]))
 
     def _read_sale_lines(self, line_ids: list[int]) -> dict[int, OrderLine]:
         """Lo pedido y lo servido en cada linea; las fechas las estampa ``orders()``."""

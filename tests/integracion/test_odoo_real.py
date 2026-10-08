@@ -96,6 +96,10 @@ def test_autentica_y_devuelve_un_uid(cliente):
     ("stock.quant", ["product_id", "location_id", "quantity"]),
     ("stock.location", ["usage"]),
     ("sale.order.line", ["product_id", "product_uom_qty", "order_id"]),
+    ("product.product", ["product_tmpl_id"]),
+    ("product.supplierinfo", ["product_id", "product_tmpl_id", "partner_id", "sequence",
+                              "min_qty", "price", "delay"]),
+    ("res.partner", ["active"]),
 ])
 def test_los_campos_que_el_conector_lee_existen_en_este_odoo(cliente, modelo, campos):
     """El fallo que ningun mock puede dar: el campo se llama distinto.
@@ -255,6 +259,86 @@ def test_el_catalogo_cacheado_no_ve_un_sku_creado_despues(cliente):
     # SKU que no conoce. El test paso de xfail(strict=True) a afirmar lo contrario.
     _cs, unsourced = conector.stage_draft_purchase_orders({sku: 5.0})
     assert sku not in unsourced, "el SKU nuevo tiene proveedor: no puede salir como unsourced"
+
+
+# --------------------------------------------------------------------------
+# El proveedor cargado desde la ficha: plantilla SIN variante
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture
+def sku_con_proveedor_en_la_ficha(cliente) -> tuple[str, int]:
+    """Un producto con el proveedor cargado COMO LO DEJA EL FORMULARIO de la ficha.
+
+    La lista de proveedores de la plantilla escribe ``seller_ids`` con
+    ``(0, 0, {...})`` y sin ``product_id``: la fila queda con plantilla y sin
+    variante (``purchase/views/product_views.xml`` solo pasa
+    ``default_product_tmpl_id``). Es la carga normal de un cliente, y la que
+    ``sku_con_proveedor`` -- con ``product_id`` explicito -- no ejercita.
+    """
+    sku = f"KERN-FICHA-{uuid.uuid4().hex[:8]}"
+    partner = cliente.execute_kw("res.partner", "create",
+                                 [{"name": f"Proveedor {sku}", "supplier_rank": 1}])
+    plantilla = cliente.execute_kw("product.template", "create",
+                                   [{"name": sku, "default_code": sku,
+                                     "standard_price": 10.0, "purchase_ok": True,
+                                     "type": "consu"}])
+    cliente.execute_kw("product.template", "write",
+                       [[plantilla], {"seller_ids": [(0, 0, {"partner_id": partner,
+                                                             "delay": 12, "min_qty": 0.0,
+                                                             "price": 10.0})]}])
+    filas = cliente.execute_kw("product.supplierinfo", "search_read",
+                               [[["product_tmpl_id", "=", plantilla]]],
+                               {"fields": ["product_id"]})
+    # Precondicion, no adorno: si una version de Odoo rellenara la variante sola,
+    # este fixture dejaria de sembrar el caso que dice sembrar y los tests de
+    # abajo pasarian sin probar nada.
+    assert filas and all(f["product_id"] is False for f in filas), filas
+    return sku, partner
+
+
+def test_el_plazo_cargado_en_la_ficha_se_lee(conector, sku_con_proveedor_en_la_ficha):
+    """Antes del arreglo este SKU no salia ni en ``declared`` ni en ``missing``: la
+    fila sin variante se saltaba entera y la pantalla decia n/a sin aviso."""
+    sku, _partner = sku_con_proveedor_en_la_ficha
+
+    assert conector.declared_lead_times().declared.get(sku) == 12.0
+
+
+def test_la_po_borrador_encuentra_al_proveedor_cargado_en_la_ficha(
+    conector, sku_con_proveedor_en_la_ficha
+):
+    """Solo la puesta en escena: ``stage_draft_purchase_orders`` no escribe en Odoo,
+    asi que este test no crea ninguna OC ni depende de la aprobacion con nombre."""
+    sku, partner = sku_con_proveedor_en_la_ficha
+
+    cs, unsourced = conector.stage_draft_purchase_orders({sku: 5.0})
+
+    assert unsourced == (), f"el SKU con proveedor en la ficha salio sin proveedor: {unsourced}"
+    assert [c.entity_id for c in cs.changes] == [f"supplier:{partner}"]
+
+
+def test_un_proveedor_archivado_de_la_ficha_no_se_elige(
+    conector, cliente, sku_con_proveedor_en_la_ficha
+):
+    """Lo que el stand-in no puede probar: que ``active = False`` en el dominio le
+    devuelva a Kern los proveedores archivados, que cualquier otra busqueda de Odoo
+    esconde (``models._where_calc``). En la misma ficha se carga un segundo
+    proveedor con mejor ``sequence`` y se lo archiva: Odoo lo salta, y Kern tambien.
+    """
+    sku, partner = sku_con_proveedor_en_la_ficha
+    archivado = cliente.execute_kw("res.partner", "create",
+                                   [{"name": f"Archivado {sku}", "supplier_rank": 1}])
+    (variante,) = cliente.execute_kw("product.product", "search_read",
+                                     [[["default_code", "=", sku]]], {"fields": ["product_tmpl_id"]})
+    cliente.execute_kw("product.template", "write",
+                       [[variante["product_tmpl_id"][0]],
+                        {"seller_ids": [(0, 0, {"partner_id": archivado, "sequence": 0,
+                                                "delay": 3, "price": 10.0})]}])
+    cliente.execute_kw("res.partner", "write", [[archivado], {"active": False}])
+
+    assert conector.primary_supplier_by_sku([sku]) == {sku: partner}
+    assert conector.declared_lead_times().declared.get(sku) == 12.0
 
 
 # --------------------------------------------------------------------------
