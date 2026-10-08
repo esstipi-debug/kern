@@ -63,6 +63,12 @@ class OdooReplenishmentReport:
     #: con las fechas reales: quien despues pronostica sobre esos puntos no puede
     #: inventarles un dia.
     demand_points: dict[str, tuple[tuple[str, float], ...]] = field(default_factory=dict)
+    #: Lo que el lector tiene que saber del redondeo a la unidad de Odoo: SKU sin unidad
+    #: legible (quedaron sin redondear), base sin categoria de unidad, lectura fallida, y
+    #: SKU que se compran en otra unidad que la de stock. Vacio cuando no hay nada de
+    #: eso: el redondeo en si lo cuentan las lineas (``restock_qty`` contra
+    #: ``restock_unrounded``), y un aviso que sale siempre deja de leerse.
+    rounding_note: str = ""
 
 
 #: How many SKUs the missing-lead-time finding names before summarising the rest.
@@ -97,6 +103,43 @@ def read_on_order(connector: OdooConnector) -> tuple[dict[str, float] | None, st
     if abiertas.truncated:
         partes.append("lectura truncada: el en-camino esta sub-estimado y el plan compra de mas")
     return abiertas.by_sku, "; ".join(partes)
+
+
+def _nombrar(skus: tuple[str, ...] | list[str]) -> str:
+    """Hasta `_MAX_SKU_NAMED` codigos y cuantos quedan: un aviso con cinco mil no se lee."""
+    resto = len(skus) - _MAX_SKU_NAMED
+    return ", ".join(skus[:_MAX_SKU_NAMED]) + (f" y {resto} mas" if resto > 0 else "")
+
+
+def read_unit_steps(connector: OdooConnector) -> tuple[dict[str, float] | None, str]:
+    """El paso de la unidad de cada SKU, y en palabras lo que el redondeo no cubre.
+
+    Mismo contrato que `read_on_order`: una lectura que falla devuelve ``None`` con la
+    razon, y el plan escribe esas cantidades sin redondear en vez de inventar un entero.
+    La nota sale vacia cuando no hay nada que advertir.
+    """
+    try:
+        unidades = connector.unit_step_by_sku()
+    except OdooError as exc:
+        return None, f"cantidades SIN redondear a la unidad de Odoo: {exc}"
+    partes: list[str] = []
+    if unidades.missing:
+        partes.append(
+            f"{len(unidades.missing)} SKU(s) sin unidad legible quedaron SIN redondear "
+            f"({_nombrar(unidades.missing)})"
+        )
+    if not unidades.category_readable:
+        partes.append(
+            "esta base no expone la categoria de la unidad: las piezas se redondean a la "
+            "precision de Odoo, no a entero"
+        )
+    if unidades.purchase:
+        otras = unidades.purchase_uom_differs
+        partes.append(
+            f"{len(otras)} SKU(s) se compran en otra unidad que la de stock ({_nombrar(otras)}): "
+            "la OC borrador los pide en esa unidad, redondeados hacia arriba"
+        )
+    return unidades.by_sku, "; ".join(partes)
 
 
 def read_measured_lead_times(connector: OdooConnector) -> tuple[dict[str, list[float]], str]:
@@ -238,8 +281,10 @@ def run(
     # justamente lo que el deck tiene que decir.
     plazos = connector.declared_lead_times()
     on_order, netting_note = read_on_order(connector)
+    pasos, rounding_note = read_unit_steps(connector)
     plan = plan_replenishment(
-        connector, cover_periods=cover_periods, store=connector, on_order_by_sku=on_order
+        connector, cover_periods=cover_periods, store=connector, on_order_by_sku=on_order,
+        unit_step_by_sku=pasos,
     )
     restock = dict(plan.restock)
     total = sum(restock.values())
@@ -249,6 +294,7 @@ def run(
     summary = (
         f"Read {n_skus} product(s) from {payload['source']}; {len(restock)} below a "
         f"{cover_periods:.0f}-period cover ({total:,.0f} units short). {netting_note}."
+        + (f" {rounding_note}." if rounding_note else "")
     )
     return OdooReplenishmentReport(
         source=str(payload["source"]),
@@ -267,6 +313,7 @@ def run(
         on_order_by_sku=on_order,
         netting_note=netting_note,
         demand_points=plan.demand_points,
+        rounding_note=rounding_note,
     )
 
 
@@ -305,6 +352,10 @@ def write_operational(report: OdooReplenishmentReport, out_dir: str | Path, clie
             "forecast_per_period": round(ln.forecast_per_period, 2),
             "target": round(ln.target, 2),
             "restock_qty": round(ln.restock_qty, 2),
+            # Lo que pidio el plan antes de subir a la unidad, y el paso usado. En
+            # blanco (no 0) en una linea sin dimensionar o sin unidad legible.
+            "restock_unrounded": "" if ln.restock_unrounded is None else round(ln.restock_unrounded, 2),
+            "unit_step": "" if ln.unit_step is None else ln.unit_step,
             "lead_time_days": _plazo_declarado(report.lead_times, ln.sku),
             # En blanco (no 0) cuando no se pudo leer lo que viene en camino: la
             # columna vacia dice "no medido", un cero diria "medido, nada en camino".
@@ -314,6 +365,33 @@ def write_operational(report: OdooReplenishmentReport, out_dir: str | Path, clie
         for ln in report.lines
     ]
     return {"csv": write_summary_csv(rows, d / "odoo_replenishment.csv")}
+
+
+def _rounding_finding(report: OdooReplenishmentReport) -> Finding | None:
+    """El redondeo a la unidad dicho en palabras, o nada si no movio ni dejo de mover nada.
+
+    Un default que cambia un numero se declara: lo que se escribe en Odoo es la cantidad
+    redondeada, y el CSV conserva la otra en ``restock_unrounded``.
+    """
+    subidas = [
+        ln for ln in report.lines
+        if ln.restock_unrounded is not None and ln.restock_qty > ln.restock_unrounded
+    ]
+    if not subidas and not report.rounding_note:
+        return None
+    extra = sum(ln.restock_qty - ln.restock_unrounded for ln in subidas)
+    detalle = (
+        f"{len(subidas)} SKU(s) subieron a la unidad de su producto en Odoo ({extra:,.1f} "
+        "unidades mas en total): una pieza no se parte y el resto va a la precision de su "
+        "unidad. La columna restock_unrounded del CSV conserva lo que pidio el plan."
+    )
+    if report.rounding_note:
+        detalle += f" {report.rounding_note}."
+    return Finding(
+        "Cantidades redondeadas hacia arriba a la unidad de Odoo",
+        detalle,
+        impact="lo que se escribe en Odoo es la cantidad redondeada: la diferencia es stock de mas, nunca de menos",
+    )
 
 
 def build_deck(
@@ -360,6 +438,9 @@ def build_deck(
             impact="replenish to avoid stockouts on the thin SKUs",
         )
     )
+    rounding = _rounding_finding(report)
+    if rounding is not None:
+        findings.append(rounding)
     if report.on_order_by_sku is None:
         # Que el lector lo vea ANTES de aprobar: sin esto, cada cantidad de abajo
         # puede estar contando de nuevo una OC que ya esta en camino.
