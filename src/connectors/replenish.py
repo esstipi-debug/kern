@@ -20,6 +20,7 @@ from datetime import date, datetime
 from nosilo_core.guided import GuidedOutcome, HandoffPacket, Residual, as_executed, as_handoff
 from nosilo_core.writeback import Changeset
 from src.connectors import InventorySource, Order
+from src.constraints import purchasable_quantity
 from src.ddmrp import net_flow_position
 from src.forecasting import MIN_PERIODS_FOR_POLICY, forecast_demand
 
@@ -53,6 +54,16 @@ class ReplenishmentLine:
     #: and it does not sell". Emitted for consumers that reason in days: days of cover,
     #: the Tower's ``stock`` state domain.
     avg_daily_demand: float | None = None
+    #: Lo que pidio el plan ANTES de llevarlo a la unidad del producto (a un decimal,
+    #: como siempre). ``restock_qty`` es lo que se escribe; esta es la cifra que el
+    #: entregable muestra al lado para que el redondeo se vea. ``None`` en una linea
+    #: rechazada, que nunca se dimensiono. Un solo campo para todo camino del plan: la
+    #: politica min/max lo reusa, no declara otro.
+    restock_unrounded: float | None = None
+    #: El paso de la unidad de stock con que se redondeo (1.0 = piezas enteras).
+    #: ``None`` cuando la fuente no declaro unidad para este SKU: la cantidad sale SIN
+    #: redondear, y eso no es lo mismo que "paso cero".
+    unit_step: float | None = None
 
 
 @dataclass(frozen=True)
@@ -214,6 +225,7 @@ def plan_replenishment(
     idempotency_key: str = "replenish-1",
     min_observations: int = MIN_PERIODS_FOR_POLICY,
     on_order_by_sku: dict[str, float] | None = None,
+    unit_step_by_sku: dict[str, float] | None = None,
 ) -> ReplenishmentPlan:
     """Forecast each SKU and plan the restock to ``cover_periods`` of demand.
 
@@ -231,6 +243,14 @@ def plan_replenishment(
     rather than claiming nothing is inbound. A default of ``{}`` here would read
     as "measured, and it is zero", which is the failure this parameter exists to
     prevent.
+
+    ``unit_step_by_sku`` es el paso minimo de cantidad de cada SKU en su unidad de
+    stock (``OdooConnector.unit_step_by_sku().by_sku`` lo produce). Con el, cada
+    cantidad sube al paso con ``src.constraints.purchasable_quantity`` -- 187.6 rollos
+    son 188 -- y la linea conserva la cifra sin redondear en ``restock_unrounded``. Se
+    redondea ACA y no solo al escribir para que el CSV, la orden borrador y el punto de
+    reorden digan el mismo numero. Un SKU fuera del mapa (o el mapa omitido) sale sin
+    redondear con ``unit_step=None``: sin unidad conocida no se inventa un entero.
     """
     on_hand = {lvl.sku: lvl.available for lvl in source.inventory_levels()}
     orders = source.orders()
@@ -274,10 +294,13 @@ def plan_replenishment(
         # there is nothing to subtract - not a shortcut, a declared absence.
         on_order = None if on_order_by_sku is None else on_order_by_sku.get(sku)
         position = net_flow_position(current, on_order or 0.0, 0.0)
-        qty = max(0.0, round(target - position, 1))
+        unrounded = max(0.0, round(target - position, 1))
+        step = None if unit_step_by_sku is None else unit_step_by_sku.get(sku)
+        qty = unrounded if step is None else purchasable_quantity(unrounded, unit_step=step).quantity
         lines.append(ReplenishmentLine(
             sku, current, forecast, target, qty, n_observations=len(history),
             on_order=on_order, position=position, avg_daily_demand=daily.get(sku),
+            restock_unrounded=unrounded, unit_step=step,
         ))
         if qty > 0:
             restock[sku] = qty

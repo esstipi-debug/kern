@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import pytest
 
+from src.connectors import InventoryLevel, Order, OrderLine, Product
 from src.connectors.odoo import InMemoryOdoo, OdooConnector, OdooError
+from src.connectors.replenish import plan_replenishment
 from src.constraints import purchasable_quantity
 
 # -- la regla: src/constraints.py ----------------------------------------------
@@ -306,3 +308,44 @@ def test_sin_poder_leer_la_unidad_el_punto_de_reorden_sale_como_antes_y_lo_dice(
 
     assert cambios.changes[0].after == 227.6
     assert "sin redondear a la unidad de Odoo" in cambios.reason
+
+
+# -- el plan: src/connectors/replenish.py -----------------------------------------
+
+
+class _Fuente:
+    """Un SKU con demanda irregular: el pronostico SES sale con decimales."""
+
+    def list_products(self):
+        return [Product(sku="CINTA", title="Cinta", price=10.0, cost=5.0)]
+
+    def inventory_levels(self):
+        return [InventoryLevel(sku="CINTA", available=5.0)]
+
+    def orders(self):
+        cantidades = (4.0, 2.0, 3.0, 5.0, 2.0, 3.0, 4.0, 2.0, 3.0, 5.0, 2.0, 3.0)
+        return [
+            Order(order_id=f"O{i}", created_at=f"2026-01-{i + 1:02d}",
+                  lines=(OrderLine(sku="CINTA", quantity=q, price=10.0),))
+            for i, q in enumerate(cantidades)
+        ]
+
+
+def test_el_plan_redondea_hacia_arriba_y_deja_visible_lo_que_pidio():
+    plan = plan_replenishment(_Fuente(), cover_periods=8.0, method="ses",
+                              unit_step_by_sku={"CINTA": 1.0})
+
+    (linea,) = plan.lines
+    assert linea.restock_unrounded == pytest.approx(19.7)
+    assert linea.restock_qty == 20.0
+    assert linea.unit_step == 1.0
+    # Lo que va al conector es lo redondeado: el CSV, la PO y el minimo dicen lo mismo.
+    assert plan.restock == {"CINTA": 20.0}
+
+
+def test_el_plan_sin_unidad_declarada_no_inventa_un_redondeo():
+    plan = plan_replenishment(_Fuente(), cover_periods=8.0, method="ses")
+
+    (linea,) = plan.lines
+    assert linea.unit_step is None
+    assert linea.restock_qty == linea.restock_unrounded == pytest.approx(19.7)
