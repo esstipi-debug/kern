@@ -351,6 +351,78 @@ def test_un_proveedor_archivado_de_la_ficha_no_se_elige(
 
 
 # --------------------------------------------------------------------------
+# La unidad del producto y la de compra (F4 de la prueba del recorrido)
+# --------------------------------------------------------------------------
+
+
+def _unidad(cliente, nombre: str) -> int:
+    """Una unidad de fabrica por su nombre en ingles (``uom.uom.name`` es traducible)."""
+    ids = cliente.execute_kw(
+        "uom.uom", "search", [[["name", "=", nombre]]], {"limit": 1, "context": {"lang": "en_US"}}
+    )
+    assert ids, f"este Odoo no trae la unidad {nombre!r} (modulo uom)"
+    return ids[0]
+
+
+@pytest.fixture
+def sku_por_docena(cliente) -> tuple[str, int]:
+    """Un producto que se guarda por unidad y se compra por docena, a 120 la docena.
+
+    Devuelve el SKU y el id de "Dozens". El proveedor va en la variante para que el
+    test no dependa de como lee proveedores ``primary_supplier_by_sku``.
+    """
+    sku = f"KERN-DOCENA-{uuid.uuid4().hex[:8]}"
+    docena = _unidad(cliente, "Dozens")
+    partner = cliente.execute_kw("res.partner", "create",
+                                 [{"name": f"Proveedor {sku}", "supplier_rank": 1}])
+    producto = cliente.execute_kw("product.product", "create",
+                                  [{"name": sku, "default_code": sku,
+                                    "standard_price": 10.0, "purchase_ok": True,
+                                    "type": "consu", "uom_id": _unidad(cliente, "Units"),
+                                    "uom_po_id": docena}])
+    cliente.execute_kw("product.supplierinfo", "create",
+                       [{"partner_id": partner, "product_id": producto,
+                         "price": 120.0, "sequence": 1}])
+    return sku, docena
+
+
+def test_este_odoo_dice_la_unidad_de_compra_y_el_paso_de_una_pieza(conector, sku_por_docena):
+    """Lo que el stand-in no puede decir: que ``uom.category`` se lee en en_US por
+    XML-RPC, que ``uom.uom.factor`` existe y que "Units" se cuenta por piezas."""
+    sku, docena = sku_por_docena
+
+    unidades = conector.unit_step_by_sku([sku])
+
+    assert unidades.by_sku == {sku: 1.0}
+    assert unidades.category_readable is True
+    assert unidades.purchase[sku].uom_id == docena
+    assert unidades.purchase[sku].stock_per_unit == pytest.approx(12.0)
+
+
+def test_la_oc_de_un_producto_por_docena_sale_en_docenas_y_odoo_la_respeta(
+    conector, cliente, sku_por_docena
+):
+    """Odoo completa solo los campos que faltan (``_prepare_add_missing_fields``): la
+    unidad y el precio que manda Kern tienen que quedar, y su propia cuenta en unidad
+    de stock (``product_uom_qty``) tiene que dar lo que pidio el plan."""
+    sku, docena = sku_por_docena
+
+    resultado = conector.create_draft_purchase_orders(
+        {sku: 24.0}, approved_by="compras@cliente.com", prices={sku: 10.0}
+    )
+
+    (po_id,) = resultado.purchase_orders
+    (linea,) = cliente.execute_kw(
+        "purchase.order.line", "search_read", [[["order_id", "=", po_id]]],
+        {"fields": ["product_qty", "product_uom", "price_unit", "product_uom_qty"]},
+    )
+    assert linea["product_qty"] == pytest.approx(2.0)
+    assert linea["product_uom"][0] == docena
+    assert linea["price_unit"] == pytest.approx(120.0)
+    assert linea["product_uom_qty"] == pytest.approx(24.0)
+
+
+# --------------------------------------------------------------------------
 # El addon
 # --------------------------------------------------------------------------
 
