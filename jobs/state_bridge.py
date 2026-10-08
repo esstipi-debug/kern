@@ -177,9 +177,12 @@ def stock_lines_from_replenishment(lines: Iterable) -> list[StockLine]:
     """``odoo_replenishment`` / ``shopify_replenishment``: la linea compartida
     ``src.connectors.replenish.ReplenishmentLine``.
 
-    ``reorder_point`` = ``line.target``, y no es una aproximacion: este plan pide cuando
-    la posicion cae por debajo del objetivo de cobertura, asi que el objetivo ES el
-    disparador. ``avg_daily_demand`` = ``line.avg_daily_demand``, la tasa por dia
+    ``reorder_point`` = ``line.reorder_point`` cuando la linea lo trae (politica
+    ``min_max``): ``mu*L + SS``, la misma definicion que ``jobs/inventory_optimization.py``,
+    y no ``order_up_to``, que en un (R,S) queda por encima de la posicion casi toda la
+    semana y haria alarmar al Tower sobre todo SKU dimensionado. Si no, ``line.target``,
+    que en el modo cobertura SI es el disparador: ese plan pide cuando la posicion cae
+    por debajo del objetivo de cobertura. ``avg_daily_demand`` = ``line.avg_daily_demand``, la tasa por dia
     calendario que el conector mide (NO ``forecast_per_period``, cuyo periodo es un
     dia-con-pedidos). Una linea ``insufficient_history`` sale con ``target`` 0 y se
     omite: escribirla diria que su punto de reorden es cero.
@@ -188,9 +191,12 @@ def stock_lines_from_replenishment(lines: Iterable) -> list[StockLine]:
     for line in lines:
         if getattr(line, "status", "ok") != "ok":
             continue
-        if not _usable(line.sku, line.on_hand, line.target, line.avg_daily_demand):
+        trigger = getattr(line, "reorder_point", None)
+        if trigger is None:
+            trigger = line.target
+        if not _usable(line.sku, line.on_hand, trigger, line.avg_daily_demand):
             continue
-        out.append(StockLine(line.sku, float(line.on_hand), float(line.target),
+        out.append(StockLine(line.sku, float(line.on_hand), float(trigger),
                              float(line.avg_daily_demand), _en_camino(line, "on_order")))
     return out
 
