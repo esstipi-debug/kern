@@ -17,15 +17,25 @@ from src.connectors.odoo import InMemoryOdoo, demo_odoo
 
 
 def _deep_odoo() -> InMemoryOdoo:
-    """An Odoo where the single product is far above cover -> no restock needed."""
+    """An Odoo where the single product is far above its minimum -> no restock needed.
+
+    Eight weekly sales and a 7-day supplier: enough for the min/max policy to SIZE
+    the SKU (S = 1/week x (7+7)/7 = 2) and find 9999 on hand well above it. With
+    one sale or no lead time the SKU would be unsized, not "held".
+    """
+    fechas = [f"2026-{m:02d}-{d:02d} 10:00:00"
+              for m, d in ((1, 5), (1, 12), (1, 19), (1, 26), (2, 2), (2, 9), (2, 16), (2, 23))]
     return InMemoryOdoo(
         {
             "product.product": {1: {"default_code": "SKU-1", "name": "W", "list_price": 10.0, "standard_price": 6.0}},
             "stock.location": {10: {"usage": "internal"}},
             "stock.quant": {100: {"product_id": [1, "W"], "location_id": [10, "S"], "quantity": 9999.0}},
-            "sale.order": {200: {"name": "S1", "date_order": "2026-01-05 10:00:00", "state": "sale", "order_line": [300]}},
-            "sale.order.line": {300: {"product_id": [1, "W"], "product_uom_qty": 1.0, "price_unit": 10.0}},
-            "product.supplierinfo": {},
+            "sale.order": {200 + i: {"name": f"S{i}", "date_order": f, "state": "sale", "order_line": [300 + i]}
+                           for i, f in enumerate(fechas)},
+            "sale.order.line": {300 + i: {"product_id": [1, "W"], "product_uom_qty": 1.0, "price_unit": 10.0}
+                                for i in range(len(fechas))},
+            "product.supplierinfo": {400: {"product_id": [1, "W"], "partner_id": [70, "Acme"],
+                                           "sequence": 1, "delay": 7.0}},
             "stock.warehouse.orderpoint": {},
         }
     )
@@ -53,9 +63,13 @@ def test_prepare_accepts_an_injected_rpc():
 def test_run_plans_restock_for_thin_skus():
     report = odoo_job.run(odoo_job.prepare(None, {}), cover_periods=8.0)
 
-    # demo: SKU-1 (12 on-hand, ~10/period) and SKU-3 (20, ~5/period) are thin; SKU-2 is deep.
-    assert report.n_restock == 2
-    assert set(report.restock) == {"SKU-1", "SKU-3"}
+    # demo, min/max policy over 7 calendar weeks of flat demand (sigma 0, SS 0):
+    # SKU-1: 10/week, 7 days -> S = 10 x (7+7)/7 = 20, 12 on hand -> buy 8.
+    # SKU-3: 5/week, 21 days -> S = 5 x (21+7)/7 = 20, 20 on hand -> NOT below S, buys 0.
+    # SKU-2: never sold -> insufficient_history, not sized.
+    assert report.n_restock == 1
+    assert set(report.restock) == {"SKU-1"}
+    assert report.restock["SKU-1"] == 8.0
     assert report.total_restock > 0
     assert odoo_job.verify(report) == []
 
@@ -84,7 +98,7 @@ def test_well_stocked_odoo_holds_but_stays_protected():
 
 
 def test_default_threshold_leaves_the_small_demo_restock_as_plain_options():
-    """Demo restock is ~$916 - well under the $50k default, so the default
+    """Demo restock is ~$96 (8 x $12) - well under the $50k default, so the default
     behavior (freely-actionable options) is unchanged."""
     report = odoo_job.run(odoo_job.prepare(None, {}), cover_periods=8.0)
 
@@ -94,7 +108,7 @@ def test_default_threshold_leaves_the_small_demo_restock_as_plain_options():
 def test_restock_value_above_threshold_escalates_to_finance():
     payload = odoo_job.prepare(None, {})
 
-    report = odoo_job.run(payload, cover_periods=8.0, financial_threshold=500.0)
+    report = odoo_job.run(payload, cover_periods=8.0, financial_threshold=50.0)
 
     assert report.outcome.status == ESCALATED
     assert report.outcome.escalation.route_to
@@ -108,7 +122,7 @@ def test_escalated_deck_states_the_requirement_in_words():
     """The data model being correct (outcome.status == ESCALATED) is not the same
     guarantee as a human reading the ACTUAL rendered document ever seeing it -
     the deck must say so, not just carry it silently in a field nobody reads."""
-    report = odoo_job.run(odoo_job.prepare(None, {}), cover_periods=8.0, financial_threshold=500.0)
+    report = odoo_job.run(odoo_job.prepare(None, {}), cover_periods=8.0, financial_threshold=50.0)
     assert report.outcome.status == ESCALATED  # sanity: this run is really escalated
 
     md = odoo_job.build_deck(report, client="Acme", confidence=0.85).to_markdown()
@@ -127,7 +141,7 @@ def test_escalated_run_still_reaches_the_orchestrator_deck_with_visible_options(
     res = orch.run(
         "connect odoo and plan replenishment from odoo",
         client="Acme", out_dir=tmp_path,
-        overrides={"financial_threshold": 500.0},
+        overrides={"financial_threshold": 50.0},
     )
 
     assert res.status == "ok"

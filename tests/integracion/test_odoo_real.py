@@ -15,69 +15,76 @@ falso, asi que ninguno puede detectar:
 Ese ultimo es el que importa de verdad: el fallo no es un numero peor, es una
 orden de compra duplicada en el ERP de un cliente.
 
-**Como correrlos**
+**Como correrlos** (desde la raiz del repo; el detalle, con el sembrador del
+recorrido del cliente, esta en el docstring de ``test_recorrido_cliente.py``):
 
-    docker compose -f docker-compose.odoo.yml up -d
-    uv run --no-sync pytest -m integracion
-    docker compose -f docker-compose.odoo.yml down -v
+    python scripts/odoo_test_setup.py
+    PYTHONPATH=. python -m pytest -m integracion tests/integracion/test_odoo_real.py -v
+    docker compose --env-file .env.odoo -f docker-compose.odoo.yml down -v
 
 Estan fuera de la suite por defecto (``addopts = "-m 'not integracion'"``) para
 que no haga falta infraestructura para trabajar. Eso NO los hace opcionales: la
 publicacion del addon en apps.odoo.com los exige verdes, y el checklist de
 ``odoo_addon/PUBLICACION.md`` lo dice.
 
-> **Estos tests no se han ejecutado nunca todavia.** Se escribieron con el
-> daemon de Docker parado, asi que estan verificados como codigo pero no contra
-> un servidor. La primera corrida es parte del trabajo, no una formalidad:
-> espera que alguno falle, porque su razon de existir es justo lo que el
-> simulador no podia decir.
+> **La primera corrida real fue el 2026-09-19, sobre ``b01b1bb``** (prueba del
+> recorrido del cliente): de los 16 tests de este archivo pasaron 12 y fallaron
+> 4. Los cuatro que crean OC fallaban con ``TypeError`` antes de tocar Odoo:
+> ``create_draft_purchase_orders`` exige ``approved_by`` desde c066283
+> (2026-08-08) y este archivo entro despues (4e7d17c) con la llamada vieja, asi
+> que nunca paso en main. Ahora nombran al aprobador y comprueban que la
+> aprobacion queda en el ledger, que es lo que ese argumento existe para dejar.
 """
 
 from __future__ import annotations
 
-import os
 import uuid
 
 import pytest
 
-from src.connectors.odoo import OdooClient, OdooConnector, OdooError
+from nosilo_core.writeback_store import SqliteAuditLedger
+from src.connectors.odoo import OdooConnector
 
 pytestmark = pytest.mark.integracion
 
-URL = os.environ.get("ODOO_URL", "http://localhost:8069")
-DB = os.environ.get("ODOO_DB", "kern_test")
-USER = os.environ.get("ODOO_USERNAME", "admin")
-KEY = os.environ.get("ODOO_API_KEY", "admin")
+#: Quien firma las OC de estos tests. ``create_draft_purchase_orders`` no tiene
+#: default para ``approved_by`` a proposito: una OC anonima no se puede auditar.
+APROBADOR = "Comprador de prueba (integracion)"
 
-
-@pytest.fixture(scope="module")
-def cliente() -> OdooClient:
-    """Conexion real. Si no hay servidor, falla en vez de saltarse.
-
-    Un ``skipif`` aqui convertiria "no levante el Odoo" en "todo verde", que es
-    exactamente como se pierde una verificacion. Quien corre ``-m integracion``
-    esta pidiendo explicitamente hablar con un servidor.
-    """
-    try:
-        return OdooClient(URL, DB, USER, KEY)
-    except OdooError as exc:
-        pytest.fail(
-            f"no hay Odoo en {URL} (db={DB}): {exc}. "
-            "Levantalo con: docker compose -f docker-compose.odoo.yml up -d"
-        )
+# ``cliente`` (la conexion real, que falla en vez de saltarse) vive en
+# tests/integracion/conftest.py: la comparte test_recorrido_cliente.py.
 
 
 @pytest.fixture
-def conector(cliente) -> OdooConnector:
-    """Uno nuevo por test, a proposito.
+def ledger() -> SqliteAuditLedger:
+    """El ledger de ``examples/run_odoo.py``, en memoria y nuevo por test.
 
-    ``OdooConnector`` cachea el mapa SKU<->id en el primer uso y NO lo refresca
-    (``_ensure_catalog`` solo actua si la cache esta vacia), asi que un conector
-    compartido entre tests no ve los productos que crean los tests posteriores.
-    Compartirlo aqui haria que estos tests midieran la cache en vez del
-    conector. La staleness en si esta fijada abajo como defecto conocido.
+    Nuevo por test para que "una aprobacion" signifique una: con uno compartido,
+    la fila de un test anterior contaria como la del siguiente.
     """
-    return OdooConnector(cliente)
+    libro = SqliteAuditLedger(":memory:")
+    yield libro
+    libro.close()
+
+
+def _aprobado_por(ledger: SqliteAuditLedger) -> str:
+    """Quien aprobo la UNICA escritura del test, segun el ledger."""
+    claves = sorted(ledger.applied_keys())
+    assert len(claves) == 1, f"una escritura deja una aprobacion, y el ledger tiene {claves}"
+    return ledger.get(claves[0]).approved_by
+
+
+@pytest.fixture
+def conector(cliente, ledger) -> OdooConnector:
+    """Uno nuevo por test, con su propio ``ledger``, a proposito.
+
+    Sin ``ledger`` la aprobacion vive en un dict del proceso y el test no tiene
+    donde comprobar que quedo registrada; con uno compartido, la escritura de un
+    test contaria como la del siguiente. (La otra razon que habia, la cache del
+    catalogo que no se refrescaba, se arreglo el 2026-09-05: ver
+    ``test_el_catalogo_cacheado_no_ve_un_sku_creado_despues``.)
+    """
+    return OdooConnector(cliente, ledger=ledger)
 
 
 # --------------------------------------------------------------------------
@@ -159,44 +166,49 @@ def _cuantas_oc(cliente) -> int:
     return cliente.execute_kw("purchase.order", "search_count", [[]])
 
 
-def test_la_orden_creada_queda_en_draft_y_no_confirmada(conector, cliente, sku_con_proveedor):
+def test_la_orden_creada_queda_en_draft_y_no_confirmada(conector, cliente, ledger, sku_con_proveedor):
     """El borrador sin confirmar ES la frontera de seguridad del diseno.
 
     Si Odoo la creara ya confirmada, Kern estaria comprometiendo dinero del
     cliente sin que nadie lo revise. Nada en el codigo de Kern lo impide: lo
     impide el estado en que Odoo la deja, y eso solo se puede comprobar aqui.
     """
-    resultado = conector.create_draft_purchase_orders({sku_con_proveedor: 5.0})
+    resultado = conector.create_draft_purchase_orders({sku_con_proveedor: 5.0}, approved_by=APROBADOR)
 
     assert resultado.unsourced == (), f"el SKU quedo sin proveedor: {resultado.unsourced}"
     assert resultado.n_orders == 1, resultado.purchase_orders
     estados = cliente.execute_kw("purchase.order", "read",
                                  [list(resultado.purchase_orders)], {"fields": ["state"]})
     assert all(o["state"] == "draft" for o in estados), estados
+    assert _aprobado_por(ledger) == APROBADOR
 
 
-def test_reintentar_el_mismo_restock_no_duplica_la_orden(conector, cliente, sku_con_proveedor):
+def test_reintentar_el_mismo_restock_no_duplica_la_orden(conector, cliente, ledger, sku_con_proveedor):
     """El fallo mas caro, y el unico que la suite normal no puede ver.
 
     Una red que corta despues de que Odoo creo la orden pero antes de que Kern
     lea la respuesta produce exactamente este reintento. Si duplica, el cliente
     compra dos veces. La clave de idempotencia se deriva del contenido del
     changeset, asi que el mismo restock resuelve siempre a la misma clave.
+
+    El reintento tampoco deja una segunda aprobacion: fue un salto idempotente,
+    no una escritura, y el ledger tiene que decir lo mismo que Odoo.
     """
     restock = {sku_con_proveedor: 5.0}
     antes = _cuantas_oc(cliente)
-    conector.create_draft_purchase_orders(restock)
+    conector.create_draft_purchase_orders(restock, approved_by=APROBADOR)
     intermedio = _cuantas_oc(cliente)
-    conector.create_draft_purchase_orders(restock)
+    conector.create_draft_purchase_orders(restock, approved_by=APROBADOR)
     despues = _cuantas_oc(cliente)
 
     assert intermedio == antes + 1, "la primera llamada no creo exactamente una orden"
     assert despues == intermedio, (
         f"el reintento del mismo restock creo otra orden: {intermedio} -> {despues}"
     )
+    assert _aprobado_por(ledger) == APROBADOR
 
 
-def test_un_sku_sin_proveedor_se_reporta_y_no_se_descarta(conector, cliente):
+def test_un_sku_sin_proveedor_se_reporta_y_no_se_descarta(conector, cliente, ledger):
     """``unsourced`` existe para que un SKU sin proveedor no desaparezca en
     silencio del plan de compra. Es la diferencia entre "no lo pedi porque no
     se a quien" y "no lo pedi".
@@ -206,17 +218,18 @@ def test_un_sku_sin_proveedor_se_reporta_y_no_se_descarta(conector, cliente):
                        [{"name": sku, "default_code": sku, "standard_price": 7.0,
                          "purchase_ok": True, "type": "consu"}])
     antes = _cuantas_oc(cliente)
-    resultado = conector.create_draft_purchase_orders({sku: 3.0})
+    resultado = conector.create_draft_purchase_orders({sku: 3.0}, approved_by=APROBADOR)
 
     assert sku in resultado.unsourced
     assert resultado.n_orders == 0
     assert _cuantas_oc(cliente) == antes, "creo una OC para un SKU sin proveedor"
+    assert ledger.applied_keys() == set(), "sin nada escrito no puede quedar una aprobacion registrada"
 
 
-def test_la_oc_creada_lleva_las_lineas_con_la_cantidad_pedida(conector, cliente,
+def test_la_oc_creada_lleva_las_lineas_con_la_cantidad_pedida(conector, cliente, ledger,
                                                               sku_con_proveedor):
     """Una cabecera sin lineas parece una orden real y no lo es."""
-    resultado = conector.create_draft_purchase_orders({sku_con_proveedor: 9.0})
+    resultado = conector.create_draft_purchase_orders({sku_con_proveedor: 9.0}, approved_by=APROBADOR)
     (po_id,) = resultado.purchase_orders
     lineas = cliente.execute_kw(
         "purchase.order.line", "search_read",
@@ -224,22 +237,18 @@ def test_la_oc_creada_lleva_las_lineas_con_la_cantidad_pedida(conector, cliente,
     )
     assert lineas, "la OC salio sin lineas"
     assert sum(ln["product_qty"] for ln in lineas) == pytest.approx(9.0)
+    assert _aprobado_por(ledger) == APROBADOR
 
 
 def test_el_catalogo_cacheado_no_ve_un_sku_creado_despues(cliente):
-    """DEFECTO CONOCIDO, fijado aqui para que se note cuando se arregle.
+    """Un conector de vida larga ve un SKU dado de alta despues de su primer uso.
 
-    ``_ensure_catalog`` solo refresca si ``_id_by_sku`` esta vacio, asi que un
-    conector de vida larga -- el de un job programado, por ejemplo -- nunca ve
-    un producto dado de alta despues de su primer uso.
-
-    Lo peor no es que no lo vea: es **como** lo reporta. El SKU cae en
-    ``unsourced``, que significa "sin proveedor en Odoo". El cliente ira a
-    darle un proveedor que ya tiene, y volvera a fallar igual. El sintoma
-    apunta al sitio equivocado.
-
-    ``strict=True``: cuando alguien anada un refresco de catalogo, este test
-    pasara a verde inesperado y fallara, que es como debe enterarse.
+    El nombre es de cuando era un DEFECTO CONOCIDO, fijado con
+    ``xfail(strict=True)``: ``_ensure_catalog`` solo refrescaba con la cache
+    vacia, y el conector de un job programado nunca veia un producto nuevo. Lo
+    peor era como lo reportaba: el SKU caia en ``unsourced`` ("sin proveedor en
+    Odoo"), el cliente iba a darle un proveedor que ya tenia, y volvia a fallar
+    igual. Arreglado el 2026-09-05 (PR-0); ahora el test afirma lo contrario.
     """
     conector = OdooConnector(cliente)
     conector.list_products()  # calienta la cache
@@ -339,6 +348,78 @@ def test_un_proveedor_archivado_de_la_ficha_no_se_elige(
 
     assert conector.primary_supplier_by_sku([sku]) == {sku: partner}
     assert conector.declared_lead_times().declared.get(sku) == 12.0
+
+
+# --------------------------------------------------------------------------
+# La unidad del producto y la de compra (F4 de la prueba del recorrido)
+# --------------------------------------------------------------------------
+
+
+def _unidad(cliente, nombre: str) -> int:
+    """Una unidad de fabrica por su nombre en ingles (``uom.uom.name`` es traducible)."""
+    ids = cliente.execute_kw(
+        "uom.uom", "search", [[["name", "=", nombre]]], {"limit": 1, "context": {"lang": "en_US"}}
+    )
+    assert ids, f"este Odoo no trae la unidad {nombre!r} (modulo uom)"
+    return ids[0]
+
+
+@pytest.fixture
+def sku_por_docena(cliente) -> tuple[str, int]:
+    """Un producto que se guarda por unidad y se compra por docena, a 120 la docena.
+
+    Devuelve el SKU y el id de "Dozens". El proveedor va en la variante para que el
+    test no dependa de como lee proveedores ``primary_supplier_by_sku``.
+    """
+    sku = f"KERN-DOCENA-{uuid.uuid4().hex[:8]}"
+    docena = _unidad(cliente, "Dozens")
+    partner = cliente.execute_kw("res.partner", "create",
+                                 [{"name": f"Proveedor {sku}", "supplier_rank": 1}])
+    producto = cliente.execute_kw("product.product", "create",
+                                  [{"name": sku, "default_code": sku,
+                                    "standard_price": 10.0, "purchase_ok": True,
+                                    "type": "consu", "uom_id": _unidad(cliente, "Units"),
+                                    "uom_po_id": docena}])
+    cliente.execute_kw("product.supplierinfo", "create",
+                       [{"partner_id": partner, "product_id": producto,
+                         "price": 120.0, "sequence": 1}])
+    return sku, docena
+
+
+def test_este_odoo_dice_la_unidad_de_compra_y_el_paso_de_una_pieza(conector, sku_por_docena):
+    """Lo que el stand-in no puede decir: que ``uom.category`` se lee en en_US por
+    XML-RPC, que ``uom.uom.factor`` existe y que "Units" se cuenta por piezas."""
+    sku, docena = sku_por_docena
+
+    unidades = conector.unit_step_by_sku([sku])
+
+    assert unidades.by_sku == {sku: 1.0}
+    assert unidades.category_readable is True
+    assert unidades.purchase[sku].uom_id == docena
+    assert unidades.purchase[sku].stock_per_unit == pytest.approx(12.0)
+
+
+def test_la_oc_de_un_producto_por_docena_sale_en_docenas_y_odoo_la_respeta(
+    conector, cliente, sku_por_docena
+):
+    """Odoo completa solo los campos que faltan (``_prepare_add_missing_fields``): la
+    unidad y el precio que manda Kern tienen que quedar, y su propia cuenta en unidad
+    de stock (``product_uom_qty``) tiene que dar lo que pidio el plan."""
+    sku, docena = sku_por_docena
+
+    resultado = conector.create_draft_purchase_orders(
+        {sku: 24.0}, approved_by="compras@cliente.com", prices={sku: 10.0}
+    )
+
+    (po_id,) = resultado.purchase_orders
+    (linea,) = cliente.execute_kw(
+        "purchase.order.line", "search_read", [[["order_id", "=", po_id]]],
+        {"fields": ["product_qty", "product_uom", "price_unit", "product_uom_qty"]},
+    )
+    assert linea["product_qty"] == pytest.approx(2.0)
+    assert linea["product_uom"][0] == docena
+    assert linea["price_unit"] == pytest.approx(120.0)
+    assert linea["product_uom_qty"] == pytest.approx(24.0)
 
 
 # --------------------------------------------------------------------------

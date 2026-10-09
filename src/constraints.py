@@ -239,6 +239,65 @@ def cheapest_feasible_lot(
     )
 
 
+# -- Cantidad que se ESCRIBE en un ERP ------------------------------------------
+#
+# El plan razona en unidades continuas; el documento que llega al proveedor no.
+# 187.6 rollos o 1.4 escaleras en una orden de compra no son un plan, son un
+# numero que alguien tiene que corregir a mano. La regla es la MISMA que arriba:
+# el paso de la unidad es un `order_multiple` y el minimo del proveedor un
+# `minimum_order_quantity`, asi que "legal" significa lo mismo aca que en el
+# inventory job, los sombreros y el veredicto cruzado.
+
+
+@dataclass(frozen=True)
+class PurchasableQty:
+    """Una cantidad llevada HACIA ARRIBA al primer lote que el ERP y el proveedor aceptan.
+
+    ``asked`` es lo que pidio el plan y no se pisa: quien muestra ``quantity`` tiene a
+    mano la cifra original para que el ajuste se vea. ``rule`` es `lot_rule(minimo,
+    paso)`, el mismo texto que imprime el resto de Kern ("moq 50, multiple 1").
+    """
+
+    asked: float
+    quantity: float
+    rule: str
+
+    @property
+    def adjusted(self) -> bool:
+        """La regla movio la cantidad. Solo puede moverla hacia arriba."""
+        return abs(self.quantity - self.asked) > _FEAS_TOL * max(1.0, abs(self.asked))
+
+
+def purchasable_quantity(
+    asked: float,
+    *,
+    unit_step: float = 0.0,
+    minimum_order_quantity: float = 0.0,
+) -> PurchasableQty:
+    """El primer lote legal en o por encima de ``asked``.
+
+    ``unit_step`` es el paso minimo de cantidad en la unidad del producto (1.0 para una
+    pieza, 0.001 para un kilo con tres decimales); ``0.0`` = sin paso conocido.
+
+    Mira PRIMERO si ``asked`` ya es legal, con la tolerancia de `is_feasible_lot`:
+    `round_up_to_multiple(0.1 * 3, 0.1)` devuelve 0.4, porque el cociente sale
+    3.0000000000000004 y ``ceil`` lo sube un paso entero. El resultado se limpia a 9
+    decimales para que 12.346 no viaje como 12.346000000000002.
+
+    Nada que comprar (``asked == 0``) sigue siendo nada: el minimo del proveedor se
+    aplica a una compra, no inventa una.
+    """
+    rule = lot_rule(minimum_order_quantity, unit_step)  # valida que ambos sean >= 0
+    if asked < 0:
+        raise ValueError("asked must be >= 0")
+    if asked == 0:
+        return PurchasableQty(0.0, 0.0, rule)
+    terms = dict(minimum_order_quantity=minimum_order_quantity, order_multiple=unit_step)
+    base = max(asked, minimum_order_quantity)
+    quantity = base if is_feasible_lot(base, **terms) else apply_order_rules(asked, **terms)
+    return PurchasableQty(asked, round(quantity, 9), rule)
+
+
 @dataclass(frozen=True)
 class InventoryItem:
     """One SKU's stock position, used for portfolio-level constraints."""

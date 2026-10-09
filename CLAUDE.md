@@ -145,7 +145,7 @@ Kern dice 40 y el proveedor vende de a 30, 60, 90. `apply_order_rules` sigue
 siendo el redondeo de una sola terminal (arriba); lo que decide es
 `cheapest_feasible_lot`: valua los dos lotes legales vecinos con la misma curva
 de costo del EOQ (`src.eoq.total_cost`), elige el mas barato y devuelve el otro
-como `alternative` con su penalidad. Tres consumidores leen la MISMA regla
+como `alternative` con su penalidad. Cuatro consumidores leen la MISMA regla
 (`lot_rule`/`is_feasible_lot`) y por eso nunca discrepan sobre que es "factible":
 - **`jobs/inventory_optimization.py`** lee `moq` / `order_multiple` (intake los
   emite SOLO cuando el archivo los trae; alias en es/en) y en `(s,Q)` mueve Q,
@@ -161,8 +161,20 @@ como `alternative` con su penalidad. Tres consumidores leen la MISMA regla
   un ideal o un acuerdo infactible.
 - **`jobs/cross_impact_job.py`**: una propuesta infactible se mide igual, pero
   sale un residual que nombra los lotes legales vecinos.
+- **El camino Odoo** (`src/connectors/replenish.py`, `src/connectors/odoo.py`):
+  `purchasable_quantity` lleva lo que se ESCRIBE hacia arriba al paso de la unidad
+  del producto (`OdooConnector.unit_step_by_sku`) y, en la OC, al `min_qty` del
+  proveedor. Una pieza (categoria "Unit") tiene paso 1 aunque "Units" venga de
+  fabrica con `rounding=0.01` -- redondear a esa precision dejaba 187,6 rollos en la
+  OC --; el resto va a su `rounding`. El plan redondea (CSV, OC y punto de reorden
+  dicen el mismo numero) y conserva la cifra en `restock_unrounded`. Un producto que
+  se compra en otra unidad (`uom_po_id`: docena, caja) va a la OC ENTERO en esa
+  unidad -- cantidad, unidad y precio --, porque ahi estan el `min_qty` y el precio
+  del proveedor; la linea nombra la unidad (`product_uom`, o `product_uom_id` en
+  Odoo 19).
 Lo que NO se hace: leer `product.packaging` de Odoo (`src/connectors/odoo.py`
-solo lee `min_qty`) -- trabajo de conector, sin instancia viva para probarlo.
+lee `min_qty` y las unidades del producto) -- trabajo de conector, sin instancia
+viva con cajas cargadas para probarlo.
 
 ### El tool CSV ve el estante y lo que viene en camino (`jobs.intake.stock_position`)
 `inventory_optimization` dimensiona `s` y `Q` (cuanto); la posicion dice CUANDO.
