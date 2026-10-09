@@ -323,8 +323,8 @@ def test_la_planilla_del_cliente_lleva_la_fecha_y_el_verdicto(tmp_path):
     salida = tmp_path / "entregable"
     rutas = deliverables.write_all(report, salida, client="T")
     csvs = [p for p in rutas.values() if str(p).endswith(".csv")]
-    hoja = next(p for p in csvs if "end_date" in p.read_text().splitlines()[0])
-    filas = {f["product_id"]: f for f in csv.DictReader(hoja.open())}
+    hoja = next(p for p in csvs if "end_date" in p.read_text(encoding="utf-8").splitlines()[0])
+    filas = {f["product_id"]: f for f in csv.DictReader(hoja.open(encoding="utf-8"))}
 
     assert filas["B"]["horizon_verdict"] == "applied"
     assert filas["B"]["end_date"] == "2025-07-07"
@@ -346,3 +346,66 @@ def test_el_deck_publica_las_dos_cosas(tmp_path):
     titulos = [f.title for f in _horizon_findings(report)]
     assert any("capped by their end-of-life date" in t for t in titulos), titulos
     assert any("NOT applied" in t for t in titulos), titulos
+
+
+# ------------------------------------------- revision 2026-10-09: tope + lote y tope + cobertura
+
+
+def test_un_tope_sobre_un_lote_del_proveedor_sigue_siendo_un_lote_legal(tmp_path):
+    """El tope corria DESPUES del redondeo a lote y dejaba la Q en el restante crudo
+    (133,8 con multiplo 12): `qa.verify` la rechazaba por los terminos del proveedor y
+    la corrida entera salia sin entregable. La Q topeada es el lote legal mas grande que
+    no supera lo que queda por vender."""
+    ruta = _archivo(tmp_path, {"SKU-A": "2025-05-29"})
+    frame = pd.read_csv(ruta)
+    frame["multiplo"] = 12
+    frame.to_csv(ruta, index=False)
+    demanda, _ = intake.prepare_tracked(ruta)
+    fines = intake.sku_end_dates(ruta)
+    reporte = run(demanda, end_dates=intake.end_date_map(fines), horizon_note=fines.attrs["horizon_note"])
+
+    (rec,) = reporte.recommendations
+    assert rec.horizon_verdict == "applied" and rec.order_quantity_before_horizon is not None
+    assert rec.order_quantity % 12 == 0
+    assert rec.order_quantity <= rec.remaining_demand
+    assert qa.verify(reporte) == []
+
+
+def test_con_restante_bajo_el_minimo_del_proveedor_la_q_queda_en_el_minimo_legal():
+    """Si lo que queda por vender no llega ni al lote minimo, comprar menos que el minimo
+    no es una opcion que Kern pueda imprimir: la Q baja hasta el minimo legal, y la
+    compuerta lo acepta aunque supere el restante."""
+    malo = _registro(
+        policy_kind="(s, Q)", horizon_verdict="applied", remaining_demand=20.0,
+        order_quantity=48.0, order_quantity_before_horizon=120.0,
+        lot_rule="moq 48", lot_moq=48.0, lot_multiple=0.0,
+    )
+    assert not any("exceeds the remaining" in p for p in qa._horizon_issues(malo))
+    por_encima = _registro(
+        policy_kind="(s, Q)", horizon_verdict="applied", remaining_demand=20.0,
+        order_quantity=60.0, order_quantity_before_horizon=120.0,
+        lot_rule="moq 48", lot_moq=48.0, lot_multiple=0.0,
+    )
+    assert any("exceeds the remaining" in p for p in qa._horizon_issues(por_encima))
+
+
+def test_una_cobertura_provisional_topeada_pasa_la_compuerta(tmp_path):
+    """Tres semanas de historia, plazo de 28 dias y una fecha de fin a 7 dias: la
+    cobertura topeada ya no es media x periodos de riesgo y la compuerta tumbaba la
+    corrida entera. La cuenta sigue cerrando en dos pasos: la cobertura de antes del
+    tope es media x tau, y la de despues es el minimo entre esa y el restante."""
+    filas = [{"fecha": d.strftime("%Y-%m-%d"), "sku": "SKU-Z", "cantidad": q, "costo": 20.0,
+              "plazo_dias": 28, "fecha_fin": "2025-01-27"}
+             for d, q in zip(pd.date_range(PRIMER_LUNES, periods=3, freq="W-MON"), (40, 55, 47))]
+    ruta = tmp_path / "corta.csv"
+    pd.DataFrame(filas).to_csv(ruta, index=False)
+    demanda, _ = intake.prepare_tracked(ruta)
+    fines = intake.sku_end_dates(ruta)
+    reporte = run(demanda, end_dates=intake.end_date_map(fines), horizon_note=fines.attrs["horizon_note"])
+
+    (rec,) = reporte.recommendations
+    assert rec.policy_kind == "provisional_cover" and rec.horizon_verdict == "applied"
+    assert rec.reorder_point < rec.reorder_point_before_horizon
+    assert rec.reorder_point_before_horizon == pytest.approx(
+        rec.observed_mean_per_period * rec.cover_periods)
+    assert qa.verify(reporte) == []

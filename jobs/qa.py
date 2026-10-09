@@ -11,7 +11,7 @@ import math
 from typing import TYPE_CHECKING
 
 from nosilo_core.guided import EXECUTED, GuidedOutcome, verify_guided
-from src.constraints import is_feasible_lot
+from src.constraints import apply_order_rules, is_feasible_lot
 from src.forecasting import MIN_PERIODS_FOR_POLICY
 from src.sop_engine.coherence import CHECK_BUDGET_FEASIBILITY, CHECK_PROMO_COVERAGE, CHECK_SERVICE_LEVEL
 
@@ -117,13 +117,27 @@ def _sized_field_issues(r) -> list[str]:
                 f"{r.product_id}: {r.policy_kind} without the mean and the risk "
                 "periods it was derived from; the deliverable cannot show its work"
             )
-        elif r.reorder_point is not None and abs(r.reorder_point - media * tau) > max(
-            TOL, abs(r.reorder_point) * 1e-9
-        ):
-            out.append(
-                f"{r.product_id}: provisional cover {r.reorder_point:.4g} is not the "
-                f"observed mean {media:.4g} over {tau:.4g} risk period(s)"
-            )
+        elif r.reorder_point is not None:
+            esperada = media * tau
+            # Con el tope por fecha de fin la cuenta cierra en DOS pasos y el registro
+            # trae los dos: la cobertura de antes del tope es media x tau, y la publicada
+            # es la menor entre esa y lo que queda por vender. Exigir media x tau sobre la
+            # topeada tumbaba la corrida entera (revision del PR #369, 2026-10-09).
+            if getattr(r, "horizon_verdict", None) == "applied":
+                antes = getattr(r, "reorder_point_before_horizon", None)
+                if antes is None or abs(antes - esperada) > max(TOL, abs(antes) * 1e-9):
+                    out.append(
+                        f"{r.product_id}: capped provisional cover does not carry the "
+                        f"observed mean {media:.4g} over {tau:.4g} risk period(s) it came from"
+                    )
+                restante = getattr(r, "remaining_demand", None)
+                if restante is not None:
+                    esperada = min(esperada, restante)
+            if abs(r.reorder_point - esperada) > max(TOL, abs(r.reorder_point) * 1e-9):
+                out.append(
+                    f"{r.product_id}: provisional cover {r.reorder_point:.4g} is not the "
+                    f"observed mean {media:.4g} over {tau:.4g} risk period(s)"
+                )
         return out
 
     if r.policy_kind not in UNPRICED_POLICY_KINDS:
@@ -287,6 +301,20 @@ def _lot_issues(r) -> list[str]:
     return issues
 
 
+def _techo_del_tope(r, nombre: str, restante: float) -> float:
+    """Hasta donde puede quedar una cantidad topeada: el restante, salvo la Q de un lote
+    con terminos del proveedor cuando el restante no llega ni al lote minimo legal. Ahi
+    comprar menos que el minimo no es una opcion que Kern pueda imprimir, y el tope baja
+    la Q hasta el minimo y no mas (`jobs.inventory_optimization._lote_legal_bajo`)."""
+    if nombre != "order quantity" or not getattr(r, "lot_rule", ""):
+        return restante
+    minimo_legal = apply_order_rules(
+        1e-9, minimum_order_quantity=getattr(r, "lot_moq", 0.0) or 0.0,
+        order_multiple=getattr(r, "lot_multiple", 0.0) or 0.0,
+    )
+    return max(restante, minimo_legal)
+
+
 def _horizon_issues(r) -> list[str]:
     """Invariantes del tope por fecha de fin sobre un registro (`src/horizon.py`).
 
@@ -348,7 +376,7 @@ def _horizon_issues(r) -> list[str]:
             issues.append(f"{r.product_id}: horizon cap zeroed the {nombre}")
         elif ahora >= antes - TOL:
             issues.append(f"{r.product_id}: pre-cap {nombre} is not above the capped one")
-        elif restante is not None and ahora > restante + TOL:
+        elif restante is not None and ahora > _techo_del_tope(r, nombre, restante) + TOL:
             issues.append(
                 f"{r.product_id}: capped {nombre} {ahora:.4g} still exceeds the remaining "
                 f"demand {restante:.4g}")

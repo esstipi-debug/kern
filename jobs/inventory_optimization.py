@@ -17,7 +17,14 @@ from jobs.intake import IntakeQuality
 from src import order_fulfillment
 from src.classification import classify_portfolio
 from src.classification import service_levels as class_service_levels
-from src.constraints import InventoryItem, allocate_under_budget, cheapest_feasible_lot, lot_rule
+from src.constraints import (
+    InventoryItem,
+    allocate_under_budget,
+    cheapest_feasible_lot,
+    feasible_neighbours,
+    is_feasible_lot,
+    lot_rule,
+)
 from src.ddmrp import net_flow_position
 from src.fill_rate import fill_rate_from_safety_stock
 from src.forecasting import (
@@ -525,6 +532,24 @@ def _fecha_texto(valor) -> str | None:
         return pd.Timestamp(valor).strftime("%Y-%m-%d")
     except (ValueError, TypeError):
         return None
+
+
+def _lote_legal_bajo(tope: float, moq: float, multiple: float) -> float:
+    """El lote legal mas grande que no supera ``tope``; si no hay ninguno, el minimo legal.
+
+    Lo usa el tope por fecha de fin sobre la Q de un ``(s,Q)`` con terminos del
+    proveedor: "no compres mas de lo que podes vender" y "el proveedor vende de a 12"
+    tienen que valer a la vez, y la cantidad que las cumple a las dos es el lote legal
+    inmediatamente por debajo del restante. Cuando el restante no llega ni al lote
+    minimo, comprar menos que el minimo no es una opcion que Kern pueda imprimir
+    (`src.constraints.feasible_neighbours`), asi que la Q baja hasta el minimo legal y
+    no mas -- la compuerta lo acepta (`jobs.qa._horizon_issues`).
+    """
+    reglas = {"minimum_order_quantity": moq or 0.0, "order_multiple": multiple or 0.0}
+    if is_feasible_lot(tope, **reglas):
+        return tope
+    arriba, abajo = feasible_neighbours(tope, **reglas)
+    return abajo if abajo is not None else arriba
 
 
 def _order_now(
@@ -1068,6 +1093,7 @@ def run(
         )
         rp_previo = oup_previo = q_previo = cycle_previo = None
         order_up_to_final = pol.order_up_to_level
+        veredicto = tope.verdict
         if tope.capped:
             # Un `*_before_horizon` se llena SOLO si ese numero se movio. El tope puede
             # bajar una mitad y dejar la otra igual -- es el caso comun: un (s,Q) cuya Q
@@ -1077,9 +1103,22 @@ def run(
                 rp_previo, reorder = reorder, tope.trigger
             if es_sq:
                 if order_quantity is not None and tope.target < order_quantity:
-                    q_previo, order_quantity = order_quantity, tope.target
+                    # El tope corre DESPUES del redondeo a lote, asi que su resultado
+                    # tiene que volver a ser un lote que el proveedor acepte: el restante
+                    # crudo (133,8 con multiplo 12) tumbaba la corrida entera en
+                    # `qa._lot_issues`. Revision del PR #369, 2026-10-09.
+                    q_topeada = _lote_legal_bajo(tope.target, moq, multiple) if rule else tope.target
+                    if q_topeada < order_quantity:
+                        q_previo, order_quantity = order_quantity, q_topeada
             elif pol.order_up_to_level is not None and tope.target < pol.order_up_to_level:
                 oup_previo, order_up_to_final = pol.order_up_to_level, tope.target
+            if rp_previo is None and q_previo is None and oup_previo is None:
+                # Lo unico que el tope queria bajar era una Q que ya esta en el lote
+                # minimo del proveedor: bajo los terminos vigentes la fecha no cambia
+                # nada, y decir "applied" sin ninguna cantidad movida es lo que la
+                # compuerta rechaza.
+                veredicto = "inert"
+        if veredicto == "applied":
             # El capital sigue a la cantidad. Sin esto el tope movia `reorder_point`,
             # `order_up_to` y `Q` y dejaba `cycle_investment`, `ss_investment`,
             # `investment` y el titular `requested_investment` calculados sobre la
@@ -1126,7 +1165,7 @@ def run(
                 on_hand=on_hand, on_order=on_order, inventory_position=position,
                 order_now=due_now, order_qty_now=qty_now,
                 end_date=_fecha_texto(fin_por_sku.get(pid)),
-                horizon_verdict=tope.verdict,
+                horizon_verdict=veredicto,
                 periods_remaining=tope.periods_remaining,
                 remaining_demand=tope.remaining_demand,
                 reorder_point_before_horizon=rp_previo,
