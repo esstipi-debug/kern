@@ -131,8 +131,12 @@ class ClientProfile:
     # DETERIORATION in that area's own headline-KPI units, always positive:
     #   comprador -> effective_unit_cost (usd/unit)   planner -> policy_cost (usd/yr)
     #   cfo       -> capital_charge_usd (usd/yr)      comercial -> fill_rate (fraction)
+    #   transporte -> freight_per_unit_usd (usd/unit)
     # A PARTIAL dict is legal and intended: an area with no threshold comes out
-    # NO_EVALUABLE rather than silently taking an assumed tolerance. Unlike
+    # NO_EVALUABLE rather than silently taking an assumed tolerance. A declared
+    # transporte threshold is NOT enough on its own, though: that area also needs
+    # a unit weight and a lane distance to be measurable at all, and without them
+    # it stays NO_EVALUABLE no matter what tolerance is recorded here. Unlike
     # warehouse_capacity this IS included in as_params() - it is a plain dict of
     # floats, so it does not break JSON-serializing the merged params.
     objection_thresholds: dict[str, float] | None = None

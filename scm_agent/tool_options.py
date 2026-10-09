@@ -13,6 +13,7 @@ from collections import Counter
 from dataclasses import replace
 
 from jobs.financial_kpis_job import fmt as fmt_kpi
+from jobs.inventory_optimization import PROVISIONAL_POLICY_KINDS
 from nosilo_core.escalation import (
     OPERATIONAL,
     escalate,
@@ -139,6 +140,9 @@ def inventory_options(report: object) -> GuidedOutcome:
         ("Adopt the recommended policy",
          f"Stage {report.final_investment:,.0f} of inventory under the (s,Q)/(R,S) policies at {sl * 100:.0f}% service.",
          "apply the recommended per-SKU policies and budget", "balanced service vs capital"),
+        *_orders_due_now_items(report),
+        *_lot_terms_items(report),
+        *_horizon_items(report),
         ("Tighten service on A-items",
          "Raise the cycle service level on the high-value SKUs (more safety stock).",
          "raise service level on the A class", "higher availability, more capital"),
@@ -150,7 +154,196 @@ def inventory_options(report: object) -> GuidedOutcome:
     outcome = _apply_intake_quality(outcome, report)
     outcome = _apply_zero_demand_skips(outcome, report)
     outcome = _apply_zero_cost_skips(outcome, report)
-    return _apply_insufficient_history(outcome, report)
+    outcome = _apply_insufficient_history(outcome, report)
+    outcome = _apply_provisional_cover(outcome, report)
+    outcome = _apply_lot_rule_unapplied(outcome, report)
+    outcome = _apply_position_not_netted(outcome, report)
+    return _apply_horizon_declarables(outcome, report)
+
+
+def _orders_due_now_items(report: object) -> list[_Item]:
+    """The execution terminal, when the file carried a stock position.
+
+    `s` and `Q` say how much; the position says WHEN. Without this item the
+    operator gets a policy table and still has to work out by hand which SKUs
+    to order today - and, worse, does it against the shelf figure, re-buying
+    what transport delayed. The summary names the largest gaps so the buyer can
+    start there.
+    """
+    n_due = getattr(report, "n_order_now", 0)
+    if not getattr(report, "n_positioned", 0) or not n_due:
+        return []
+    due = [r for r in report.recommendations if getattr(r, "order_now", None)]
+    due.sort(key=lambda r: (r.inventory_position or 0.0) - r.reorder_point)
+    largest = "; ".join(
+        f"{r.product_id}: position {r.inventory_position:,.0f} vs trigger "
+        f"{(r.reorder_point if r.policy_kind == '(s, Q)' else (r.order_up_to or 0.0)):,.0f}, "
+        f"order {r.order_qty_now:,.0f}"
+        for r in due[:3]
+    )
+    n_netted = getattr(report, "n_netted", 0)
+    netting = (
+        f" Stock already on order was counted on {n_netted} SKU(s), avoiding "
+        f"{getattr(report, 'n_reorders_avoided_by_transit', 0)} re-order(s) of inbound stock."
+        if n_netted else " Nothing was netted: the file carried no on-order column."
+    )
+    # Una cobertura provisional dispara con la misma aritmetica que un (R,S) y por eso
+    # entra en esta lista -- pero su trigger NO tiene buffer detras. Un operador que
+    # lee "sit at or below their trigger" sobre una linea asi supondria un nivel de
+    # servicio que nadie dimensiono, asi que se nombran y se cuentan aparte.
+    n_cobertura = sum(1 for r in due if r.policy_kind in PROVISIONAL_POLICY_KINDS)
+    coberturas = (
+        f" {n_cobertura} of them is/are a PROVISIONAL COVER: the trigger is the "
+        "measured mean over the risk period with no safety stock behind it, so it "
+        "buys enough to reach the next replenishment and no more."
+        if n_cobertura else ""
+    )
+    return [(
+        f"Release the {n_due} replenishment order(s) due now",
+        f"{n_due} SKU(s) sit at or below their trigger on today's inventory position "
+        f"(on hand + on order).{netting}{coberturas} Largest gaps: {largest}.",
+        "issue the POs on the rows with order_now = yes, for order_qty_now units each",
+        "stock lands before the next stockout; the capital goes out today",
+    )]
+
+
+def _apply_position_not_netted(outcome: GuidedOutcome, report: object) -> GuidedOutcome:
+    """State a residual when a position was read but nothing could be netted: the
+    file had stock on hand and no on-order column. Silence here is the exact
+    failure H4 names - a PO transport delayed reads as a PO that does not exist,
+    and the due-now list buys it again."""
+    if not getattr(report, "n_positioned", 0) or getattr(report, "n_netted", 0):
+        return outcome
+    return replace(outcome, residuals=[*outcome.residuals, Residual(
+        description="The due-now orders could NOT be netted against stock already on order: "
+                    "the file carries stock on hand but no on_order / en_transito column, so "
+                    "every SKU was sized against the shelf alone.",
+        risk_if_skipped="a purchase that transport delayed is bought a second time; check "
+                        "open POs by hand before cutting any due-now order, or add the "
+                        "on-order column and re-run.",
+    )])
+
+
+def _lot_terms_items(report: object) -> list[_Item]:
+    """The renegotiation OPTION, when the supplier's terms moved any quantity.
+
+    Kern says 40 and the supplier sells by 30: the plan above already carries the
+    cheapest lot the supplier accepts (jobs/inventory_optimization.py via
+    src.constraints.cheapest_feasible_lot), so "Adopt" is never a dead end. This
+    item is the OTHER terminal, with the per-SKU price tag of the rounding and the
+    runner-up lot named, so the buyer walks into the supplier conversation with
+    numbers rather than with a quantity the supplier will simply refuse.
+    """
+    n_snapped = getattr(report, "n_lot_snapped", 0)
+    if not n_snapped:
+        return []
+    moved = [
+        r for r in report.recommendations
+        if getattr(r, "lot_rule", "") and getattr(r, "order_quantity_unconstrained", None) is not None
+        and r.order_quantity is not None and r.order_quantity != r.order_quantity_unconstrained
+    ]
+    moved.sort(key=lambda r: getattr(r, "lot_penalty_usd", 0.0), reverse=True)
+    # Two decimals on the penalties: a rounding that costs 0.17/yr printed as
+    # "+0/yr" reads as free, and a free rounding needs no renegotiation.
+    worst = "; ".join(
+        f"{r.product_id} ({r.lot_rule}): Q {r.order_quantity_unconstrained:,.0f} -> "
+        f"{r.order_quantity:,.0f}, +{r.lot_penalty_usd:,.2f}/yr"
+        + (f", runner-up {r.lot_alternative_qty:,.0f} at +{r.lot_alternative_penalty_usd:,.2f}/yr"
+           if getattr(r, "lot_alternative_qty", None) is not None else "")
+        for r in moved[:3]
+    )
+    total = getattr(report, "lot_penalty_total_usd", 0.0)
+    return [(
+        "Renegotiate supplier terms where rounding costs most",
+        f"{n_snapped} SKU(s) had their EOQ moved to the supplier's MOQ / case pack; honouring "
+        f"the terms costs {total:,.2f}/yr over the unconstrained EOQ. Costliest: {worst}.",
+        "take the per-SKU lot penalties to the supplier, or order the listed runner-up lot",
+        "recovers the penalty if the supplier moves; costs a negotiation either way",
+    )]
+
+
+def _horizon_items(report: object) -> list[_Item]:
+    """La OPCION del tope por fecha de fin: comprar menos de lo que no se va a vender.
+
+    Es la unica OPCION de esta tool que RESTA capital en vez de pedirlo, y por eso dice
+    las unidades liberadas: sin ese numero el operador no tiene con que comparar contra
+    el titular de inversion, que es la cifra que el tope hace bajar.
+    """
+    n = int(getattr(report, "n_horizon_capped", 0) or 0)
+    if not n:
+        return []
+    topeados = [
+        r for r in report.recommendations
+        if getattr(r, "horizon_verdict", "") == "applied"
+    ]
+    liberadas = float(getattr(report, "horizon_units_freed", 0.0) or 0.0)
+    # El capital es la mitad que le faltaba a esta OPCION. Se describe como la unica de
+    # esta tool que RESTA capital en vez de pedirlo, y hasta el 2026-09-23 solo podia
+    # citar unidades porque el titular no se movia: decir "resta capital" sin poder
+    # decir cuanto es justo lo que vuelve incomparable una opcion contra el titular.
+    capital = float(getattr(report, "horizon_capital_freed_usd", 0.0) or 0.0)
+    peores = ", ".join(
+        f"{r.product_id} (ends {r.end_date}, {r.remaining_demand:,.0f} left to sell)"
+        for r in sorted(
+            topeados, key=lambda r: (r.remaining_demand or 0.0),
+        )[:3]
+    )
+    return [(
+        f"Stop buying past the end date on {n} SKU(s)",
+        f"{n} SKU(s) carry an end-of-life date close enough that the policy would have "
+        f"stocked more than what is left to sell; the cap removes {liberadas:,.0f} unit(s) "
+        f"of purchase and ${capital:,.0f} from the requested investment. Soonest: {peores}.",
+        "order the capped quantities on those rows instead of the uncapped policy",
+        "less capital tied up in stock that outlives its own demand; no service change "
+        "before the end date",
+    )]
+
+
+def _apply_horizon_declarables(outcome: GuidedOutcome, report: object) -> GuidedOutcome:
+    """Residual cuando el archivo trae una fecha de fin que este job se NEGO a usar.
+
+    Callar aca seria el peor de los dos silencios posibles. Un SKU cuya fecha ya paso se
+    dimensiona como si nada, y el cliente cree que el tope lo cubrio; y la alternativa --
+    topear igual -- le apagaria la reposicion a un producto que vende, sobre una celda
+    mal tipeada. La unica salida honesta es dimensionar sin tope y NOMBRARLO.
+    """
+    n = int(getattr(report, "n_horizon_declarable", 0) or 0)
+    if not n:
+        return outcome
+    porque: dict[str, int] = {}
+    for r in report.recommendations:
+        v = getattr(r, "horizon_verdict", "")
+        if v in ("expired", "would_zero", "unusable"):
+            porque[v] = porque.get(v, 0) + 1
+    detalle = ", ".join(f"{k}: {v}" for k, v in sorted(porque.items()))
+    return replace(outcome, residuals=[*outcome.residuals, Residual(
+        description=f"{n} SKU(s) carry an end-of-life date this run did NOT apply "
+                    f"({detalle}). They were sized WITHOUT a horizon cap: an end date on "
+                    "or before the last day of the history would cap the policy to zero, "
+                    "and that is a discontinuation decision, not a rounding.",
+        owner="demand planning",
+        risk_if_skipped="a mistyped end date stays invisible: the SKU is replenished as "
+                        "if it had no horizon, and nobody is told the file said otherwise",
+    )])
+
+
+def _apply_lot_rule_unapplied(outcome: GuidedOutcome, report: object) -> GuidedOutcome:
+    """State a residual when (R,S) SKUs carry supplier terms the periodic policy
+    cannot apply: an order-up-to policy orders a different quantity every review,
+    so the MOQ / case pack has to be honoured per order, by the buyer, and a plan
+    that keeps quiet about it hands them exactly the dead end this whole path
+    exists to remove."""
+    n = getattr(report, "n_lot_rule_unapplied", 0)
+    if not n:
+        return outcome
+    return replace(outcome, residuals=[*outcome.residuals, Residual(
+        description=f"{n} periodic-review (R,S) SKU(s) carry a supplier MOQ / case-pack rule "
+                    "that this plan records but does not apply - the order-up-to quantity "
+                    "changes every review, so there is no single Q to round.",
+        risk_if_skipped="a PO cut straight from the order-up-to level that the supplier "
+                        "refuses or silently rounds; round each order to the rule on the "
+                        "row (supplier_lot_rule) when the PO is issued.",
+    )])
 
 
 def _apply_insufficient_history(outcome: GuidedOutcome, report: object) -> GuidedOutcome:
@@ -177,6 +370,32 @@ def _apply_insufficient_history(outcome: GuidedOutcome, report: object) -> Guide
                         "a real gap and a SKU that simply started selling last month look "
                         "identical here; set an opening buy by hand, or wait for enough "
                         "history, before assuming no action is needed.",
+    )])
+
+
+def _apply_provisional_cover(outcome: GuidedOutcome, report: object) -> GuidedOutcome:
+    """Una COBERTURA PROVISIONAL sale como residual, no como si estuviera dimensionada.
+
+    Es el escalon que antes no existia entre "no puedo" y "aca esta tu politica". El
+    residual es lo que impide que el escalon se lea como el piso de arriba: la
+    cobertura cubre la MEDIA sobre el periodo de riesgo y no tiene buffer, asi que se
+    espera que se quede corta cerca de la mitad de las veces, y su capital viaja
+    aparte del titular. Quien la adopte tiene que saber esas tres cosas.
+    """
+    n = getattr(report, "n_provisional_cover", 0)
+    if not n:
+        return outcome
+    plata = float(getattr(report, "provisional_investment", 0.0) or 0.0)
+    return replace(outcome, residuals=[*outcome.residuals, Residual(
+        description=f"{n} SKU(s) got a provisional cover instead of a sized policy: "
+                    "too little history to estimate dispersion, so the quantity is the "
+                    f"measured mean over the risk period with NO safety stock "
+                    f"(${plata:,.0f}, counted apart from the recommended investment).",
+        risk_if_skipped="covering the mean means running short about half the time. "
+                        "Treat it as an opening buy, not a policy: re-run once the SKU "
+                        "has enough history and the engine will size it properly. "
+                        "Leaving these SKUs at zero is the other choice, and it is not "
+                        "the safer one - it is a stockout with no number attached.",
     )])
 
 

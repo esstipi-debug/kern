@@ -17,6 +17,36 @@ class RiskPeriodStats:
     review_period: float
 
 
+def provisional_cover(
+    mean_demand_per_period: float,
+    mean_lead_time: float,
+    review_period: float = 0.0,
+) -> float:
+    """Cobertura SIN buffer: la demanda media sobre el periodo de riesgo.
+
+    Es ``mu_x`` de la ecuacion 6.4 -- el MISMO primer termino que
+    ``demand_over_risk_period`` calcula y que ``src/policies.py`` usa como base del
+    punto de reorden -- con el termino de seguridad OMITIDO, no puesto en cero.
+
+    Existe porque hay un caso en el que el motor tiene con que cubrir y no tiene con
+    que dimensionar: un SKU con menos de ``MIN_PERIODS_FOR_POLICY`` periodos
+    observados. Ahi ``sigma_d`` no se puede estimar honestamente -- y sin sigma no
+    hay ``z * sigma_x`` que valga --, pero la media de lo que SI se vendio y el plazo
+    del proveedor son dos hechos medidos, y con ellos alcanza para decir cuanto hace
+    falta para llegar a la proxima reposicion.
+
+    Lo que devuelve NO es una politica y no se puede presentar como una: no tiene
+    nivel de servicio, no tiene buffer, y cubre la media -- o sea que se espera que
+    se quede corta la mitad de las veces. Quien la consuma tiene que decir eso. El
+    campo ``safety_stock`` en ``None`` es como el registro lo declara.
+    """
+    if mean_demand_per_period < 0:
+        raise ValueError("mean_demand_per_period must be >= 0")
+    if mean_lead_time < 0 or review_period < 0:
+        raise ValueError("lead time / review parameters must be >= 0")
+    return mean_demand_per_period * (mean_lead_time + review_period)
+
+
 def demand_over_risk_period(
     mean_demand_per_period: float,
     demand_std_per_period: float,

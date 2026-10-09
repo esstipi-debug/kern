@@ -1,0 +1,82 @@
+{
+  "contexto": {
+    "mundos": 25,
+    "semilla_inicial": 1000,
+    "n_skus": 8,
+    "n_proveedores": 2,
+    "semanas": 24,
+    "replan_cada": 4,
+    "niveles": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "shocks": [
+      "lead_time_spike:*:8:3:3"
+    ],
+    "metrica": "capture_under_shock"
+  },
+  "distribuciones": [
+    {
+      "carril": "forced",
+      "nivel": 0,
+      "n_mundos": 25,
+      "n_medibles": 25,
+      "media": -0.20890702412842882,
+      "desviacion": 0.13712710308565573,
+      "p10": -0.40958002846934183,
+      "mediana": -0.1978767377957309,
+      "p90": -0.04288453208707103,
+      "peor": -0.43534977517778023,
+      "mejor": -0.0002743385682331221,
+      "metrica": "capture_under_shock",
+      "fidelidad_media": 1.0
+    },
+    {
+      "carril": "forced",
+      "nivel": 1,
+      "n_mundos": 25,
+      "n_medibles": 25,
+      "media": -0.329543214360541,
+      "desviacion": 0.16556606012117464,
+      "p10": -0.5413685653562068,
+      "mediana": -0.31268024209564305,
+      "p90": -0.11924122823450783,
+      "peor": -0.5969153362135775,
+      "mejor": -0.04365823119333196,
+      "metrica": "capture_under_shock",
+      "fidelidad_media": 0.999999234827831
+    },
+    {
+      "carril": "forced",
+      "nivel": 2,
+      "n_mundos": 25,
+      "n_medibles": 21,
+      "media": -0.46872136307650336,
+      "desviacion": 0.22093967061032782,
+      "p10": -0.7203407526080035,
+      "mediana": -0.4498323654267255,
+      "p90": -0.24641730337773096,
+      "peor": -0.9463529125231654,
+      "mejor": -0.15396953146647108,
+      "metrica": "capture_under_shock",
+      "fidelidad_media": 0.6344674058874665
+    },
+    {
+      "carril": "forced",
+      "nivel": 3,
+      "n_mundos": 25,
+      "n_medibles": 21,
+      "media": -0.245539710244306,
+      "desviacion": 0.23652276281114676,
+      "p10": -0.6585652827500262,
+      "mediana": -0.18450028065357657,
+      "p90": -0.06967338826778613,
+      "peor": -0.819042903846101,
+      "mejor": 0.10264048160189035,
+      "metrica": "capture_under_shock",
+      "fidelidad_media": 0.8528491204171231
+    }
+  ]
+}

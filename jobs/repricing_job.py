@@ -163,7 +163,15 @@ def prepare(data_path: str | Path, params: dict) -> RepricingPlan:
     return RepricingPlan(
         channel=channel, reason=reason, current_prices=current, proposed_prices=proposed,
         landed_costs=costs, skipped_rows=skipped,
-        idempotency_key=str(params.get("idempotency_key") or f"repricing-{channel}-1"),
+        # Derivada de los precios propuestos cuando el llamador no da una. El
+        # `f"repricing-{channel}-1"` que habia aca era una constante POR CANAL, o sea
+        # el mismo defecto que traia `channel_replenishment_job`: la segunda
+        # repactacion genuinamente distinta del mismo canal chocaba con la primera y
+        # `writeback.apply` la descartaba como duplicado. Aca duele mas, porque lo que
+        # no aterriza es un precio en un marketplace vivo.
+        idempotency_key=str(params.get("idempotency_key") or writeback.derive_idempotency_key(
+            f"repricing-{channel}", {sku: {"price": precio} for sku, precio in proposed.items()}
+        )),
     )
 
 

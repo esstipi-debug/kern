@@ -14,20 +14,36 @@ from src.hat_council import (
     top1_by_judge,
     value_row,
 )
-from src.hats import HAT_KEYS, Candidate, HatConfig, baseline_plan, build_inputs
+from src.hats import (
+    HAT_KEYS,
+    Candidate,
+    FreightProfile,
+    HatConfig,
+    baseline_plan,
+    build_inputs,
+    evaluable_hats,
+)
 
 
 def _inputs(**kw):
+    """The testbed SKU with NO freight profile: four areas on the table."""
     base = dict(sku="SKU-T", annual_demand=5200.0, mean_weekly=100.0, std_weekly=30.0,
                 lead_time_weeks=1.0, unit_cost=10.0, config=HatConfig())
     base.update(kw)
     return build_inputs(**base)
 
 
+def _inputs_freight(**kw):
+    """The same SKU with transport facts declared: all five areas on the table."""
+    return _inputs(freight=FreightProfile(weight_kg_per_unit=8.0, distance_km=750.0), **kw)
+
+
 @pytest.mark.parametrize("hat", list(HAT_KEYS))
 def test_single_weight_collapses_to_that_hats_ideal(hat):
-    """Spec acceptance #3: --weights <hat>=1 == that hat's ideal, for all 4."""
-    inp = _inputs()
+    """Spec acceptance #3: --weights <hat>=1 == that hat's ideal, for EVERY hat --
+    which is why this runs on the freight-bearing SKU: on the four-hat one,
+    weighting transporte is a refusal, not a collapse (see test below)."""
+    inp = _inputs_freight()
     s = settle(inp, {hat: 1.0})
     assert s.chosen == tension_map(inp).ideals[hat].candidate
     entry = next(e for e in s.acta if e.hat_key == hat)
@@ -37,7 +53,7 @@ def test_single_weight_collapses_to_that_hats_ideal(hat):
 def test_equal_weights_land_between_the_extreme_ideals():
     inp = _inputs()
     tmap = tension_map(inp)
-    qs = [tmap.ideals[k].candidate.order_quantity for k in HAT_KEYS]
+    qs = [e.candidate.order_quantity for e in tmap.ideals.values()]
     s = settle(inp, None)
     assert min(qs) <= s.chosen.order_quantity <= max(qs)
 
@@ -51,7 +67,10 @@ def test_acta_covers_all_hats_with_unit_interval_concessions():
     s = settle(_inputs(), "cfo=2,planner=1,comprador=1,comercial=1")
     assert sum(s.weights.values()) == pytest.approx(1.0)
     assert s.weights["cfo"] == pytest.approx(0.4)
-    assert [e.hat_key for e in s.acta] == list(HAT_KEYS)      # fixed order
+    # Four entries on the four-hat SKU, in HAT_KEYS order. The acta records the
+    # areas that were on the table; the ones that were not are in excluded_hats.
+    assert [e.hat_key for e in s.acta] == list(evaluable_hats(_inputs()))
+    assert s.excluded_hats == ("transporte",)
     for e in s.acta:
         assert 0.0 <= e.concesion <= 1.0
         assert e.concesion == pytest.approx(1.0 - e.utility_norm_at_chosen)
@@ -73,7 +92,7 @@ def test_top1_by_judge_is_one_of_ideals_or_baseline():
     inp = _inputs()
     tmap = tension_map(inp)
     top1 = top1_by_judge(inp, tmap)
-    pool = [tmap.ideals[k].candidate for k in HAT_KEYS] + [baseline_plan(inp)]
+    pool = [e.candidate for e in tmap.ideals.values()] + [baseline_plan(inp)]
     assert top1 in pool
 
 

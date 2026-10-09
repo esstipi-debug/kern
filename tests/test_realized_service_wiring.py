@@ -18,12 +18,18 @@ import pytest
 from jobs import inventory_optimization
 from src import order_fulfillment as of
 
+#: El patron de demanda, repetido y RECORTADO a `n`. Multiplicarlo por `n // 8` dejaba
+#: el frame vacio para cualquier `n` menor que 8, que es justo el largo que hoy hace
+#: falta para probar una negativa entera.
+_PATRON = [10, 12, 9, 11, 13, 10, 12, 11]
+
 
 def _frame(pid="A", n=24):
+    cantidades = (_PATRON * (n // len(_PATRON) + 1))[:n]
     return pd.DataFrame({
         "date": pd.date_range("2024-01-07", periods=n, freq="W"),
         "product_id": [pid] * n,
-        "quantity": [10, 12, 9, 11, 13, 10, 12, 11] * (n // 8),
+        "quantity": cantidades,
         "unit_cost": [5.0] * n,
         "lead_time_days": [14.0] * n,
     })
@@ -114,14 +120,26 @@ def test_the_model_implied_beta_is_not_named_like_a_realized_measurement():
     assert of.PROVENANCE_MODEL_IMPLIED == "model_implied"
 
 
-def test_service_is_still_measured_for_a_sku_the_policy_refused_to_size():
-    """Too little history to size a buffer does not unmake last quarter's shortfall."""
+@pytest.mark.parametrize("n,kind", [
+    (1, "insufficient_history"),
+    (8, "provisional_cover"),
+])
+def test_service_is_still_measured_for_a_sku_the_policy_did_not_size(n, kind):
+    """Too little history to size a buffer does not unmake last quarter's shortfall.
+
+    Las DOS formas de no-politica, porque el argumento vale igual para las dos: lo que
+    el cliente sirvio el trimestre pasado es una MEDICION del cliente, no una salida
+    del motor, asi que no depende de que el motor haya podido dimensionar. La cobertura
+    es el caso nuevo y el mas facil de romper: tiene un disparador, asi que un consumidor
+    podria tratarla como politica y derivar de ella un beta implicito -- que seria un
+    nivel de servicio inventado, porque la cobertura no tiene buffer detras.
+    """
     report = inventory_optimization.run(
-        _frame(n=8), min_periods=24, observed_fill_rates={"A": 0.60}
+        _frame(n=n), min_periods=24, observed_fill_rates={"A": 0.60}
     )
 
     rec = report.recommendations[0]
-    assert rec.policy_kind == "insufficient_history"
+    assert rec.policy_kind == kind
     assert rec.realized_service.fill_rate == pytest.approx(0.60)
     assert rec.model_implied_beta is None
 

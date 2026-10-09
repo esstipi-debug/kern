@@ -45,15 +45,17 @@ into "stockout_risk" fires a different event TYPE, hence a different key --
 see ``rop_breach_monitor``/``stockout_projected_monitor``'s docstrings).
 
 Two of the five monitors below (``forecast_error_out_of_band_monitor`` and
-``lead_time_drift_monitor``) are deliberately NOT wired into
-``config/event_routing.yaml`` in this PR -- see their docstrings and
-``config/event_routing.yaml``'s own header comment for why forcing them onto
-a registered tool right now would mean fabricating a "demand history" from
-1-2 aggregate numbers, which the plan's own new rules (7 "procedencia total",
-14 "ningun cap silencioso") forbid. They still emit real, dedup'd events onto
-the ledger -- a future PR (A4's ``src/verify/backtest.py`` is the natural
-home) is expected to consume them directly instead of routing through a tool
-that cannot honestly act on them yet.
+``lead_time_drift_monitor``) were deliberately NOT wired into
+``config/event_routing.yaml`` until 2026-09-18, because routing them onto a
+registered tool would have meant fabricating a "demand history" from 1-2
+aggregate numbers, which the plan's own rules (7 "procedencia total", 14
+"ningun cap silencioso") forbid. What changed is the data, not the rule:
+``jobs/state_bridge.py`` now writes each connector run's REALIZED demand into
+the 'outcomes' domain as ``actual_qty``, with the order date of every point,
+so both routes read a real series and REFUSE (``EventRoutingError``, naming
+rule 7) when a SKU has too few points. Both need to know whose series to
+read, which is what ``client_id`` below puts on the event; without it the
+event is un-routable rather than resolved onto the shared partition.
 """
 
 from __future__ import annotations
@@ -344,6 +346,7 @@ def forecast_error_out_of_band_monitor(
     *,
     band_width: float = DEFAULT_FORECAST_ERROR_BAND,
     source: str = SOURCE,
+    client_id: str | None = None,
     ledger: EventLedger | None = None,
 ) -> list[Event]:
     """sigma_e fuera de banda: relative forecast error outside an expected band.
@@ -364,8 +367,12 @@ def forecast_error_out_of_band_monitor(
     medium severity. actual_qty=210 -> error=+110%, > 0.60 -> fires, high
     severity. actual_qty=120 -> error=+20%, <= 0.30 -> does NOT fire.
 
-    Deliberately NOT routed in ``config/event_routing.yaml`` in this PR -- see
-    the module docstring.
+    ``client_id`` names the state partition this cycle READ, and travels on the
+    event so its param builder can go back for the real demand series
+    (``scm_agent/event_intent.py::forecast_from_outcomes_event``). Without it the
+    route refuses rather than falling back to the shared partition -- the same
+    rule as ``jobs/forecast_cycle.py::store_from_params``: an event that cannot
+    say whose series it is has no series to read.
     """
     forecast_by_product = forecast.payload.groupby("product_id")["forecast_qty"].sum().to_dict()
     actual_rows = outcomes.payload[outcomes.payload["metric"] == "actual_qty"]
@@ -396,6 +403,7 @@ def forecast_error_out_of_band_monitor(
                         f"{product_id}: forecast {forecast_qty:g} vs actual {actual_qty:g} "
                         f"({error:+.0%} error, band +/-{band_width:.0%})"
                     ),
+                    **({"state_client_id": client_id} if client_id else {}),
                 },
             )
         )
@@ -418,6 +426,7 @@ def lead_time_drift_monitor(
     drift_threshold: float = DEFAULT_LEAD_TIME_DRIFT_THRESHOLD,
     min_baseline_days: float = DEFAULT_MIN_BASELINE_LEAD_TIME_DAYS,
     source: str = SOURCE,
+    client_id: str | None = None,
     ledger: EventLedger | None = None,
 ) -> list[Event]:
     """Drift de lead time: compares mean observed lead time per product_id
@@ -447,8 +456,9 @@ def lead_time_drift_monitor(
     (worth noting) but at low severity, never high/medium (a shorter lead
     time is good news operationally, not an urgent risk).
 
-    Deliberately NOT routed in ``config/event_routing.yaml`` in this PR -- see
-    the module docstring.
+    ``client_id``: same as the forecast-error monitor above -- it names the state
+    partition this cycle read, so the route can go back for the demand series the
+    re-planning run needs. The drifted lead time itself travels in the payload.
     """
     if len(outcomes_history) < 2:
         return []
@@ -481,6 +491,7 @@ def lead_time_drift_monitor(
                     "drift_ratio": drift,
                     "drift_threshold": drift_threshold,
                     "message": f"{product_id}: lead time drifted {baseline:.1f}d -> {recent:.1f}d ({drift:+.0%})",
+                    **({"state_client_id": client_id} if client_id else {}),
                 },
             )
         )
@@ -580,6 +591,7 @@ def run_all_monitors(
     config: dict | None = None,
     ledger: EventLedger | None = None,
     store: StateStore | None = None,
+    client_id: str | None = None,
     stock_history_window: int = 2,
     outcomes_history_window: int = 2,
     price_signal_events: list[Event] | None = None,
@@ -596,6 +608,13 @@ def run_all_monitors(
     snapshot yet (nothing written by any job) makes its monitor(s) silently
     contribute zero events rather than raising -- an empty Tower on day one
     is expected, not an error.
+
+    ``client_id`` NAMES the partition ``store`` belongs to. It is not used to
+    resolve the store (the caller already did that): it travels on the two events
+    whose route has to go BACK to the state for a real demand series --
+    ``forecast_error_out_of_band`` and ``lead_time_drift``. Omitting it leaves
+    those events un-routable, with the reason said out loud, instead of letting a
+    builder guess the shared partition.
 
     ``price_signal_events`` (Discovery-Assisted Price Intel plan, Task 7) is
     this function's ONLY concession to a domain outside ``src.state``: an
@@ -656,6 +675,7 @@ def run_all_monitors(
             band_width=_setting(
                 config, "forecast_error_out_of_band", "band_width", DEFAULT_FORECAST_ERROR_BAND
             ),
+            client_id=client_id,
             ledger=ledger,
         )
     if outcomes_hist and _monitor_enabled(config, "lead_time_drift"):
@@ -667,6 +687,7 @@ def run_all_monitors(
             min_baseline_days=_setting(
                 config, "lead_time_drift", "min_baseline_days", DEFAULT_MIN_BASELINE_LEAD_TIME_DAYS
             ),
+            client_id=client_id,
             ledger=ledger,
         )
     if price_signal_events and _monitor_enabled(config, "competitor_price_move"):

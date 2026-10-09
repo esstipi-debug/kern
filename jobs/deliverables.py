@@ -28,6 +28,19 @@ ACTION_LABEL = {
 }
 
 
+#: Un campo dimensionado que el motor no pudo calcular llega en ``None``
+#: (``jobs/inventory_optimization.py``). Las dos funciones de abajo son la UNICA
+#: forma en que este modulo lo renderiza: celda vacia en la planilla, raya en el
+#: markdown. Nunca un cero -- un cero en una columna de disparador o de tasa de
+#: demanda es un numero sobre el que un operador actua.
+def _redondear(valor: float | None, digitos: int) -> float | None:
+    return None if valor is None else round(valor, digitos)
+
+
+def _celda(valor: float | None, digitos: int) -> str:
+    return "—" if valor is None else f"{valor:,.{digitos}f}"
+
+
 def _row(r: SkuRecommendation, *, units: bool = False) -> dict:
     # ``units=True`` cuando el costo unitario se invento (1,0): la columna de valor
     # cambia de nombre para que la planilla diga lo que contiene, no lo que quisiera.
@@ -35,11 +48,63 @@ def _row(r: SkuRecommendation, *, units: bool = False) -> dict:
         "product_id": r.product_id,
         "method": r.method,
         "policy": r.policy_kind,
-        "forecast_per_period": round(r.forecast, 2),
+        # Celda VACIA, no 0: el mismo criterio que `on_order`. Un 0 en una planilla
+        # es una tasa de demanda, y quien la abra no tiene como distinguirlo de
+        # "este SKU no vende".
+        "forecast_per_period": _redondear(r.forecast, 2),
         "order_qty_Q": round(r.order_quantity, 2) if r.order_quantity is not None else "",
+        # Supplier terms. `order_qty_Q` above is the lot the supplier ACCEPTS;
+        # these say what the EOQ asked for, which rule moved it, what honouring
+        # it costs per year, and the other legal lot with its own cost - the
+        # second terminal, so a buyer reading the sheet always has two numbers
+        # to choose from instead of one rounded one. Blank where no rule exists.
+        "order_qty_unconstrained": (
+            round(r.order_quantity_unconstrained, 2)
+            if r.order_quantity_unconstrained is not None else ""
+        ),
+        "supplier_lot_rule": r.lot_rule,
+        "lot_penalty_usd_yr": round(r.lot_penalty_usd, 2) if r.lot_rule else "",
+        "lot_alternative_Q": (
+            round(r.lot_alternative_qty, 2) if r.lot_alternative_qty is not None else ""
+        ),
+        "lot_alternative_penalty_usd_yr": (
+            round(r.lot_alternative_penalty_usd, 2)
+            if r.lot_alternative_penalty_usd is not None else ""
+        ),
         "order_up_to_S": round(r.order_up_to, 2) if r.order_up_to is not None else "",
-        "reorder_point_s": round(r.reorder_point, 2),
-        "safety_stock": round(r.safety_stock, 2),
+        "reorder_point_s": _redondear(r.reorder_point, 2),
+        # Solo en una cobertura provisional: la media medida y los periodos sobre los
+        # que se extendio. Van al lado del numero para que la planilla muestre la
+        # cuenta -- cobertura = media x periodos -- en vez de un valor sin origen.
+        "provisional_mean_per_period": _redondear(r.observed_mean_per_period, 2),
+        "provisional_cover_periods": _redondear(r.cover_periods, 3),
+        # Today's stock position and the execution signal. Blank, never 0, where
+        # nothing was measured: a blank on_order says "nobody told us", a 0 would
+        # say "measured, nothing inbound" - and the two lead to different POs.
+        "on_hand": round(r.on_hand, 2) if r.on_hand is not None else "",
+        "on_order": round(r.on_order, 2) if r.on_order is not None else "",
+        "inventory_position": (
+            round(r.inventory_position, 2) if r.inventory_position is not None else ""
+        ),
+        "order_now": ("yes" if r.order_now else "no") if r.order_now is not None else "",
+        "order_qty_now": round(r.order_qty_now, 2) if r.order_qty_now is not None else "",
+        # Fecha de fin de vida comercial y que le hizo a esta linea (src/horizon.py).
+        # `horizon_verdict` viaja SIEMPRE, tambien cuando dice `expired` o `unusable`: el
+        # comprador que abre la planilla tiene que poder ver que el archivo traia una
+        # fecha que no se aplico, en la fila del SKU y no solo en un residual del resumen.
+        # Los `*_before_horizon` van en blanco -- nunca en cero -- cuando ese numero no
+        # se movio, por la misma razon que `on_order`: un cero afirmaria un cambio.
+        "end_date": r.end_date or "",
+        "horizon_verdict": r.horizon_verdict,
+        "remaining_demand": _redondear(r.remaining_demand, 2),
+        "reorder_point_s_before_horizon": _redondear(r.reorder_point_before_horizon, 2),
+        "order_up_to_S_before_horizon": _redondear(r.order_up_to_before_horizon, 2),
+        "order_qty_before_horizon": _redondear(r.order_quantity_before_horizon, 2),
+        # El capital que esta fila pedia antes del tope. Misma regla de blanco-nunca-cero
+        # que los tres de arriba: sin el, la fila mostraba la cantidad topeada al lado de
+        # una inversion sin topear y no habia forma de reconciliarlas.
+        "cycle_investment_before_horizon": _redondear(r.cycle_investment_before_horizon, 2),
+        "safety_stock": _redondear(r.safety_stock, 2),
         "sigma_e": round(r.error_std, 2),
         # Which dispersion actually sized this row's buffer, and under which
         # distribution - so the CSV can be reconciled against the stated formula.
@@ -129,6 +194,15 @@ def write_excel(report: JobReport, path: str | Path) -> Path:
         ("SKUs analyzed", report.n_skus),
         ("SKUs flagged (high bias)", report.n_at_risk),
         ("Intermittent SKUs", report.n_intermittent),
+        *([("SKUs on supplier terms (MOQ / case pack)",
+            f"{report.n_lot_constrained} ({report.n_lot_snapped} moved off the EOQ)"),
+           (f"Cost of honouring supplier terms{inv}/yr", round(report.lot_penalty_total_usd, 2))]
+          if report.n_lot_constrained else []),
+        *([("SKUs with a stock position on file",
+            f"{report.n_positioned} ({report.n_netted} netted against stock on order)"),
+           ("Orders due now (position at or below trigger)", report.n_order_now),
+           ("Re-orders avoided by counting in-transit stock", report.n_reorders_avoided_by_transit)]
+          if report.n_positioned else []),
         ("Forecast methods used", _methods_used(report) or "none"),
         (f"Requested investment{inv}", round(report.requested_investment, 2)),
         (f"Cycle-stock floor{inv}", round(report.cycle_floor, 2)),
@@ -155,6 +229,45 @@ def write_excel(report: JobReport, path: str | Path) -> Path:
 
     wb.save(out)
     return out
+
+
+def _orders_due_now_lines(report: JobReport) -> list[str]:
+    """The execution list: which SKUs sit at or below their trigger TODAY, sized
+    against the position (on hand + on order). Empty when the file carried no stock
+    on hand - the policy table above then says how much, never when."""
+    if not report.n_positioned:
+        return []
+    lines = ["## Orders due now\n"]
+    lines.append(
+        f"{report.n_positioned} SKU(s) came with stock on hand; {report.n_netted} also with "
+        f"stock already on order, which the position counts. **{report.n_order_now} SKU(s) "
+        f"are at or below their trigger today**; {report.n_reorders_avoided_by_transit} "
+        "would have been re-ordered on the shelf figure alone but are covered by stock "
+        "already inbound."
+    )
+    if report.n_netted == 0:
+        lines.append(
+            "\n> ⚠️ **In-transit stock NOT counted.** The file has no on-order column, so an "
+            "order transport delayed looks like one that does not exist. Check open POs by "
+            "hand before cutting any order below, or add an `on_order` / `en_transito` column."
+        )
+    due = [r for r in report.recommendations if r.order_now]
+    if due:
+        lines.append("")
+        lines.append("| SKU | Policy | On hand | On order | Position | Trigger | Order now |")
+        lines.append("|---|---|---:|---:|---:|---:|---:|")
+        for r in sorted(due, key=lambda x: (x.inventory_position or 0.0) - x.reorder_point)[:50]:
+            trigger = r.reorder_point if r.policy_kind == "(s, Q)" else (r.order_up_to or 0.0)
+            on_order = f"{r.on_order:,.0f}" if r.on_order is not None else "—"
+            lines.append(
+                f"| {r.product_id} | {r.policy_kind} | {r.on_hand:,.0f} | {on_order} | "
+                f"{r.inventory_position:,.0f} | {trigger:,.0f} | {r.order_qty_now:,.0f} |"
+            )
+    if report.position_note:
+        lines.append("")
+        lines.append(f"_{report.position_note}_")
+    lines.append("")
+    return lines
 
 
 def cost_is_synthesized(report: JobReport) -> bool:
@@ -488,10 +601,23 @@ def write_report_md(report: JobReport, path: str | Path, *, client: str = "Clien
         q = f"{r.order_quantity:,.0f}" if r.order_quantity is not None else "—"
         s_up = f"{r.order_up_to:,.0f}" if r.order_up_to is not None else "—"
         lines.append(
-            f"| {r.product_id} | {r.method} | {r.policy_kind} | {r.forecast:,.1f} | {q} | {s_up} | "
-            f"{r.reorder_point:,.0f} | {r.safety_stock:,.1f} | {amount(report, r.investment)} | {STATUS_LABEL[r.status]} |"
+            f"| {r.product_id} | {r.method} | {r.policy_kind} | {_celda(r.forecast, 1)} | {q} | {s_up} | "
+            f"{_celda(r.reorder_point, 0)} | {_celda(r.safety_stock, 1)} | "
+            f"{amount(report, r.investment)} | {STATUS_LABEL[r.status]} |"
         )
     lines.append("")
+    if report.n_lot_constrained:
+        lines.append(
+            f"{report.n_lot_constrained} (s,Q) SKU(s) carry supplier terms (MOQ / case-pack "
+            f"multiple): Q* above is the cheapest lot the supplier accepts, and "
+            f"{report.n_lot_snapped} of them moved off the unconstrained EOQ at a cost of "
+            f"{amount(report, report.lot_penalty_total_usd)}/yr in ordering + holding. The "
+            "unconstrained Q, the rule, the penalty and the runner-up lot are on each row of "
+            "the workbook (`order_qty_unconstrained`, `supplier_lot_rule`, "
+            "`lot_penalty_usd_yr`, `lot_alternative_Q`).\n"
+        )
+
+    lines.extend(_orders_due_now_lines(report))
 
     flagged = [r for r in report.recommendations if r.status != "ok"]
     if flagged:

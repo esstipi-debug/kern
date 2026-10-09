@@ -12,18 +12,21 @@ from dataclasses import dataclass
 from datetime import date
 from itertools import combinations
 
+from src.constraints import lot_rule
 from src.hats import (
     HAT_CFO,
     HAT_COMERCIAL,
     HAT_COMPRADOR,
     HAT_KEYS,
     HAT_PLANNER,
+    HAT_TRANSPORTE,
     Candidate,
     GridEvaluation,
     HatEvaluation,
     HatInputs,
     baseline_plan,
     decision_cost,
+    evaluable_hats,
     evaluate,
     hat_kpis,
     headline_kpi,
@@ -45,12 +48,28 @@ class Clash:
 
 @dataclass(frozen=True)
 class TensionMap:
-    """N4: the disagreement, rendered. No reconciliation here -- a human resolves."""
+    """N4: the disagreement, rendered. No reconciliation here -- a human resolves.
+
+    `ideals` holds one entry per EVALUABLE hat, so its size is 4 or 5 and the
+    clash count is C(n,2) -- 6 or 10. `excluded_hats` names the areas that were
+    not on the table; it is a field rather than something each renderer re-derives
+    precisely so a deliverable cannot forget to say it.
+    """
 
     sku: str
     ideals: dict[str, HatEvaluation]
     clashes: tuple[Clash, ...]
     candidates_evaluated: int
+    excluded_hats: tuple[str, ...] = ()
+    #: Supplier terms the grid was laid over (0.0 = none). Carried on the map so
+    #: the QA gate can check every ideal is a lot the supplier accepts without
+    #: needing the inputs back, and so a deck can say the axis was constrained.
+    minimum_order_quantity: float = 0.0
+    order_multiple: float = 0.0
+
+    @property
+    def lot_rule(self) -> str:
+        return lot_rule(self.minimum_order_quantity, self.order_multiple)
 
 
 def ideal_for(inputs: HatInputs, ev: GridEvaluation, hat_key: str) -> HatEvaluation:
@@ -66,12 +85,14 @@ def ideal_for(inputs: HatInputs, ev: GridEvaluation, hat_key: str) -> HatEvaluat
 
 
 def tension_map(inputs: HatInputs, ev: GridEvaluation | None = None) -> TensionMap:
-    """All 4 ideals + all 6 pairwise clashes, sorted by $ magnitude desc
-    (stable: the fixed HAT_KEYS pair order breaks exact-magnitude ties)."""
+    """Every evaluable hat's ideal + all its pairwise clashes, sorted by $
+    magnitude desc (stable: the fixed HAT_KEYS pair order breaks exact-magnitude
+    ties). 4 hats -> 6 clashes; 5 -> 10."""
     ev = ev if ev is not None else evaluate(inputs)
-    ideals = {k: ideal_for(inputs, ev, k) for k in HAT_KEYS}
+    hats = evaluable_hats(inputs)
+    ideals = {k: ideal_for(inputs, ev, k) for k in hats}
     clashes: list[Clash] = []
-    for a, b in combinations(HAT_KEYS, 2):
+    for a, b in combinations(hats, 2):
         ca, cb = ideals[a].candidate, ideals[b].candidate
         cap_a = hat_kpis(inputs, HAT_CFO, ca)["avg_inventory_usd"]
         cap_b = hat_kpis(inputs, HAT_CFO, cb)["avg_inventory_usd"]
@@ -88,6 +109,9 @@ def tension_map(inputs: HatInputs, ev: GridEvaluation | None = None) -> TensionM
     return TensionMap(
         sku=inputs.sku, ideals=ideals, clashes=tuple(clashes),
         candidates_evaluated=len(ev.candidates),
+        excluded_hats=tuple(k for k in HAT_KEYS if k not in hats),
+        minimum_order_quantity=inputs.minimum_order_quantity,
+        order_multiple=inputs.order_multiple,
     )
 
 
@@ -148,10 +172,20 @@ class Settlement:
     agreed_demand_plan: float = 0.0
     #: Concessions above the threshold, declared instead of averaged away.
     unresolved_gaps: tuple[UnresolvedGap, ...] = ()
+    #: Areas NOT on the table (no inputs to score them with). An acta that omits
+    #: this reads as unanimity among five when it was unanimity among four.
+    excluded_hats: tuple[str, ...] = ()
     #: Who owns the decision and when it was taken. A plan nobody signed is a
     #: suggestion; the criterion asks for a decision, which needs both.
     decision_owner: str = UNASSIGNED
     decision_date: date | None = None
+    #: Supplier terms the plan was settled under (0.0 = none); see TensionMap.
+    minimum_order_quantity: float = 0.0
+    order_multiple: float = 0.0
+
+    @property
+    def lot_rule(self) -> str:
+        return lot_rule(self.minimum_order_quantity, self.order_multiple)
 
 
 @dataclass(frozen=True)
@@ -166,6 +200,9 @@ class ValueRow:
     c_comercial: float
     c_n5: float
     delta_usd: float              # c_baseline - c_n5, signed
+    #: None when transporte was not evaluable -- never 0.0, which in a column of
+    #: judge costs would read as a free policy rather than an absent one.
+    c_transporte: float | None = None
 
 
 def settle(
@@ -183,15 +220,16 @@ def settle(
     normalized utility, so the settlement collapses exactly onto x's ideal
     (same argmax, same tie-break).
     """
-    w = parse_weights(weights)
+    hats = evaluable_hats(inputs)
+    w = parse_weights(weights, hats)
     ev = ev if ev is not None else evaluate(inputs)
     scores = tuple(
-        sum(w[k] * ev.utilities_norm[k][i] for k in HAT_KEYS)
+        sum(w[k] * ev.utilities_norm[k][i] for k in hats)
         for i in range(len(ev.candidates))
     )
     idx = select_best_index(scores, ev.judge_costs, ev.candidates)
     chosen = ev.candidates[idx]
-    ideals = {k: ideal_for(inputs, ev, k) for k in HAT_KEYS}
+    ideals = {k: ideal_for(inputs, ev, k) for k in hats}
     acta = tuple(
         ActaEntry(
             hat_key=k,
@@ -201,7 +239,7 @@ def settle(
             kpi_ideal=ideals[k].kpis[headline_kpi(k)],
             kpi_chosen=hat_kpis(inputs, k, chosen)[headline_kpi(k)],
         )
-        for k in HAT_KEYS
+        for k in hats
     )
     c_base = decision_cost(inputs, baseline_plan(inputs))
     c_chosen = ev.judge_costs[idx]
@@ -217,13 +255,18 @@ def settle(
         ),
         decision_owner=owner or UNASSIGNED,
         decision_date=decided_on or date.today(),
+        excluded_hats=tuple(k for k in HAT_KEYS if k not in hats),
+        minimum_order_quantity=inputs.minimum_order_quantity,
+        order_multiple=inputs.order_multiple,
     )
 
 
 def top1_by_judge(inputs: HatInputs, tmap: TensionMap) -> Candidate:
-    """N4's top-1: cheapest by judge among the 4 ideals + the baseline --
+    """N4's top-1: cheapest by judge among the evaluable ideals + the baseline --
     the informational ranking the OPTIONS outcome scores by (spec sec 7)."""
-    cands = tuple(tmap.ideals[k].candidate for k in HAT_KEYS) + (baseline_plan(inputs),)
+    cands = tuple(
+        tmap.ideals[k].candidate for k in HAT_KEYS if k in tmap.ideals
+    ) + (baseline_plan(inputs),)
     costs = tuple(decision_cost(inputs, c) for c in cands)
     idx = select_best_index(tuple(-c for c in costs), costs, cands)
     return cands[idx]
@@ -246,7 +289,7 @@ def agreement_at_1(pairs: list[tuple[Candidate, Candidate]]) -> float:
 def value_row(inputs: HatInputs, tmap: TensionMap, settlement: Settlement) -> ValueRow:
     """One spec sec 9 row: judge cost at baseline (a), at each hat's ideal
     (comercial is (b)), at the settlement (c), and Delta $ = a - c."""
-    c = {k: decision_cost(inputs, tmap.ideals[k].candidate) for k in HAT_KEYS}
+    c = {k: decision_cost(inputs, e.candidate) for k, e in tmap.ideals.items()}
     return ValueRow(
         sku=inputs.sku,
         c_baseline=settlement.judge_cost_baseline,
@@ -256,4 +299,5 @@ def value_row(inputs: HatInputs, tmap: TensionMap, settlement: Settlement) -> Va
         c_comercial=c[HAT_COMERCIAL],
         c_n5=settlement.judge_cost_chosen,
         delta_usd=settlement.judge_cost_baseline - settlement.judge_cost_chosen,
+        c_transporte=c.get(HAT_TRANSPORTE),
     )

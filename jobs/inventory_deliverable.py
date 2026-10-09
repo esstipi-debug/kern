@@ -14,7 +14,7 @@ from src import order_fulfillment as of
 from src.deliverable import DataSource, Deliverable, Finding, Kpi, money, pct
 
 from .deliverables import amount, cost_is_synthesized
-from .inventory_optimization import JobReport
+from .inventory_optimization import JobReport, unsized_note
 
 #: How each provenance reads on a client page. The deck must never print a service
 #: number without saying where it came from - that is the whole T10 defect: a
@@ -167,6 +167,126 @@ def _service_findings(service: of.RealizedService, broken: tuple[str, ...]) -> l
     )]
 
 
+def _penalty(report: JobReport, value: float) -> str:
+    """`amount()` with cents: a lot penalty of $0.17/yr printed as "$0" reads as
+    free, and a free rounding is not a renegotiation case."""
+    return f"{value:,.2f} u." if cost_is_synthesized(report) else f"${value:,.2f}"
+
+
+def _costliest_lots(report: JobReport, n: int) -> str:
+    """'SKU-A +$12/yr (Q 40 -> 60, alt 30 at +$15/yr); ...' for the n costliest snaps."""
+    moved = [
+        r for r in report.recommendations
+        if r.lot_rule and r.order_quantity_unconstrained is not None
+        and r.order_quantity is not None and r.order_quantity != r.order_quantity_unconstrained
+    ]
+    moved.sort(key=lambda r: r.lot_penalty_usd, reverse=True)
+    parts = []
+    for r in moved[:n]:
+        text = (f"{r.product_id} +{_penalty(report, r.lot_penalty_usd)}/yr "
+                f"(Q {r.order_quantity_unconstrained:,.0f} -> {r.order_quantity:,.0f}")
+        if r.lot_alternative_qty is not None and r.lot_alternative_penalty_usd is not None:
+            text += (f", alt {r.lot_alternative_qty:,.0f} at "
+                     f"+{_penalty(report, r.lot_alternative_penalty_usd)}/yr")
+        parts.append(text + ")")
+    return "; ".join(parts)
+
+
+def _horizon_findings(report: JobReport) -> list[Finding]:
+    """Que hizo -- y que NO hizo -- la fecha de fin por SKU en este plan.
+
+    Son dos hallazgos y no uno, porque dicen cosas opuestas y el cliente actua distinto
+    con cada uno. El primero es plata que NO hay que gastar; el segundo es una fecha que
+    el archivo trajo y este plan se nego a usar, que sin decirlo se lee como si el tope
+    la hubiera cubierto.
+    """
+    out: list[Finding] = []
+    n_cap = int(getattr(report, "n_horizon_capped", 0) or 0)
+    if n_cap:
+        liberadas = float(getattr(report, "horizon_units_freed", 0.0) or 0.0)
+        capital = float(getattr(report, "horizon_capital_freed_usd", 0.0) or 0.0)
+        pronto = sorted(
+            (r for r in report.recommendations if r.horizon_verdict == "applied"),
+            key=lambda r: r.periods_remaining or 0.0,
+        )[:3]
+        detalle = "; ".join(
+            f"{r.product_id} ends {r.end_date} ({r.remaining_demand:,.0f} left to sell)"
+            for r in pronto
+        )
+        out.append(Finding(
+            f"{n_cap} SKU(s) capped by their end-of-life date",
+            f"The policy would have stocked more than what is left to sell before the "
+            f"SKU's end date; the cap removes {liberadas:,.0f} unit(s) of purchase and "
+            f"${capital:,.0f} from the requested investment. {detalle}.",
+            impact="less capital in stock that outlives its own demand",
+        ))
+    n_dec = int(getattr(report, "n_horizon_declarable", 0) or 0)
+    if n_dec:
+        out.append(Finding(
+            f"{n_dec} end-of-life date(s) NOT applied",
+            "The file carries an end date this run did not use - it falls on or before "
+            "the last day of the history, or there is no measured mean behind it. Those "
+            "SKUs were sized WITHOUT a cap: capping to zero on a mistyped date would "
+            "silently stop replenishing a product that still sells, and stopping it is a "
+            "discontinuation decision, not a rounding.",
+            impact="check those dates before trusting the horizon on them",
+        ))
+    return out
+
+
+def _position_findings(report: JobReport) -> list[Finding]:
+    """What today's position says, and - louder - what it could not say.
+
+    A plan that lists orders due now without saying whether stock already on order
+    was counted hands the buyer the double buy H4 describes: the PO transport
+    delayed gets bought again. So the "not netted" finding is a finding, not a
+    footnote, and it comes right after the due-now count.
+    """
+    if not report.n_positioned:
+        return []
+    out = [Finding(
+        f"{report.n_order_now} SKU(s) due for an order now",
+        f"On today's inventory position (on hand + on order) {report.n_order_now} of "
+        f"{report.n_positioned} positioned SKU(s) sit at or below their trigger; the quantity "
+        "to order is on each row (order_qty_now)."
+        + (f" Stock already on order was counted on {report.n_netted} SKU(s) "
+           f"({report.units_on_order:,.0f} units), which avoided "
+           f"{report.n_reorders_avoided_by_transit} re-order(s) of stock that is already inbound."
+           if report.n_netted else ""),
+        impact="cut these POs; the rest can wait for the next review",
+    )]
+    if not report.n_netted:
+        out.append(Finding(
+            "In-transit stock NOT counted",
+            "The file carries stock on hand but no on-order column, so the due-now list "
+            "could NOT be netted against open purchase orders: an order that transport "
+            "delayed looks exactly like an order that does not exist.",
+            impact="check open POs by hand before cutting any due-now order, or add an "
+                   "on_order / en_transito column to the file",
+        ))
+    return out
+
+
+def _supplier_terms_finding(report: JobReport) -> Finding:
+    """The MOQ / case-pack rule, stated as a finding with its price tag. Every
+    quantity in the plan is a lot the supplier accepts; what honouring the terms
+    costs, and the second lot the buyer could take instead, are on each row."""
+    detail = (
+        f"{report.n_lot_constrained} (s,Q) SKU(s) carry a minimum order quantity or a "
+        f"case-pack multiple on file; {report.n_lot_snapped} had their EOQ moved to the "
+        "cheapest lot the supplier accepts, with the other feasible lot kept as an "
+        f"alternative. Honouring the terms costs {_penalty(report, report.lot_penalty_total_usd)}"
+        "/yr in ordering + holding cost over the unconstrained EOQ."
+    )
+    if report.n_lot_snapped:
+        detail += f" Costliest: {_costliest_lots(report, 3)}."
+    return Finding(
+        "Order quantities honour the supplier's terms",
+        detail,
+        impact="every PO is one the supplier will accept; the penalty is the renegotiation case",
+    )
+
+
 def build(
     report: JobReport,
     *,
@@ -183,11 +303,19 @@ def build(
     broken = of.skus_out_of_stock(
         [r.realized_service for r in report.recommendations if r.realized_service]
     )
-    summary = (
-        f"Analyzed {report.n_skus} SKUs; recommended ${report.final_investment:,.0f} "
-        f"inventory investment at a {sl * 100:.0f}% cycle service level target. "
-        f"Service actually delivered to customers: {pct(service.fill_rate)} fill rate."
-    )
+    # El deck lleva su PROPIO encabezado, distinto del resumen que arma
+    # `scm_agent/tools.py`, y es el que el cliente lee. Las dos frases salen de la
+    # MISMA funcion del productor para que no puedan divergir otra vez.
+    titular, cola = unsized_note(report)
+    servicio = f" Service actually delivered to customers: {pct(service.fill_rate)} fill rate."
+    if titular is not None:
+        summary = titular + servicio
+    else:
+        summary = (
+            f"Analyzed {report.n_skus} SKUs; recommended ${report.final_investment:,.0f} "
+            f"inventory investment at a {sl * 100:.0f}% cycle service level target."
+            + cola + servicio
+        )
 
     findings: list[Finding] = list(_service_findings(service, broken))
     if report.n_at_risk:
@@ -202,6 +330,10 @@ def build(
             "Sporadic demand; placed on periodic (R, S) review instead of (s, Q).",
             impact="avoids over-stocking slow movers",
         ))
+    if report.n_lot_constrained:
+        findings.append(_supplier_terms_finding(report))
+    findings.extend(_position_findings(report))
+    findings.extend(_horizon_findings(report))
     if report.budget is not None and report.safety_stock_scale < 1.0:
         findings.append(Finding(
             "Budget-constrained safety stock",
@@ -247,6 +379,29 @@ def build(
         Kpi("Intermittent SKUs", str(report.n_intermittent),
             rationale="Slow / sporadic movers managed on periodic review"),
     )
+    if report.n_positioned:
+        kpis += (
+            Kpi("Orders due now", str(report.n_order_now),
+                rationale=f"SKUs at or below their trigger on today's inventory position "
+                          f"(on hand + on order), out of {report.n_positioned} with a position on file"),
+        )
+        if report.n_netted:
+            kpis += (
+                Kpi("Re-orders avoided by in-transit stock", str(report.n_reorders_avoided_by_transit),
+                    rationale=f"SKUs the shelf figure alone would have re-ordered; "
+                              f"{report.units_on_order:,.0f} units already on order were counted"),
+            )
+    if report.n_lot_constrained:
+        kpis += (
+            Kpi("SKUs on supplier terms (MOQ / case pack)",
+                f"{report.n_lot_constrained} ({report.n_lot_snapped} moved off the EOQ)",
+                rationale="Every (s,Q) quantity is a lot the supplier accepts; the runner-up "
+                          "lot and both penalties are on each row of the workbook"),
+            Kpi("Cost of honouring supplier terms",
+                _penalty(report, report.lot_penalty_total_usd) + "/yr", target="as low as the terms allow",
+                rationale="Ordering + holding cost of the chosen lots minus the unconstrained "
+                          "EOQ's - what a renegotiation of the terms could recover"),
+        )
 
     data_sources = (
         DataSource("Demand history & unit cost", data_source, "per run"),
@@ -274,13 +429,37 @@ def build(
         data_sources += (
             DataSource("Where the service columns came from", report.service_note, "per run"),
         )
+    if report.position_note:
+        data_sources += (
+            DataSource("Stock position (on hand / on order)", report.position_note, "per run"),
+        )
 
     data_sources += _reading_sources(report)
 
     recs: list[str] = []
     if report.n_at_risk:
         recs.append("Review the high-bias SKUs' forecasts before issuing their POs.")
-    recs.append("Issue replenishment POs to the computed reorder points and order quantities.")
+    if report.n_positioned:
+        recs.append(
+            f"Cut the {report.n_order_now} PO(s) due now (rows with order_now = yes, for "
+            "order_qty_now units); every other positioned SKU is above its trigger today."
+            + ("" if report.n_netted else " Check open POs by hand first: the file carried no "
+               "on-order column, so nothing was netted.")
+        )
+    else:
+        recs.append("Issue replenishment POs to the computed reorder points and order quantities.")
+    if report.n_lot_snapped:
+        worst = _costliest_lots(report, 3)
+        recs.append(
+            "Take the lot penalties to the supplier where rounding costs most "
+            f"({worst}), or order the alternative lot listed on the row."
+        )
+    if report.n_lot_rule_unapplied:
+        recs.append(
+            f"{report.n_lot_rule_unapplied} periodic-review (R,S) SKU(s) carry supplier terms "
+            "this plan does not apply: round each order-up-to quantity to the MOQ / case pack "
+            "by hand when the PO is cut."
+        )
     if report.budget is not None and not report.feasible:
         recs.append(
             f"Budget ${report.budget:,.0f} is below the cycle-stock floor "

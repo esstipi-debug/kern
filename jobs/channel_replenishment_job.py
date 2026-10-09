@@ -37,23 +37,35 @@ silently.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
+from nosilo_core import writeback
 from nosilo_core.access import Principal
 from nosilo_core.entities import SqliteEntityStore
 from nosilo_core.escalation import escalation_banner, maybe_escalate_financial
-from nosilo_core.guided import ExecutionOption, GuidedOutcome, as_options, verify_guided
+from nosilo_core.guided import (
+    ExecutionOption,
+    GuidedOutcome,
+    Residual,
+    as_options,
+    verify_guided,
+)
 from nosilo_core.writeback import Changeset
 from src.connectors.meli import MeliConnector, demo_meli_commerce
-from src.connectors.odoo import OdooConnector, demo_odoo
-from src.connectors.replenish import demand_by_sku
+from src.connectors.odoo import OdooConnector, OdooError, demo_odoo
+from src.connectors.replenish import (
+    daily_demand_by_sku,
+    demand_by_sku,
+    demand_points_by_sku,
+)
 from src.connectors.shopify import ShopifyConnector, demo_shopify
 from src.connectors.unleashed import (
     UnleashedConnector,
     UnleashedCredentials,
     live_http,
 )
+from src.ddmrp import net_flow_position
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.entities import (
     SOURCE_MELI,
@@ -65,6 +77,8 @@ from src.entities import (
 )
 from src.export import write_summary_csv
 from src.forecasting import forecast_demand
+
+from . import odoo_job
 
 #: Reading the catalogue to plan against it is a service action: the job is not an agent
 #: exercising a human's authority, and inventing an ``on_behalf_of`` to satisfy the agent
@@ -87,6 +101,19 @@ class ChannelLine:
     target: float
     restock_qty: float
     lead_time_days: float
+    #: Units on open purchase orders in the ERP, netted out of ``restock_qty``, or
+    #: ``None`` when this ERP could not be asked (or does not expose them). ``None`` and
+    #: ``0.0`` mean different things: the first is "nobody told us", the second is
+    #: "measured, and nothing is inbound".
+    on_order: float | None = None
+    #: The inventory position the quantity was sized against -- ``src.ddmrp
+    #: .net_flow_position(erp_on_hand, on_order or 0, 0)``. Equals ``erp_on_hand`` when
+    #: nothing was netted, and is emitted so the arithmetic is auditable from the file.
+    position: float | None = None
+    #: Unidades por dia CALENDARIO del canal (``daily_demand_by_sku``), que NO es
+    #: ``channel_demand_per_period``: el periodo de esa serie es un dia-con-pedidos.
+    #: ``None`` cuando ninguna fecha de pedido se pudo leer -- nunca ``0.0``.
+    avg_daily_demand: float | None = None
 
 
 @dataclass(frozen=True)
@@ -121,6 +148,28 @@ class ChannelReplenishmentReport:
     changeset: Changeset | None
     outcome: GuidedOutcome
     summary: str
+    #: Units on open purchase orders in the ERP, per SKU, netted out of every quantity
+    #: above. ``None`` -- never ``{}`` -- when the ERP could not be asked at all; a SKU
+    #: simply absent from a real map has no open PO, which is a different statement and
+    #: the one every surface below must keep apart from "we could not read".
+    on_order_by_sku: dict[str, float] | None = None
+    #: Lines that carried an on-order figure. Zero on a SUCCESSFUL read just means no SKU
+    #: has an open purchase order, so it never decides whether the plan was netted --
+    #: ``on_order_by_sku is None`` does.
+    n_netted: int = 0
+    #: Why the quantities are, or are not, net of what the ERP already has on order.
+    netting_note: str = ""
+    #: Que paso con la memoria del Tower en esta corrida: el ciclo con el que se
+    #: escribio el snapshot ``stock``, o por que no se escribio
+    #: (``jobs/state_bridge.py``). Viaja en el reporte y no solo en el resumen, para
+    #: que un llamador pueda comprobarlo sin parsear prosa.
+    state_note: str = ""
+    #: La demanda REALIZADA que el plan pronostico, CON sus fechas, por SKU
+    #: (``src.connectors.replenish.demand_points_by_sku``). Viaja en el reporte para que
+    #: el puente del Tower la escriba como ``actual_qty`` sin volver a leer el backend, y
+    #: con las fechas reales: quien despues pronostica sobre esos puntos no puede
+    #: inventarles un dia.
+    demand_points: dict[str, tuple[tuple[str, float], ...]] = field(default_factory=dict)
 
 
 #: Sales channels this job can read demand from. A channel qualifies when it implements
@@ -313,6 +362,30 @@ def prepare(data_path: str | None = None, params: dict | None = None) -> dict:
     }
 
 
+def read_erp_on_order(erp: object) -> tuple[dict[str, float] | None, str]:
+    """Units already on open purchase orders in the ERP, per SKU, or why they are unknown.
+
+    The plan sizes against the inventory POSITION (stock plus what is already bought), not
+    the shelf, so a delivery that transport delayed is not ordered a second time. The Odoo
+    path reuses ``jobs.odoo_job.read_on_order`` literally rather than re-implementing the
+    read: the state filter, the pending rule and the unit-of-measure guard all live there.
+
+    ``None`` with the reason attached whenever the figure could not be read, never ``{}``:
+    an empty map reads downstream as "measured, and nothing is on order", which is the
+    claim this function exists to avoid making. An ERP that simply does not expose open
+    purchase orders (Unleashed today) says so in the note instead of going quiet.
+    """
+    if isinstance(erp, OdooConnector):
+        try:
+            return odoo_job.read_on_order(erp)
+        except OdooError as exc:                     # defensive: read_on_order catches its own
+            return None, f"in-transit stock was NOT netted: {exc}"
+    return None, (
+        f"in-transit stock was NOT netted: {type(erp).__name__} does not expose open purchase "
+        "orders, so what is already bought could not be read"
+    )
+
+
 def _resolved_cost(store: SqliteEntityStore, nosilo_id: str) -> float:
     """The book cost the entity layer resolved, which is the ERP's by declared ownership.
 
@@ -332,6 +405,8 @@ def _build_outcome(
     restock_value: float,
     financial_threshold: float,
     n_divergent: int,
+    netted: bool = True,
+    netting_note: str = "",
 ) -> GuidedOutcome:
     """Ranked, executable options. Unlike the channel-only tool, the recommended one WRITES:
     the ERP has a reorder point to put the plan in, and the write is reversible."""
@@ -397,7 +472,19 @@ def _build_outcome(
             ),
         )
 
-    return maybe_escalate_financial(as_options(summary, options), restock_value, financial_threshold)
+    residuals = []
+    if not netted and n_restock > 0:
+        # Sin esto, cada cantidad de arriba puede estar comprando otra vez una OC que el
+        # ERP ya emitio y que transporte simplemente atraso.
+        residuals.append(Residual(
+            description=netting_note or "the quantities do not net open purchase orders in the ERP",
+            risk_if_skipped="a purchase order the ERP already raised is bought a second time; "
+                            "check open POs by hand before applying any reorder point",
+        ))
+
+    return maybe_escalate_financial(
+        as_options(summary, options, residuals=residuals), restock_value, financial_threshold
+    )
 
 
 def run(
@@ -405,9 +492,24 @@ def run(
     *,
     cover_periods: float = 8.0,
     financial_threshold: float = 50_000.0,
-    idempotency_key: str = "channel-replenish-1",
+    idempotency_key: str | None = None,
 ) -> ChannelReplenishmentReport:
-    """Forecast from channel orders, compare against ERP stock, stage the reorder points."""
+    """Forecast from channel orders, compare against ERP stock, stage the reorder points.
+
+    ``idempotency_key`` se DERIVA de lo que la reposicion hace cuando no se pasa, con
+    el mismo criterio que `excel_replenishment_job` y `shopify_stock_sync`. Hasta el
+    2026-09-20 era la constante ``"channel-replenish-1"``, y `nosilo_core.writeback`
+    garantiza que "the same idempotency_key never lands twice": dos reposiciones
+    genuinamente distintas del mismo cliente compartian clave y la SEGUNDA salia
+    ``applied=False, idempotent_skip=True`` -- descartada en silencio, con la senal que
+    significa "esto era un reintento". Reproducido: +50 de un SKU y despues +999 de
+    otro, contenido distinto, y el punto de reorden del segundo nunca aterrizaba.
+
+    Se keyea sobre la cantidad a reponer Y el estante que el ERP mostraba, porque esa
+    es la informacion con la que se decidio: re-estacionar el MISMO plan contra el
+    MISMO estante sigue siendo la misma operacion y tiene que deduplicar; un plan nuevo
+    -- otra cantidad, u otro estante -- es otra operacion y tiene que aterrizar.
+    """
     # Any InventorySource with a ``truncated`` flag; see CHANNELS. Typed as the union
     # rather than a Protocol because ``truncated`` is a connector courtesy, not part of
     # InventorySource, and inventing a Protocol for one attribute would be ceremony.
@@ -417,10 +519,17 @@ def run(
     store: SqliteEntityStore = payload["store"]
     matched: list[str] = list(payload["matched"])
 
-    series = demand_by_sku(channel.orders())
+    channel_orders = channel.orders()
+    series = demand_by_sku(channel_orders)
+    points = demand_points_by_sku(channel_orders)
+    # La misma lectura, en dias calendario: el plan razona por dia-con-pedidos y quien
+    # cuenta dias de cobertura necesita la otra unidad (ver `daily_demand_by_sku`).
+    daily_demand = daily_demand_by_sku(channel_orders)
     channel_on_hand = {lvl.sku: lvl.available for lvl in channel.inventory_levels()}
     erp_on_hand = {lvl.sku: lvl.available for lvl in erp.inventory_levels()}
     lead_times = erp.lead_times()
+    on_order_by_sku, netting_note = read_erp_on_order(erp)
+    n_netted = 0
 
     lines: list[ChannelLine] = []
     restock: dict[str, float] = {}
@@ -433,7 +542,14 @@ def run(
         target = forecast * cover_periods
         on_hand_erp = erp_on_hand.get(sku, 0.0)
         on_hand_channel = channel_on_hand.get(sku, 0.0)
-        qty = max(0.0, round(target - on_hand_erp, 1))
+        # Contra la POSICION, no contra el estante: lo que el ERP ya compro y todavia no
+        # recibio cubre parte del objetivo. `qualified_demand=0.0` es una ausencia
+        # declarada -- un canal no expone demanda comprometida -- no un atajo.
+        on_order = None if on_order_by_sku is None else on_order_by_sku.get(sku)
+        position = net_flow_position(on_hand_erp, on_order or 0.0, 0.0)
+        if on_order is not None:
+            n_netted += 1
+        qty = max(0.0, round(target - position, 1))
 
         lines.append(
             ChannelLine(
@@ -444,6 +560,9 @@ def run(
                 target=target,
                 restock_qty=qty,
                 lead_time_days=lead_times.get(sku, 0.0),
+                on_order=on_order,
+                position=position,
+                avg_daily_demand=daily_demand.get(sku),
             )
         )
         if qty > 0:
@@ -453,8 +572,13 @@ def run(
             divergences.append(StockDivergence(sku, on_hand_channel, on_hand_erp))
 
     # Staging is a dry-run: it reads and computes, and mutates nothing until apply.
+    clave = idempotency_key or writeback.derive_idempotency_key(
+        "channel-replenish",
+        {sku: {"restock_qty": qty, "erp_on_hand": erp_on_hand.get(sku, 0.0)}
+         for sku, qty in restock.items()},
+    )
     changeset = (
-        erp.stage_restock(restock, idempotency_key=idempotency_key,
+        erp.stage_restock(restock, idempotency_key=clave,
                           reason="replenish to cover channel demand")
         if restock
         else None
@@ -464,7 +588,7 @@ def run(
     summary = (
         f"Matched {len(matched)} SKU(s) between {payload['channel_source']} and "
         f"{payload['erp_source']}; {len(restock)} below a {cover_periods:.0f}-period cover "
-        f"({total:,.0f} units short)."
+        f"({total:,.0f} units short). {netting_note}."
     )
     return ChannelReplenishmentReport(
         channel_source=str(payload["channel_source"]),
@@ -483,8 +607,13 @@ def run(
         outcome=_build_outcome(
             len(restock), total, restock_value=restock_value,
             financial_threshold=financial_threshold, n_divergent=len(divergences),
+            netted=on_order_by_sku is not None, netting_note=netting_note,
         ),
         summary=summary,
+        on_order_by_sku=on_order_by_sku,
+        n_netted=n_netted,
+        netting_note=netting_note,
+        demand_points={sku: tuple(pts) for sku, pts in points.items() if sku in set(matched)},
     )
 
 
@@ -519,6 +648,10 @@ def write_operational(
             "target": round(ln.target, 2),
             "restock_qty": round(ln.restock_qty, 2),
             "lead_time_days": round(ln.lead_time_days, 1),
+            # En blanco (no 0) cuando no se pudo leer lo que ya viene en camino: la celda
+            # vacia dice "no medido", un cero diria "medido, nada en camino".
+            "on_order": "" if ln.on_order is None else round(ln.on_order, 2),
+            "position": "" if ln.position is None else round(ln.position, 2),
         }
         for ln in report.lines
     ]
@@ -564,6 +697,24 @@ def build_deck(
             impact="replenish before the thin SKUs stock out",
         )
     )
+    if report.on_order_by_sku is None:
+        # Antes de las cantidades que califica: sin esto, cada cifra de abajo puede estar
+        # recomprando una OC que el ERP ya emitio.
+        findings.append(
+            Finding(
+                "Quantities do NOT net stock already on order",
+                report.netting_note or "open purchase orders could not be read from the ERP",
+                impact="subtract the ERP's open POs by hand before applying any reorder point",
+            )
+        )
+    elif report.netting_note:
+        findings.append(
+            Finding(
+                "Quantities are net of stock already on order",
+                report.netting_note,
+                impact="the ERP's open POs are already discounted; do not subtract them twice",
+            )
+        )
     if report.divergences:
         worst = max(report.divergences, key=lambda d: abs(d.delta))
         findings.append(
@@ -605,6 +756,11 @@ def build_deck(
     data_sources = (
         DataSource("Demand", f"{report.channel_source} (orders)", "live"),
         DataSource("Stock / lead times", f"{report.erp_source} (stock.quant, supplierinfo)", "live"),
+        DataSource(
+            "Stock already on order",
+            report.netting_note or "ERP open purchase orders",
+            "live" if report.on_order_by_sku is not None else "absent",
+        ),
         DataSource("Book cost", "ERP, by declared ownership in src/entities.py", "live"),
         DataSource("Reorder-point write-back", "ERP stock.warehouse.orderpoint", "on apply"),
     )

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import dataclasses
 
+import pandas as pd
 import pytest
 
 from jobs import inventory_optimization
@@ -27,9 +28,32 @@ from src.verify.coherencia import (
 
 @pytest.fixture(scope="module")
 def reporte_sano():
-    """Una cartera pequena pero con los dos degenerados dentro."""
+    """Una cartera pequena pero con los CUATRO degenerados dentro.
+
+    El generador produce los dos degenerados de DATO (demanda cero, costo cero).
+    Los otros dos son de CONOCIMIENTO y hay que fabricarlos, y hoy son dos y no uno
+    porque el motor tiene un escalon donde antes tenia un abismo:
+
+    - ``SKU-RECIEN`` ve tres periodos -- menos que ``MIN_PERIODS_FOR_POLICY`` pero
+      al menos ``MIN_PERIODS_FOR_COVER`` --, asi que recibe una COBERTURA
+      PROVISIONAL: disparador si, buffer no.
+    - ``SKU-PRIMERA-VENTA`` ve UNO solo, que no alcanza ni para una media, y por eso
+      sigue siendo la negativa entera (``insufficient_history``).
+
+    Las dos entraron a ``POLITICAS_SALTADAS`` -- que desde el 2026-09-20 es
+    ``NOT_FULLY_SIZED_POLICY_KINDS`` -- porque las invariantes por SKU presuponen
+    buffer y z. Sin estas dos lineas el invariante de conteo volveria a probarse en
+    vacio sobre las clases recien agregadas.
+    """
     demanda = generar_cartera(24, semanas=40, semilla=11)
-    return inventory_optimization.run(demanda)
+    fechas = sorted(demanda["date"].unique())
+    nuevas = pd.DataFrame(
+        [{"date": f, "product_id": "SKU-RECIEN", "quantity": 12.0,
+          "unit_cost": 55.0, "lead_time_days": 14} for f in fechas[-3:]]
+        + [{"date": fechas[-1], "product_id": "SKU-PRIMERA-VENTA", "quantity": 9.0,
+            "unit_cost": 55.0, "lead_time_days": 14}]
+    )
+    return inventory_optimization.run(pd.concat([demanda, nuevas], ignore_index=True))
 
 
 def _analizada(reporte):
@@ -62,11 +86,16 @@ def test_una_cartera_sana_no_viola_ningun_invariante(reporte_sano):
     assert coh.n_recomendaciones == reporte_sano.n_skus
 
 
-def test_la_cartera_de_prueba_ejerce_las_dos_ramas_de_salto(reporte_sano):
-    """Si no hay saltadas, el invariante de conteo se estaria probando en vacio."""
+def test_la_cartera_de_prueba_ejerce_TODAS_las_ramas_de_salto(reporte_sano):
+    """Si no hay saltadas, el invariante de conteo se estaria probando en vacio.
+
+    Se compara contra el conjunto ENTERO, no contra una lista escrita a mano, para
+    que agregar una policy_kind saltada obligue a producirla aca tambien.
+    """
     politicas = {r.policy_kind for r in reporte_sano.recommendations}
     assert POLITICAS_SALTADAS <= politicas, (
-        f"la cartera no produjo ambos degenerados; politicas vistas: {sorted(politicas)}"
+        f"la cartera no produjo todos los degenerados; faltan: "
+        f"{sorted(POLITICAS_SALTADAS - politicas)}; vistas: {sorted(politicas)}"
     )
 
 

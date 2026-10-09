@@ -22,12 +22,25 @@
 # (inventory_from_state_stock_event / excess_obsolete_from_state_stock_event
 # in scm_agent/event_intent.py) rather than inventory_from_stock_event.
 # The other two monitor-emitted types -- forecast_error_out_of_band and
-# lead_time_drift -- are deliberately NOT routed here yet: neither the
-# 'forecast'/'outcomes' state snapshot carries a real historical time series,
-# and fabricating one from 1-2 aggregate numbers just to drive a tool run
-# would violate the plan's own rule 7 ("procedencia total") and rule 14
-# ("ningun cap silencioso"). They still emit real, dedup'd events onto the
-# ledger; a later PR (A4's src/verify/backtest.py) is the natural consumer.
+# lead_time_drift -- were deliberately NOT routed until 2026-09-18, and the
+# reason written here was the right one: neither the 'forecast' nor the
+# 'outcomes' snapshot carried a real historical time series, and fabricating
+# one from 1-2 aggregate numbers just to drive a tool run would violate the
+# plan's own rule 7 ("procedencia total") and rule 14 ("ningun cap silencioso").
+#
+# What changed is not the criterion, it is the data. jobs/state_bridge.py now
+# writes each connector run's REALIZED demand into 'outcomes' as actual_qty,
+# carrying the order DATE of every point, so both routes below read a real
+# series instead of inventing one -- and refuse (EventRoutingError naming rule
+# 7) when a SKU has fewer points than jobs/forecast_job.py would accept. Both
+# builders need to know WHOSE series to read: the event carries
+# payload["state_client_id"], put there by run_all_monitors(client_id=...), and
+# an event without it is un-routable rather than resolved onto the shared
+# partition. forecast_error_out_of_band re-fits the forecast on what actually
+# happened; lead_time_drift re-sizes the POLICY with the measured lead time as
+# an inventory_optimization `lead_times` override (not an S&OP promo_lift -- a
+# promo lift is demand, not a lead time, and using it as a proxy would be
+# exactly rule 14's silent cap).
 #
 # PR-15 (the pricing titan's continuous monitoring, jobs/price_monitor.py +
 # webapp POST /api/watch): price_move/competitor_oos both carry
@@ -79,4 +92,14 @@ routes:
   shopify_stock_divergence:
     tool: inventory_optimization
     param_builder: inventory_from_stock_event
+    autonomy_tier: T2
+
+  forecast_error_out_of_band:
+    tool: forecast
+    param_builder: forecast_from_outcomes_event
+    autonomy_tier: T2
+
+  lead_time_drift:
+    tool: inventory_optimization
+    param_builder: inventory_from_lead_time_drift_event
     autonomy_tier: T2

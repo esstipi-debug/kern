@@ -1,11 +1,22 @@
-"""Four-hat decision substrate over one replenishment decision (Q, SL).
+"""Five-hat decision substrate over one replenishment decision (Q, SL).
 
 Spec: docs/superpowers/specs/2026-07-20-hats-n4-n5-design.md (D1-D8).
-Four role "hats" (comprador / planner / cfo / comercial) score the SAME
+Role "hats" (comprador / planner / cfo / comercial / transporte) score the SAME
 candidate (order_quantity, service_level) with their own pure utility; a
 neutral judge cost values any candidate in $ without deciding. `Hat` lives
 BESIDE scm_agent.modes.Mode (D7): src/ never imports scm_agent; `mode_key`
 is a soft string reference, never resolved here.
+
+THE FIFTH HAT IS CONDITIONAL, AND THAT IS THE POINT. `transporte` scores the
+freight a policy forces -- and freight needs two physical facts no demand
+series carries: the weight of a unit and the length of the lane. There is no
+D8-style synthetic default for those (the price-break default at least derives
+from EOQ and the real unit cost; a kilogram derives from nothing). So a SKU
+without a declared `FreightProfile` has FOUR areas on the table, not five with
+one guessed, and `evaluable_hats` is the single place that says which. Every
+surface that renders a council must repeat the exclusion: a quietly four-hat
+settlement reads as "transporte did not object", which is the exact shape
+`src.objection.NO_EVALUABLE` exists to prevent.
 
 Weights are an explicit OPERATOR POLICY (D4), not an objective consensus:
 `parse_weights` validates and renormalizes them, and every surface that
@@ -16,27 +27,49 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from src.constraints import cheapest_feasible_lot, feasible_lots, feasible_neighbours, lot_rule
 from src.eoq import PriceBreak, compute_eoq, compute_eoq_volume_discount
 from src.fill_rate import fill_rate_from_safety_stock, normal_loss_standard
 from src.financial_kpis import days_inventory_outstanding
+from src.logistics.modes import FreightRates, ModeSelection, Shipment, select_mode
 from src.safety_stock import safety_stock, service_level_factor
 
 HAT_COMPRADOR = "comprador"
 HAT_PLANNER = "planner"
 HAT_CFO = "cfo"
 HAT_COMERCIAL = "comercial"
-HAT_KEYS: tuple[str, ...] = (HAT_COMPRADOR, HAT_PLANNER, HAT_CFO, HAT_COMERCIAL)
+HAT_TRANSPORTE = "transporte"
+#: Appended, never inserted: `src.cross_impact.CrossImpact.rows` and
+#: `src.hat_council.tension_map`'s pair order are both defined as "HAT_KEYS
+#: order", so putting `transporte` anywhere but last would silently reorder
+#: every existing deliverable.
+HAT_KEYS: tuple[str, ...] = (
+    HAT_COMPRADOR, HAT_PLANNER, HAT_CFO, HAT_COMERCIAL, HAT_TRANSPORTE,
+)
 
 # D1: the settlement domain is a 2D grid, anchored on closed-form quantities.
 SL_GRID: tuple[float, ...] = (0.90, 0.925, 0.95, 0.975, 0.99)
 N_Q_POINTS = 25
 Q_SPAN_LO = 0.5     # x min(Q_eoq, Q_disc)
 Q_SPAN_HI = 1.25    # x max(Q_eoq, Q_disc)
+#: Under supplier terms (MOQ / case-pack multiple) the Q axis is laid over lots
+#: the supplier ACCEPTS instead of 25 linear points -- see `candidate_grid`. A
+#: coarse multiple can leave the span with two or three legal lots, so the grid
+#: reaches upward until it holds at least this many...
+MIN_FEASIBLE_Q_POINTS = 5
+#: ...and a fine multiple (sell by 1) can put thousands in it, so it is thinned
+#: evenly to at most this many, ends kept.
+MAX_FEASIBLE_Q_POINTS = 4 * N_Q_POINTS
 
 # D8: synthetic default price breaks for the testbed (labeled "(assumed)").
 ASSUMED_BREAK_TIERS: tuple[tuple[float, float], ...] = ((2.0, 0.98), (4.0, 0.96))
 
-DEFAULT_WEIGHTS: dict[str, float] = {k: 0.25 for k in HAT_KEYS}
+#: Uniform over the WHOLE vocabulary. Derived from the length, not typed: the
+#: literal 0.25 this used to carry stopped summing to 1 the moment a fifth hat
+#: existed, and nothing downstream re-normalized it. `parse_weights(None, hats)`
+#: computes the same uniform over the areas actually on the table, which is what
+#: every caller with an `inputs` in hand should use instead of this constant.
+DEFAULT_WEIGHTS: dict[str, float] = {k: 1.0 / len(HAT_KEYS) for k in HAT_KEYS}
 
 
 @dataclass(frozen=True)
@@ -74,6 +107,11 @@ HATS: dict[str, Hat] = {
         objetivo="maximizar el fill rate (disponibilidad para vender)",
         kpis=("fill rate", "unidades cortas esperadas por anio"),
         tool_keys=frozenset({"inventory_optimization", "pricing"}), mode_key="scm"),
+    HAT_TRANSPORTE: Hat(
+        key=HAT_TRANSPORTE, label="Transporte",
+        objetivo="minimizar el flete por unidad movida (llenar el camion sin derramarlo)",
+        kpis=("flete por unidad", "flete anual", "envios por anio"),
+        tool_keys=frozenset({"transportation", "cost_to_serve"}), mode_key="scm"),
 }
 
 
@@ -117,9 +155,47 @@ class HatConfig:
 
 
 @dataclass(frozen=True)
+class FreightProfile:
+    """The two physical facts that make `transporte` evaluable, plus the card
+    that prices them. Declared per SKU/lane by the operator -- never derived.
+
+    `rates=None` means the illustrative card `src.logistics.modes.FreightRates()`
+    ships with; `rates_assumed` is then True and every surface must label the
+    freight "(tarifa supuesta)", the same contract `price_breaks_assumed` carries
+    for D8. The weight and the distance have no such fallback: they are required.
+    """
+
+    weight_kg_per_unit: float
+    distance_km: float
+    rates: FreightRates | None = None
+    #: Passed through to `select_mode`; a lane with a delivery window cannot be
+    #: quoted on a mode that misses it.
+    max_transit_days: float | None = None
+
+    def __post_init__(self) -> None:
+        if self.weight_kg_per_unit <= 0:
+            raise ValueError("weight_kg_per_unit must be > 0")
+        if self.distance_km <= 0:
+            raise ValueError("distance_km must be > 0")
+        if self.max_transit_days is not None and self.max_transit_days <= 0:
+            raise ValueError("max_transit_days must be > 0 when given")
+
+    @property
+    def rates_assumed(self) -> bool:
+        """True when nobody declared a tariff and the illustrative card is in use."""
+        return self.rates is None
+
+    @property
+    def effective_rates(self) -> FreightRates:
+        return self.rates if self.rates is not None else FreightRates()
+
+
+@dataclass(frozen=True)
 class HatInputs:
     """One SKU's decision inputs. `price_breaks_assumed` marks the D8
-    synthetic default so every output can carry the "(assumed)" label."""
+    synthetic default so every output can carry the "(assumed)" label.
+    `freight` is None on a SKU nobody declared transport facts for -- see
+    `evaluable_hats`, which is what turns that None into four areas."""
 
     sku: str
     annual_demand: float
@@ -130,10 +206,19 @@ class HatInputs:
     price_breaks: tuple[PriceBreak, ...]
     price_breaks_assumed: bool
     config: HatConfig
+    freight: FreightProfile | None = None
+    #: Supplier terms, in units; 0.0 = none declared. When either binds, the
+    #: grid holds only lots the supplier accepts and the baseline snaps to the
+    #: cheapest feasible lot (src.constraints.cheapest_feasible_lot) -- exactly
+    #: what jobs/inventory_optimization.py ships, so the equivalence holds.
+    minimum_order_quantity: float = 0.0
+    order_multiple: float = 0.0
 
     def __post_init__(self) -> None:
         if self.annual_demand <= 0:
             raise ValueError(f"{self.sku}: annual_demand must be > 0")
+        if self.minimum_order_quantity < 0 or self.order_multiple < 0:
+            raise ValueError(f"{self.sku}: supplier terms must be >= 0")
         if self.mean_weekly <= 0:
             raise ValueError(f"{self.sku}: mean_weekly must be > 0")
         if self.std_weekly < 0:
@@ -142,6 +227,17 @@ class HatInputs:
             raise ValueError(f"{self.sku}: lead_time_weeks must be > 0")
         if self.unit_cost <= 0:
             raise ValueError(f"{self.sku}: unit_cost must be > 0")
+
+    @property
+    def lot_rule(self) -> str:
+        """"" when no supplier term binds, else e.g. "moq 60, multiple 30"."""
+        return lot_rule(self.minimum_order_quantity, self.order_multiple)
+
+    @property
+    def lot_terms(self) -> dict[str, float]:
+        """The two terms as the keyword arguments src.constraints takes."""
+        return {"minimum_order_quantity": self.minimum_order_quantity,
+                "order_multiple": self.order_multiple}
 
 
 @dataclass(frozen=True)
@@ -169,12 +265,45 @@ class HatEvaluation:
     kpis: dict = field(default_factory=dict)
 
 
-def parse_weights(raw: str | dict | None) -> dict[str, float]:
+def evaluable_hats(inputs: HatInputs) -> tuple[str, ...]:
+    """The areas that can be scored for THIS SKU, in HAT_KEYS order.
+
+    The single source of truth for "who is on the table". `transporte` drops out
+    when no `FreightProfile` was declared, because the alternative is inventing a
+    unit weight -- and a fabricated physical fact is worse than a declared hole
+    (the same call `src.flow_map` makes when it reports an edge UNMEASURABLE
+    rather than assuming a transit time).
+
+    Callers must not just iterate this and move on: whatever they render has to
+    NAME the excluded area. Four hats agreeing quietly is indistinguishable from
+    five hats agreeing, and only one of those is true.
+    """
+    if inputs.freight is None:
+        return tuple(k for k in HAT_KEYS if k != HAT_TRANSPORTE)
+    return HAT_KEYS
+
+
+def parse_weights(
+    raw: str | dict | None, hats: tuple[str, ...] = HAT_KEYS,
+) -> dict[str, float]:
     """Parse and validate the settlement weights (D4: an explicit operator
     POLICY, not an objective consensus). Missing hats weigh 0. Renormalized
-    to sum 1. Raises ValueError on unknown keys, negatives, or sum <= 0."""
+    to sum 1. Raises ValueError on unknown keys, negatives, or sum <= 0.
+
+    `hats` is the set actually on the table -- pass `evaluable_hats(inputs)`.
+    Weight declared for an area that is NOT on the table is dropped and the rest
+    renormalized, because the alternative -- raising -- makes a mixed portfolio
+    unusable: one policy is written per run, while evaluability is per SKU, so a
+    five-area policy over a file where only some SKUs carry a weight would fail
+    the whole run. The drop is never silent: `Settlement.excluded_hats` carries
+    the areas, and the acta prints which weights were renormalized over what.
+
+    The degenerate case still raises, through the existing sum-0 check: a policy
+    whose weight lands ENTIRELY on off-table areas leaves nothing to settle on,
+    and quietly falling back to uniform would invent a policy nobody wrote.
+    """
     if raw is None:
-        return dict(DEFAULT_WEIGHTS)
+        return {k: 1.0 / len(hats) for k in hats}
     if isinstance(raw, str):
         pairs: dict[str, float] = {}
         for chunk in raw.split(","):
@@ -192,11 +321,19 @@ def parse_weights(raw: str | dict | None) -> dict[str, float]:
     unknown = set(raw) - set(HAT_KEYS)
     if unknown:
         raise ValueError(f"weights: unknown hat key(s) {sorted(unknown)}; valid: {list(HAT_KEYS)}")
-    weights = {k: float(raw.get(k, 0.0)) for k in HAT_KEYS}
-    if any(w < 0 for w in weights.values()):
+    declared = {k: float(raw.get(k, 0.0)) for k in HAT_KEYS}
+    if any(w < 0 for w in declared.values()):
         raise ValueError("weights: negative weights are not allowed")
+    weights = {k: declared[k] for k in hats}
     total = sum(weights.values())
     if total <= 0:
+        dropped = sorted(k for k in HAT_KEYS if k not in hats and declared[k] > 0)
+        if dropped:
+            raise ValueError(
+                f"weights: the whole policy sits on {dropped}, which is not evaluable "
+                f"here; the areas on the table are {list(hats)}. Declare the missing "
+                "inputs (transporte needs a unit weight and a lane distance) or weigh "
+                "an area that can be scored")
         raise ValueError("weights: sum must be > 0")
     return {k: w / total for k, w in weights.items()}
 
@@ -229,8 +366,13 @@ def build_inputs(
     unit_cost: float,
     config: HatConfig,
     price_breaks: tuple[PriceBreak, ...] | None = None,
+    freight: FreightProfile | None = None,
+    minimum_order_quantity: float = 0.0,
+    order_multiple: float = 0.0,
 ) -> HatInputs:
-    """Assemble one SKU's inputs; `price_breaks=None` -> D8 synthetic default."""
+    """Assemble one SKU's inputs; `price_breaks=None` -> D8 synthetic default.
+    `freight=None` leaves `transporte` off the table (no synthetic default).
+    `minimum_order_quantity` / `order_multiple` are the supplier's terms; 0 = none."""
     assumed = price_breaks is None
     breaks = (
         default_price_breaks(annual_demand, unit_cost, config)
@@ -240,6 +382,8 @@ def build_inputs(
         sku=sku, annual_demand=annual_demand, mean_weekly=mean_weekly,
         std_weekly=std_weekly, lead_time_weeks=lead_time_weeks, unit_cost=unit_cost,
         price_breaks=breaks, price_breaks_assumed=assumed, config=config,
+        freight=freight,
+        minimum_order_quantity=minimum_order_quantity, order_multiple=order_multiple,
     )
 
 
@@ -290,18 +434,64 @@ def anchor_quantities(inputs: HatInputs) -> tuple[float, float]:
 def candidate_grid(inputs: HatInputs) -> tuple[Candidate, ...]:
     """SL_GRID x 25 linear Q points on [0.5*min(anchors), 1.25*max(anchors)],
     plus the mandatory candidates q_eoq, q_disc and the baseline Q (== q_eoq,
-    see baseline_plan) deduped in. Fixed order: SL asc outer, Q asc inner."""
+    see baseline_plan) deduped in. Fixed order: SL asc outer, Q asc inner.
+
+    Under supplier terms the Q axis is `_feasible_q_points` instead: every
+    candidate is a lot the supplier accepts, so no hat's ideal and no settlement
+    can land on a quantity that cannot be ordered -- a council that agrees on 40
+    when the supplier sells by 30 has agreed on nothing.
+    """
     q_eoq, q_disc = anchor_quantities(inputs)
     lo = Q_SPAN_LO * min(q_eoq, q_disc)
     hi = Q_SPAN_HI * max(q_eoq, q_disc)
-    qs = [lo + i * (hi - lo) / (N_Q_POINTS - 1) for i in range(N_Q_POINTS)]
-    for mandatory in (q_eoq, q_disc):        # baseline Q == q_eoq (dedupe handles it)
-        if not any(abs(q - mandatory) < 1e-12 for q in qs):
-            qs.append(mandatory)
-    qs.sort()
+    if inputs.lot_rule:
+        qs = _feasible_q_points(inputs, lo, hi, (q_eoq, q_disc))
+    else:
+        qs = [lo + i * (hi - lo) / (N_Q_POINTS - 1) for i in range(N_Q_POINTS)]
+        for mandatory in (q_eoq, q_disc):        # baseline Q == q_eoq (dedupe handles it)
+            if not any(abs(q - mandatory) < 1e-12 for q in qs):
+                qs.append(mandatory)
+        qs.sort()
     return tuple(
         Candidate(order_quantity=q, service_level=sl) for sl in SL_GRID for q in qs
     )
+
+
+def _feasible_q_points(
+    inputs: HatInputs, lo: float, hi: float, anchors: tuple[float, ...],
+) -> list[float]:
+    """The Q axis over lots the supplier accepts, ascending and deduped.
+
+    Nothing below the MOQ is a candidate, so the span starts there when the MOQ
+    swallows its lower end, and keeps the unconstrained span's shape (hi/lo =
+    Q_SPAN_HI/Q_SPAN_LO) above it. With a case-pack multiple the axis is every
+    legal lot in the span (`feasible_lots`), widened upward to at least
+    MIN_FEASIBLE_Q_POINTS lots and thinned to at most MAX_FEASIBLE_Q_POINTS;
+    with only an MOQ the legal set is continuous above it and the axis stays
+    the usual 25 linear points. Each anchor joins as its feasible neighbours --
+    the lot above it and, when one exists, the lot below -- which is where
+    `baseline_plan` lands, so the grid always contains the baseline.
+    """
+    terms = inputs.lot_terms
+    lo = max(lo, inputs.minimum_order_quantity)
+    hi = max(hi, lo * Q_SPAN_HI / Q_SPAN_LO)
+    if inputs.order_multiple > 0:
+        qs = feasible_lots(lo, hi, **terms)
+        while len(qs) < MIN_FEASIBLE_Q_POINTS:
+            hi += inputs.order_multiple * (MIN_FEASIBLE_Q_POINTS - len(qs))
+            qs = feasible_lots(lo, hi, **terms)
+        if len(qs) > MAX_FEASIBLE_Q_POINTS:
+            n = len(qs)
+            qs = [qs[round(i * (n - 1) / (MAX_FEASIBLE_Q_POINTS - 1))]
+                  for i in range(MAX_FEASIBLE_Q_POINTS)]
+    else:
+        qs = [lo + i * (hi - lo) / (N_Q_POINTS - 1) for i in range(N_Q_POINTS)]
+    for anchor in anchors:
+        for q in feasible_neighbours(anchor, **terms):
+            if q is not None and not any(abs(x - q) <= 1e-9 * max(1.0, q) for x in qs):
+                qs.append(q)
+    qs.sort()
+    return qs
 
 
 # -- D3: shortage economics ------------------------------------------------------
@@ -325,16 +515,82 @@ def _expected_units_short_per_year(inputs: HatInputs, cand: Candidate) -> float:
     return cycles * sigma_l * float(normal_loss_standard(z))
 
 
+# -- Freight economics (the transporte hat) ----------------------------------------
+
+
+def freight_quote(inputs: HatInputs, order_quantity: float) -> ModeSelection:
+    """Cheapest feasible mode for ONE shipment of `order_quantity` units.
+
+    Q is the shipment: a replenishment policy that orders Q at a time moves Q at
+    a time. That is what makes freight a function of the SAME decision variable
+    the other four hats argue over, and it is why the curve is a SAWTOOTH rather
+    than a slope -- `src.logistics.modes` charges FTL by `ceil(weight/capacity)`,
+    so the unit that spills into a second half-empty truck costs what a whole
+    truck costs. A Q the comprador loves for hitting a price break can land on
+    the wrong side of that step.
+    """
+    f = inputs.freight
+    if f is None:
+        raise ValueError(
+            f"{inputs.sku}: transporte is not evaluable -- no FreightProfile declared. "
+            "It needs weight_kg_per_unit and distance_km, and there is no default for "
+            "either: a kilogram cannot be derived from a demand series. Use "
+            "evaluable_hats(inputs) to find out before asking for this KPI.")
+    return select_mode(
+        Shipment(
+            shipment_id=inputs.sku,
+            weight_kg=order_quantity * f.weight_kg_per_unit,
+            distance_km=f.distance_km,
+            units=order_quantity,
+        ),
+        f.effective_rates,
+        max_transit_days=f.max_transit_days,
+    )
+
+
+def freight_per_unit(inputs: HatInputs, cand: Candidate) -> float:
+    """cost_of_one_shipment(Q) / Q -- the operating ratio src.logistics.freight
+    ranks lanes by, here as a function of the policy instead of of history."""
+    return freight_quote(inputs, cand.order_quantity).recommended_cost / cand.order_quantity
+
+
+def annual_freight(inputs: HatInputs, cand: Candidate) -> float:
+    """(D/Q) * cost_of_one_shipment(Q).
+
+    Exactly `annual_demand * freight_per_unit`, so the two are ONE signal in two
+    units, not two pieces of evidence -- D is fixed across the grid. Flat in SL:
+    the same annual volume moves either way and this module models no expedite,
+    which is a declared limit of the utility, not an accident of it.
+    """
+    q = cand.order_quantity
+    return (inputs.annual_demand / q) * freight_quote(inputs, q).recommended_cost
+
+
+def freight_mode(inputs: HatInputs, cand: Candidate) -> str:
+    """The mode behind the number. Kept OUT of `hat_kpis` on purpose: that dict
+    is `dict[str, float]` and every consumer (acta rows, cross-impact deltas)
+    does arithmetic on its values."""
+    return freight_quote(inputs, cand.order_quantity).recommended_mode
+
+
 # -- The neutral judge (spec sec 5) -- values, never decides ------------------------
 
 
 def decision_cost(inputs: HatInputs, cand: Candidate) -> float:
-    """C(Q, SL) = D*c(Q) + K*D/Q + h_total*c(Q)*(Q/2 + SS(SL)) + p_short*E[short].
+    """C(Q, SL) = D*c(Q) + K*D/Q + h_total*c(Q)*(Q/2 + SS(SL)) + p_short*E[short]
+    + annual freight, the last term ONLY when a FreightProfile was declared.
 
-    Honesty note (spec sec 5): minimizing C directly would be a FIFTH policy with
+    Honesty note (spec sec 5): minimizing C directly would be one more policy with
     implicit weights baked into its coefficients. The hat model exists to make
     that trade-off explicit and auditable -- the judge only VALUES candidates so
     tension and settlements can be compared in $; it never picks the plan.
+
+    Why freight is conditional rather than always-on: with no profile there is no
+    freight number to add, and adding zero is not neutral -- it would tell the
+    judge this policy ships for free. Omitting the term instead keeps C exactly
+    what it has always been on a SKU with no transport facts, which is also why
+    the baseline equivalence against jobs/inventory_optimization.py (pinned by
+    tests/test_hats_valuation.py) still holds unchanged.
     """
     cfg = inputs.config
     c_q = unit_cost_at(inputs, cand.order_quantity)
@@ -342,7 +598,8 @@ def decision_cost(inputs: HatInputs, cand: Candidate) -> float:
     ordering = cfg.order_cost * inputs.annual_demand / cand.order_quantity
     holding = cfg.holding_rate * c_q * (cand.order_quantity / 2.0 + ss_units(inputs, cand.service_level))
     shortage = shortage_cost_per_unit(inputs) * _expected_units_short_per_year(inputs, cand)
-    return purchase + ordering + holding + shortage
+    freight = annual_freight(inputs, cand) if inputs.freight is not None else 0.0
+    return purchase + ordering + holding + shortage + freight
 
 
 def baseline_plan(inputs: HatInputs) -> Candidate:
@@ -354,10 +611,18 @@ def baseline_plan(inputs: HatInputs) -> Candidate:
     q = compute_eoq(
         inputs.annual_demand, cfg.holding_rate * inputs.unit_cost, cfg.order_cost,
     ).order_quantity
+    if inputs.lot_rule:
+        # Same call, same cost curve, same tie-break as the inventory job: the
+        # cheapest lot the supplier accepts around the EOQ.
+        q = cheapest_feasible_lot(
+            q, annual_demand=inputs.annual_demand,
+            holding_cost_per_unit=cfg.holding_rate * inputs.unit_cost,
+            fixed_order_cost=cfg.order_cost, **inputs.lot_terms,
+        ).chosen.quantity
     return Candidate(order_quantity=q, service_level=cfg.sl_target)
 
 
-# -- The four utilities (spec sec 4) -- higher is better -----------------------------
+# -- The utilities (spec sec 4) -- higher is better ---------------------------------
 
 
 def _u_comprador(inputs: HatInputs, cand: Candidate) -> float:
@@ -391,10 +656,16 @@ def _u_comercial(inputs: HatInputs, cand: Candidate) -> float:
         ss_units(inputs, cand.service_level), cand.order_quantity, sigma_l)
 
 
+def _u_transporte(inputs: HatInputs, cand: Candidate) -> float:
+    """-(annual freight at Q). Flat in SL, sawtooth in Q (see `freight_quote`)."""
+    return -annual_freight(inputs, cand)
+
+
 def utilities_raw(
     inputs: HatInputs, candidates: tuple[Candidate, ...],
 ) -> dict[str, tuple[float, ...]]:
-    """Raw utilities per hat, aligned with `candidates`.
+    """Raw utilities per hat, aligned with `candidates`. The returned dict has a
+    `transporte` key only when one is evaluable -- its keys are `evaluable_hats`.
 
     Planner (spec sec 4): candidates below sl_target get a FINITE penalty strictly
     below every valid candidate, ordered by deficit:
@@ -419,12 +690,15 @@ def utilities_raw(
             return _u_planner_valid(inputs, cand)
         return u_min_valid - (sl_target - cand.service_level) * range_valid
 
-    return {
+    out = {
         HAT_COMPRADOR: tuple(_u_comprador(inputs, c) for c in candidates),
         HAT_PLANNER: tuple(planner(c) for c in candidates),
         HAT_CFO: tuple(_u_cfo(inputs, c) for c in candidates),
         HAT_COMERCIAL: tuple(_u_comercial(inputs, c) for c in candidates),
     }
+    if inputs.freight is not None:
+        out[HAT_TRANSPORTE] = tuple(_u_transporte(inputs, c) for c in candidates)
+    return out
 
 
 # -- D2: min-max normalization ----------------------------------------------------
@@ -493,6 +767,16 @@ def hat_kpis(inputs: HatInputs, hat_key: str, cand: Candidate) -> dict[str, floa
             "fill_rate": _u_comercial(inputs, cand),
             "expected_units_short_per_year": _expected_units_short_per_year(inputs, cand),
         }
+    if hat_key == HAT_TRANSPORTE:
+        # Raises when no profile was declared -- never a zero freight, which would
+        # read as "this policy ships for free" instead of "nobody measured it".
+        sel = freight_quote(inputs, cand.order_quantity)
+        return {
+            "freight_per_unit_usd": sel.recommended_cost / cand.order_quantity,
+            "annual_freight_usd": (inputs.annual_demand / cand.order_quantity) * sel.recommended_cost,
+            "shipments_per_year": inputs.annual_demand / cand.order_quantity,
+            "transit_days": sel.transit_days,
+        }
     raise ValueError(f"unknown hat: {hat_key}")
 
 
@@ -501,6 +785,7 @@ _HEADLINE = {
     HAT_PLANNER: "policy_cost",
     HAT_CFO: "capital_charge_usd",
     HAT_COMERCIAL: "fill_rate",
+    HAT_TRANSPORTE: "freight_per_unit_usd",
 }
 
 
@@ -514,7 +799,10 @@ def headline_kpi(hat_key: str) -> str:
 
 @dataclass(frozen=True)
 class GridEvaluation:
-    """Everything both levels need, computed once per SKU."""
+    """Everything both levels need, computed once per SKU. The utility dicts are
+    keyed by `evaluable_hats(inputs)`, so iterating `HAT_KEYS` over them KeyErrors
+    on a SKU with no freight profile -- deliberately, rather than skipping the
+    area in silence."""
 
     candidates: tuple[Candidate, ...]
     judge_costs: tuple[float, ...]

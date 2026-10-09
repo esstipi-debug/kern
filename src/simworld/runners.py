@@ -171,7 +171,6 @@ def _oracle_order_for_sku(
     if n <= 0:
         return 0.0
 
-    margin = price - unit_cost
     weekly_holding = unit_cost * holding_rate / WEEKS_PER_YEAR
     demand = np.asarray(demand_full[t0:horizon], dtype=float)
     lead = np.asarray(real_lead_full[t0:horizon], dtype=int)
@@ -211,7 +210,10 @@ def _oracle_order_for_sku(
     c[:n_q] = unit_cost
     c[off_y:off_y + n_y] = order_cost
     c[off_I:off_I + n_I] = weekly_holding
-    c[off_s:off_s + n_s] = -margin * shortage_penalty_rate
+    # A PRICE, no a `margin`: el objetivo del MILP tiene que ser el mismo que
+    # `scorer.score_run` puntua, o el techo deja de ser el techo de lo que se mide.
+    # El porque del cambio esta en el bloque largo de `scorer.score_run`.
+    c[off_s:off_s + n_s] = -price * shortage_penalty_rate
 
     arrival_local = arrival[orderable] - t0
     A_eq = lil_matrix((n, n_vars))
@@ -317,9 +319,25 @@ def kern_policy(
     target: dict[str, float] = {}
     forecast: dict[str, float] = {}
     for rec in result.report.recommendations:
+        if rec.reorder_point is None:
+            # El motor se nego a dimensionar este SKU Y tampoco pudo cubrirlo (menos
+            # de `MIN_PERIODS_FOR_COVER` periodos, o sin costo usable). Se OMITE del
+            # plan: meterlo con 0 diria "el punto de reorden es cero", que
+            # `apply_policy` ejecuta igual -- no pedir nunca -- pero que en la traza es
+            # indistinguible de una politica deliberada de no reponer.
+            continue
+        # La TASA por periodo: el pronostico cuando hay politica, y la media MEDIDA
+        # cuando lo que hay es una cobertura provisional (`forecast` es `None` ahi a
+        # proposito: un pronostico es una extrapolacion que la compuerta de historia
+        # prohibe citar, y un promedio de lo vendido es una medicion). Sin este
+        # segundo caso el carril descartaria justamente las lineas que la cobertura
+        # existe para poder ejecutar.
+        tasa = rec.forecast if rec.forecast is not None else rec.observed_mean_per_period
+        if tasa is None:
+            continue
         rop = float(rec.reorder_point)
         reorder[rec.product_id] = rop
-        forecast[rec.product_id] = float(rec.forecast)
+        forecast[rec.product_id] = float(tasa)
         if rec.order_up_to is not None:
             target[rec.product_id] = float(rec.order_up_to)
         else:

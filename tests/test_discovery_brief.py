@@ -64,7 +64,7 @@ def test_order_cost_registra_su_default_por_sitio():
 def test_objection_thresholds_es_granular():
     s = spec_for("objection_thresholds")
     assert s is not None
-    assert s.subkeys == ("comprador", "planner", "cfo", "comercial")
+    assert s.subkeys == ("comprador", "planner", "cfo", "comercial", "transporte")
 
 
 def test_spec_for_devuelve_none_para_un_desconocido():
@@ -209,12 +209,13 @@ def test_objection_thresholds_parcial_es_amarillo_no_rojo():
     tool = _FakeTool("cross_impact", ("objection_thresholds",))
     (v,) = verdicts_for([tool], {"objection_thresholds": {"cfo": 1000.0, "planner": 500.0}})
     assert v.state == YELLOW
-    assert v.incomplete == (("objection_thresholds", ("comercial", "comprador")),)
+    assert v.incomplete == (
+        ("objection_thresholds", ("comercial", "comprador", "transporte")),)
 
 
 def test_objection_thresholds_completo_es_verde():
     tool = _FakeTool("cross_impact", ("objection_thresholds",))
-    completo = {k: 1.0 for k in ("comprador", "planner", "cfo", "comercial")}
+    completo = {k: 1.0 for k in ("comprador", "planner", "cfo", "comercial", "transporte")}
     (v,) = verdicts_for([tool], {"objection_thresholds": completo})
     assert v.state == GREEN
 
@@ -282,7 +283,8 @@ def test_objection_thresholds_parcial_dict_sigue_siendo_amarillo():
     (v,) = verdicts_for([tool], {"objection_thresholds": {"cfo": 1.0}})
     assert v.state == YELLOW
     assert v.malformed == ()
-    assert v.incomplete == (("objection_thresholds", ("comercial", "comprador", "planner")),)
+    assert v.incomplete == (
+        ("objection_thresholds", ("comercial", "comprador", "planner", "transporte")),)
 
 
 def test_declaracion_huerfana_con_valor_presente_no_bloquea():

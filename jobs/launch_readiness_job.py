@@ -53,6 +53,14 @@ _DEMAND_COLS = ("daily_demand", "demand", "demand_rate", "daily_sales", "run_rat
 _LEAD_COLS = ("lead_time_days", "lead_time", "leadtime", "lead")
 _DEMANDSTD_COLS = ("demand_std", "demand_sigma", "std_demand", "sigma_d")
 _LEADSTD_COLS = ("lead_time_std", "lead_std", "sigma_lead", "sigma_l")
+#: Lo ya comprado que todavia no llego. Mismo vocabulario que `jobs.intake.stock_position`,
+#: para que el cliente no tenga que renombrar una columna segun que tool la lea.
+_ONORDER_COLS = ("on_order", "en_transito", "en transito", "por_recibir", "oc_pendiente",
+                 "open_po", "incoming", "on order", "On Order")
+#: CUANDO llega. Sin esto el en-transito no se puede contar contra una FECHA de
+#: lanzamiento, que es lo unico que esta pregunta necesita saber.
+_ETA_COLS = ("on_order_eta", "eta", "expected_arrival", "arrival_date", "fecha_llegada",
+             "fecha_recepcion", "expected_date", "ETA")
 
 
 @dataclass(frozen=True)
@@ -68,6 +76,13 @@ class LaunchInput:
     lead_time_days: float = 0.0
     demand_std: float = 0.0
     lead_time_std: float = 0.0
+    #: Lo ya comprado que no llego, o ``None`` si el archivo NO LO TRAE. Nunca 0,0 por
+    #: omision: un cero diria "medido, y no viene nada".
+    on_order: float | None = None
+    #: Cuando llega eso. ``None`` = no se sabe, y entonces NO se cuenta -- pero se
+    #: nombra. Es la diferencia con el resto de los emisores: contra una FECHA de
+    #: lanzamiento, una cantidad sin fecha no puede afirmar que llega a tiempo.
+    on_order_eta: date | None = None
 
 
 @dataclass(frozen=True)
@@ -85,6 +100,14 @@ class LaunchLine:
     reorder_point: float | None
     exposure_gap_days: float | None
     on_hand: float | None
+    #: Lo que el archivo declaro en camino (``None`` = no lo trae).
+    on_order: float | None
+    #: De eso, lo que llega A TIEMPO (ETA <= fecha de lanzamiento). ``None`` cuando hay
+    #: cantidad pero no fecha: no se puede afirmar ni negar que llegue.
+    on_order_before_launch: float | None
+    #: ``on_hand`` mas lo que llega a tiempo. Es contra esto que se decide si hace falta
+    #: una orden NUEVA.
+    position_at_launch: float | None
     outcome: GuidedOutcome
     reason: str
 
@@ -106,6 +129,34 @@ def _pick(df: pd.DataFrame, override: object, candidates: tuple[str, ...]) -> st
     if override:
         return str(override) if str(override) in df.columns else None
     return next((c for c in candidates if c in df.columns), None)
+
+
+def _en_camino(fila, col) -> float | None:
+    """El en-transito de esta fila, o ``None`` si la columna no esta o esta vacia.
+
+    Un negativo se descarta como ausente: no existe un en-transito negativo, y dejarlo
+    pasar bajaria la posicion al lanzamiento y volveria a pintar de rojo lo que ya esta
+    comprado -- la direccion contraria a la de este arreglo.
+    """
+    if not col or not pd.notna(fila[col]):
+        return None
+    try:
+        valor = float(fila[col])
+    except (TypeError, ValueError):
+        return None
+    return valor if valor >= 0 else None
+
+
+def _eta(fila, col) -> date | None:
+    """La fecha de llegada, o ``None`` si no esta o no se puede leer. Una fecha ilegible
+    se trata como ausente -- y entonces el en-transito NO se cuenta -- en vez de
+    adivinarla."""
+    if not col or not pd.notna(fila[col]):
+        return None
+    try:
+        return _parse_date(fila[col])
+    except (ValueError, TypeError):
+        return None
 
 
 def _parse_date(value: object) -> date:
@@ -144,6 +195,9 @@ def prepare_records(campaigns: pd.DataFrame, inventory: pd.DataFrame,
             f"(columns seen: {list(inventory.columns)[:10]})")
     i_dstd = _pick(inventory, params.get("demand_std_col"), _DEMANDSTD_COLS)
     i_lstd = _pick(inventory, params.get("lead_std_col"), _LEADSTD_COLS)
+    # Opcionales las dos, y no se rellenan: sin columna el tool decide igual que antes.
+    i_oo = _pick(inventory, params.get("on_order_col"), _ONORDER_COLS)
+    i_eta = _pick(inventory, params.get("on_order_eta_col"), _ETA_COLS)
 
     inv_by_id = {str(r[i_prod]): r for _, r in inventory.iterrows()}
     records: list[LaunchInput] = []
@@ -172,7 +226,10 @@ def prepare_records(campaigns: pd.DataFrame, inventory: pd.DataFrame,
                 product_id=pid, launch_date=launch, lift_pct=lift, has_coverage=True,
                 on_hand=float(inv[i_on]), daily_demand=float(inv[i_dem]), lead_time_days=float(inv[i_lead]),
                 demand_std=float(inv[i_dstd]) if i_dstd and pd.notna(inv[i_dstd]) else 0.0,
-                lead_time_std=float(inv[i_lstd]) if i_lstd and pd.notna(inv[i_lstd]) else 0.0))
+                lead_time_std=float(inv[i_lstd]) if i_lstd and pd.notna(inv[i_lstd]) else 0.0,
+                # `None`, no 0.0: la ausencia de columna y "no viene nada" son distintas.
+                on_order=_en_camino(inv, i_oo),
+                on_order_eta=_eta(inv, i_eta)))
     if bad_lift:
         raise ValueError(
             f"expected_lift_pct must be a fraction (0.20 = +20%); suspicious value(s) > "
@@ -221,7 +278,8 @@ def _missing_data_line(inp: LaunchInput, days_until: float) -> LaunchLine:
         product_id=inp.product_id, launch_date=inp.launch_date.isoformat(), verdict=VERDICT_RED,
         lift_pct=inp.lift_pct, shaped_daily_demand=0.0, days_until_launch=days_until,
         lead_time_days=None, days_of_cover=None, reorder_point=None, exposure_gap_days=None,
-        on_hand=None, outcome=outcome, reason=reason)
+        on_hand=None, on_order=None, on_order_before_launch=None, position_at_launch=None,
+        outcome=outcome, reason=reason)
 
 
 def _degenerate_line(inp: LaunchInput, shaped: float, days_until: float) -> LaunchLine:
@@ -245,7 +303,42 @@ def _degenerate_line(inp: LaunchInput, shaped: float, days_until: float) -> Laun
         product_id=inp.product_id, launch_date=inp.launch_date.isoformat(), verdict=VERDICT_RED,
         lift_pct=inp.lift_pct, shaped_daily_demand=shaped, days_until_launch=days_until,
         lead_time_days=inp.lead_time_days, days_of_cover=None, reorder_point=None,
-        exposure_gap_days=None, on_hand=inp.on_hand, outcome=outcome, reason=reason)
+        exposure_gap_days=None, on_hand=inp.on_hand, on_order=inp.on_order,
+        on_order_before_launch=None, position_at_launch=None, outcome=outcome, reason=reason)
+
+
+def _llega_antes_del_lanzamiento(inp: LaunchInput) -> float | None:
+    """Del en-transito, lo que aterriza A TIEMPO. ``None`` = no se puede afirmar.
+
+    Es la diferencia entre este tool y los otros trece emisores del barrido. Los demas
+    netean una cantidad contra una posicion y les alcanza con ``on_order``; aca la
+    pregunta es contra una FECHA, y una cantidad sin fecha de llegada no puede decir si
+    sirve para el lanzamiento. Entonces:
+
+    - con ETA <= fecha de lanzamiento -> cuenta;
+    - con ETA posterior -> NO cuenta (llega tarde, y eso es una respuesta, no una duda);
+    - con cantidad y SIN ETA -> ``None``: no se cuenta y **se nombra**. Contarla seria
+      inventar una fecha; callarla seria el mismo defecto que este arreglo cierra, con
+      el signo cambiado.
+    """
+    if not inp.on_order or inp.on_order <= 0:
+        return None
+    if inp.on_order_eta is None:
+        return None
+    return inp.on_order if inp.on_order_eta <= inp.launch_date else 0.0
+
+
+def _nota_en_camino(inp: LaunchInput, a_tiempo: float | None) -> str:
+    """La frase que impide que el veredicto se lea como si el en-transito no existiera."""
+    if not inp.on_order or inp.on_order <= 0:
+        return ""
+    if a_tiempo is None:
+        return (f" NOTE: {inp.on_order:.0f} unit(s) already on order with NO arrival date - "
+                "not counted; add an ETA column to have them count.")
+    if a_tiempo <= 0:
+        return (f" NOTE: {inp.on_order:.0f} unit(s) on order arrive "
+                f"{inp.on_order_eta.isoformat()}, AFTER the launch - not counted.")
+    return ""
 
 
 def _assess_sku(inp: LaunchInput, *, service_level: float, as_of: date) -> LaunchLine:
@@ -262,24 +355,41 @@ def _assess_sku(inp: LaunchInput, *, service_level: float, as_of: date) -> Launc
     ss = safety_stock(demand_std_per_period=risk.demand_std,
                       cycle_service_level=service_level, risk_periods=1.0).safety_stock
     reorder_point = risk.mean_demand + ss
+    # La COBERTURA se mide sobre el estante -- son los dias que faltan para quedar
+    # fisicamente vacio, y una OC que todavia no llego no alimenta el mostrador hoy.
     days_of_cover = inp.on_hand / shaped
     exposure_gap = max(0.0, inp.lead_time_days - days_until)
+
+    # El VEREDICTO, en cambio, pregunta otra cosa: "¿llego listo al lanzamiento?". Ahi
+    # lo que ya esta comprado y aterriza ANTES de esa fecha si cuenta -- no hace falta
+    # una orden nueva para traerlo. Sin ETA no se puede afirmar que llegue a tiempo,
+    # asi que no se cuenta; pero tampoco se calla (ver `_nota_en_camino`).
+    en_camino_a_tiempo = _llega_antes_del_lanzamiento(inp)
+    position = inp.on_hand + (en_camino_a_tiempo or 0.0)
+    nota = _nota_en_camino(inp, en_camino_a_tiempo)
 
     common = dict(
         product_id=inp.product_id, launch_date=inp.launch_date.isoformat(), lift_pct=inp.lift_pct,
         shaped_daily_demand=shaped, days_until_launch=days_until, lead_time_days=inp.lead_time_days,
         days_of_cover=days_of_cover, reorder_point=reorder_point, exposure_gap_days=exposure_gap,
-        on_hand=inp.on_hand)
+        on_hand=inp.on_hand, on_order=inp.on_order,
+        on_order_before_launch=en_camino_a_tiempo, position_at_launch=position)
 
-    if days_of_cover >= days_until:
-        reason = (f"on-hand covers {days_of_cover:.0f} day(s) >= {days_until:.0f} to launch; "
-                  "ready without a reorder.")
+    cover_at_launch = position / shaped
+    if cover_at_launch >= days_until:
+        if en_camino_a_tiempo:
+            reason = (f"on-hand {inp.on_hand:.0f} plus {en_camino_a_tiempo:.0f} already on order "
+                      f"landing before launch cover {cover_at_launch:.0f} day(s) >= "
+                      f"{days_until:.0f} to launch; ready without a NEW reorder.{nota}")
+        else:
+            reason = (f"on-hand covers {days_of_cover:.0f} day(s) >= {days_until:.0f} to launch; "
+                      f"ready without a reorder.{nota}")
         return LaunchLine(**common, verdict=VERDICT_GREEN, reason=reason,
                           outcome=as_executed(f"{inp.product_id}: launch-ready. {reason}", confidence=0.9))
 
     if exposure_gap > 0:
         reason = (f"lead time {inp.lead_time_days:.0f}d exceeds {days_until:.0f}d to launch by "
-                  f"{exposure_gap:.0f}d - a reorder cannot land in time.")
+                  f"{exposure_gap:.0f}d - a reorder cannot land in time.{nota}")
         options = [
             ExecutionOption(
                 label=f"Delay the launch by ~{exposure_gap:.0f} day(s)", score=2.0, recommended=True,
@@ -312,7 +422,7 @@ def _assess_sku(inp: LaunchInput, *, service_level: float, as_of: date) -> Launc
     else:
         items, conf = [replace(limited, recommended=True), order_now], 0.6
     reason = (f"on-hand covers {days_of_cover:.0f}d < {days_until:.0f}d to launch, but lead time "
-              f"{inp.lead_time_days:.0f}d fits - a reorder can arrive in time.")
+              f"{inp.lead_time_days:.0f}d fits - a reorder can arrive in time.{nota}")
     outcome = as_options(f"{inp.product_id}: orderable before launch. {reason}", items, confidence=conf)
     return LaunchLine(**common, verdict=VERDICT_YELLOW, outcome=outcome, reason=reason)
 
@@ -380,6 +490,9 @@ def write_operational(report: LaunchReadinessReport, out_dir, client: str = "Cli
             "days_until_launch": round(line.days_until_launch, 1),
             "lead_time_days": fmt(line.lead_time_days),
             "days_of_cover": fmt(line.days_of_cover),
+            "on_order": fmt(line.on_order),
+            "on_order_before_launch": fmt(line.on_order_before_launch),
+            "position_at_launch": fmt(line.position_at_launch),
             "reorder_point": fmt(line.reorder_point),
             "exposure_gap_days": fmt(line.exposure_gap_days),
             "recommended_action": line.reason,

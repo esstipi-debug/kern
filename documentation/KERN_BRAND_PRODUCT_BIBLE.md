@@ -247,7 +247,7 @@ El núcleo determinístico funciona solo. Un `LLMProvider` (Claude) opcional afi
 | Área | Capacidades |
 |---|---|
 | **Demanda y clasificación** (3) | `abc_xyz` · `forecast` · `whatif` |
-| **Inventario y reposición** (11) | `inventory_optimization` · `newsvendor` · `multi_echelon` · `ddmrp` · `simulation` · `digital_twin` · `drp` · `odoo_replenishment` (lee/escribe en Odoo en vivo) · `excel_replenishment` (lee/escribe la planilla del cliente) · `hat_tension` (Mapa de Tensión de Decisión, 4 sombreros) · `hat_settlement` (Plan de Reposición Conciliado) |
+| **Inventario y reposición** (11) | `inventory_optimization` · `newsvendor` · `multi_echelon` · `ddmrp` · `simulation` · `digital_twin` · `drp` · `odoo_replenishment` (lee/escribe en Odoo en vivo) · `excel_replenishment` (lee/escribe la planilla del cliente) · `hat_tension` (Mapa de Tensión de Decisión, 5 sombreros) · `hat_settlement` (Plan de Reposición Conciliado) |
 | **Control y salud de inventario** (6) | `cycle_count` · `reconciliation` · `excess_obsolete` · `markdown_liquidation` · `fefo` · `data_quality` |
 | **Compras y sourcing** (4) | `sourcing` · `supplier_management` (Kraljic) · `landed_cost` · `acceptance_sampling` |
 | **Red y logística** (8) | `facility_location` · `network_design` (p-median multi-planta) · `transportation` · `vehicle_routing` · `warehouse_layout` (bodega 3D navegable) · `slotting` · `queuing` · `scheduling` |

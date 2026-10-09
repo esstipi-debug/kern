@@ -122,12 +122,18 @@ _SAMPLE = {
     # confuses the two still look correct.
     "price": "12.5", "lead_time_days": "14", "lead_time_std": "3.0",
     "revenue": "125.0",
+    # La fecha de fin de vida comercial del SKU (src/horizon.py). DELIBERADAMENTE lejos
+    # de `_DAY_ZERO`: esta prueba comprueba que la columna es OPCIONAL, no que el tope
+    # funcione, y una fecha cercana topearia la politica del fixture -- o, si cayera
+    # antes, saldria `expired` y la columna quedaria probada sobre el unico camino que
+    # NO la usa.
+    "end_date": (_DAY_ZERO + timedelta(days=3650)).isoformat(),
     # -- batch 2: inventory and replenishment policy ------------------------
     "mean_demand": "100.0", "std_demand": "20.0", "salvage_value": "2.0",
     "goodwill": "4.0", "lead_time_periods": "3", "holding_cost": "1.5",
     "order_cost": "75.0", "backorder_cost": "9.0", "review_period": "4",
     "safety_stock": "25", "lot_size": "50", "adu": "12.0", "dlt": "10",
-    "ltf": "0.5", "vf": "0.5", "moq": "40", "order_cycle_days": "7",
+    "ltf": "0.5", "vf": "0.5", "moq": "40", "order_multiple": "30", "order_cycle_days": "7",
     "on_order": "30", "qualified_demand": "15", "supplier": "PROV-1",
     "days_to_expiry": "45",
     # -- batch 3: warehouse, count and audit --------------------------------

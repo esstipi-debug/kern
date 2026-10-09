@@ -1,4 +1,13 @@
-"""Minimum-history gate: a SKU the engine barely knows must not receive a number.
+"""Minimum-history gate: a SKU the engine barely knows must not receive a POLICY.
+
+Desde el 2026-09-20 el gate tiene DOS lados y no uno, y este archivo fija los dos.
+Debajo de ``MIN_PERIODS_FOR_POLICY`` nunca sale una politica -- eso no se movio --,
+pero lo que sale en su lugar depende de si hay al menos una media que citar: debajo
+de ``MIN_PERIODS_FOR_COVER`` (2) la negativa entera, y entre los dos minimos una
+COBERTURA PROVISIONAL, que es la media medida sobre el periodo de riesgo SIN buffer
+(``src/risk_period.py::provisional_cover``, y ``tests/test_cobertura_provisional.py``
+para su contrato completo). Ninguna de las dos trae lote ni buffer, que es la
+invariante que separa "no es una politica" de "no hay nada".
 
 The defect this pins (audit finding A4): a SKU whose entire history was ONE sale
 came back with a confident purchase recommendation -- order quantity 35.3, safety
@@ -36,7 +45,11 @@ import pandas as pd
 import pytest
 
 from jobs import qa
-from jobs.inventory_optimization import run
+from jobs.inventory_optimization import (
+    MIN_PERIODS_FOR_COVER,
+    NOT_FULLY_SIZED_POLICY_KINDS,
+    run,
+)
 from src.connectors import InventoryLevel, Order, OrderLine, Product
 from src.connectors.replenish import plan_replenishment
 from src.forecasting import MIN_PERIODS_FOR_POLICY
@@ -85,8 +98,15 @@ def test_brand_new_sku_gets_no_quantity():
     assert thin.policy_kind == "insufficient_history"
     assert thin.order_quantity is None
     assert thin.order_up_to is None
-    assert thin.reorder_point == 0.0
-    assert thin.safety_stock == 0.0
+    # `None`, no 0.0, desde el 2026-09-19: un cero es un numero sobre el que un
+    # operador -- y `src/simworld/runners.py`, y el puente al Tower -- actua. La
+    # negativa tiene que estar en el CAMPO, no solo en `policy_kind` y en un
+    # residual. Ver tests/test_negativa_no_es_cero.py.
+    assert thin.forecast is None
+    assert thin.reorder_point is None
+    assert thin.safety_stock is None
+    assert thin.z_factor is None
+    # La inversion SI es cero, y medida: no se estaciona plata en este SKU.
     assert thin.investment == 0.0
     assert thin.status == "review"
     assert thin.n_periods == 1
@@ -126,11 +146,26 @@ def test_thin_sku_no_longer_looks_cleaner_than_the_well_known_one():
 
 
 @pytest.mark.parametrize("n", range(1, MIN_PERIODS_FOR_POLICY))
-def test_every_length_below_the_threshold_is_refused(n):
+def test_no_length_below_the_threshold_produces_a_POLICY(n):
+    """El gate en si no se movio: debajo del umbral nunca sale una politica.
+
+    Lo que cambio es QUE sale en su lugar, y son dos cosas. Las dos comparten
+    exactamente lo que las hace no-politicas: sin lote que optimizar (un EOQ sobre dos
+    observaciones finge conocer la curva) y sin buffer (no hay sigma con que
+    dimensionarlo). Afirmarlo sobre TODA la franja es lo que impide que un tercer
+    escalon futuro se cuele con un `safety_stock` adentro.
+    """
     report = _run(_portfolio(thin_periods=n))
     thin = {r.product_id: r for r in report.recommendations}["THIN"]
-    assert thin.policy_kind == "insufficient_history", f"{n} period(s) produced a policy"
+
+    esperado = ("insufficient_history" if n < MIN_PERIODS_FOR_COVER
+                else "provisional_cover")
+    assert thin.policy_kind == esperado, f"{n} period(s) produced {thin.policy_kind}"
+    assert thin.policy_kind in NOT_FULLY_SIZED_POLICY_KINDS
     assert thin.order_quantity is None
+    assert thin.safety_stock is None, "sin sigma no hay buffer, en ninguna de las dos"
+    assert thin.z_factor is None
+    assert qa.verify(report) == [], "las dos formas son un entregable valido"
 
 
 def test_at_the_threshold_a_policy_is_produced():

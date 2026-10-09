@@ -351,30 +351,59 @@ def test_oracle_orders_the_hand_computed_optimum_when_ordering_is_obviously_wort
     assert orders["SKU-X"] == pytest.approx(30.0)
 
 
-def test_oracle_accepts_a_shortage_when_covering_it_costs_more_than_it_saves():
-    """Task 7 MILP rewrite, test 2/8. Reference scenario from the brief:
-    unit_cost=5, price=10 (margin == unit_cost, the accounting break-even
-    point for this cost model -- buying a unit to avoid losing it costs
-    exactly as much as the shortage penalty it avoids, before even counting
-    holding or the fixed order cost), demand constant 10/week, lead=3,
-    on_hand=0. Covering the shortfall would require holding inventory for
-    multiple weeks (real cost) and paying the $75 fixed order fee, for zero
-    net accounting benefit -- so the genuinely cost-minimizing plan orders
-    NOTHING and accepts the loss. This is the exact property this whole task
-    revision exists to protect: a heuristic that always "covers the window"
-    would order the full 40 units (10/week x 4 weeks to the arrival week)
-    here regardless of whether it pays -- that is precisely what the OLD
-    myopic ``oracle_orders`` did (confirmed by replay against this scenario
-    before the rewrite: it returned 40.0, not 0.0).
+def test_oracle_cubre_cuando_cubrir_paga():
+    """El escenario de referencia del brief original, con el veredicto INVERTIDO
+    el 2026-09-18, y es la inversion deliberada que documenta el cambio de
+    modelo: unit_cost=5, price=10, demanda 10/semana, lead=3, on_hand=0.
 
-    Discriminates against a mutant that uses ``price`` instead of ``margin``
-    for the shortage-avoidance coefficient (``c[off_s:...] = -price`` instead
-    of ``-margin``) -- a very plausible real bug (conflating "the value of a
-    sale" with "the value of NOT losing a sale that was already going to
-    happen"). That mutant returns 70.0 for this exact scenario instead of 0.0
-    -- confirmed by replay (see task-7-report.md).
+    Hasta esa fecha el quiebre se valuaba a ``margin = price - unit_cost``, y con
+    margin == unit_cost este caso era el break-even contable: cubrir no ganaba
+    nada, asi que el plan optimo pedia CERO. Este mismo test afirmaba
+    ``orders == {}`` y trataba ``price`` como un mutante ("very plausible real
+    bug").
+
+    Estaba al reves, y la medicion esta en la nota larga de
+    ``src/simworld/scorer.py::score_run``: valuar la venta perdida a un margen
+    que ya viene neto de ``unit_cost`` resta ese costo DOS VECES, y hace que
+    servir sea contablemente peor que no servir en todo SKU con
+    ``price < 2*unit_cost`` -- el 42,86% del catalogo que ``generate_world``
+    sortea. El oraculo heredaba la asimetria y dejaba de comprar ese 42% entero.
+
+    Con el quiebre a ``price``, cubrir ahorra 10 por unidad y cuesta 5 mas
+    almacenaje mas los 75 fijos amortizados: conviene, y el plan pide las 70
+    unidades que cubren las 7 semanas alcanzables (llega en la 3).
+
+    Discrimina contra volver a ``margin``: ese mutante devuelve ``{}``.
     """
     sku = Sku(sku="SKU-Z", unit_cost=5.0, price=10.0, supplier_idx=0)
+    supplier = Supplier(name="P", promised_lead_weeks=3, otif=1.0)
+    demand = np.full((1, 10), 10.0)
+    real_lead = np.full((1, 10), 3, dtype=int)
+    w = World(seed=0, weeks=10, regime="seasonal_trend", skus=(sku,), suppliers=(supplier,),
+              demand=demand, real_lead_weeks=real_lead)
+    st = WorldState(week=0, on_hand=np.array([0.0]), in_transit=())
+    orders = oracle_orders(w, st)
+    assert orders["SKU-Z"] == pytest.approx(70.0)
+
+
+def test_oracle_accepts_a_shortage_when_covering_it_costs_more_than_it_saves():
+    """La propiedad que el test de arriba protegia sigue viva: el oraculo NO
+    cubre a cualquier precio. Lo que cambio es donde esta el equilibrio.
+
+    Con el quiebre valuado a ``price``, cubrir una unidad ahorra ``price`` y
+    cuesta ``unit_cost`` + almacenaje + los 75 fijos repartidos. Aca:
+    unit_cost=5, price=6, demanda 10/semana, lead=3, 10 semanas. El plan que
+    cubre pide 70 unidades (las 7 semanas alcanzables), ahorra 70*6 = 420 y
+    cuesta 70*5 = 350 de compra + 75 fijos + ~5,04 de almacenaje (210
+    unidad-semanas a 5*0,25/52) = 430,04. Pierde por ~10, asi que el plan
+    optimo pide NADA y se come el quiebre.
+
+    Es la mitad del contrato que el modelo nuevo tiene que seguir cumpliendo:
+    sin este test, el cambio de ``margin`` a ``price`` podria haberse leido como
+    "ahora cubrir siempre conviene", que es falso y seria un heuristico, no una
+    optimizacion. El otro lado lo fija ``test_oracle_cubre_cuando_cubrir_paga``.
+    """
+    sku = Sku(sku="SKU-Z", unit_cost=5.0, price=6.0, supplier_idx=0)
     supplier = Supplier(name="P", promised_lead_weeks=3, otif=1.0)
     demand = np.full((1, 10), 10.0)
     real_lead = np.full((1, 10), 3, dtype=int)

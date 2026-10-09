@@ -22,7 +22,15 @@ from src import excel_hygiene
 CANONICAL_REQUIRED = ("date", "product_id", "quantity")
 # ``revenue`` is detected but never emitted: it exists only to recover a real
 # unit cost (revenue / quantity) from files that carry money but no cost column.
-CANONICAL_OPTIONAL = ("unit_cost", "lead_time_days", "lead_time_std", "revenue")
+# ``moq`` and ``order_multiple`` are the supplier's terms (minimum order quantity,
+# case-pack multiple). Detected and emitted ONLY when the file carries them: a
+# file without them keeps the exact six-column frame it always produced, and a
+# SKU without a rule is a SKU without a rule, not one with an invented zero.
+CANONICAL_OPTIONAL = (
+    "unit_cost", "lead_time_days", "lead_time_std", "revenue", "moq", "order_multiple",
+)
+#: The two supplier-terms columns above, in the order they are appended.
+SUPPLIER_TERMS_COLUMNS = ("moq", "order_multiple")
 
 # Cuatro alias (`dia`, `producto`, `demanda`, `plazo_de_entrega`) vienen de
 # jobs/column_mapping.py, un segundo normalizador muerto -- sin un solo
@@ -103,6 +111,13 @@ ALIASES: dict[str, list[str]] = {
     #     `location`/`node` no van a ninguno -- los reclamaban `stage` y `branch`
     #     por igual, y elegir uno haria que una tool salga verde con el archivo
     #     de la otra.
+    # La fecha de fin de vida comercial del SKU: discontinuacion, fin de temporada,
+    # cierre de ventana promocional. Canonico propio y NUNCA alias de `date` ni de
+    # `receipt_date`: confundir "la fecha de esta fila" con "la fecha en que este
+    # producto deja de venderse" apagaria la reposicion de toda una cartera. Por eso la
+    # lista no acepta un `fecha` ni un `end` pelados -- o el archivo la nombra sin
+    # ambiguedad, o el SKU no trae fecha, que es el caso normal.
+    "end_date": ["end_date", "enddate", "end_of_life", "eol_date", "discontinuation_date", "discontinued_date", "discontinue_on", "sunset_date", "season_end", "season_end_date", "fecha_fin", "fecha_de_fin", "fecha_fin_venta", "fecha_discontinuacion", "fecha_descontinuacion", "fecha_baja", "fin_temporada", "fecha_fin_temporada", "data_fim", "data_descontinuacao"],
     "mean_demand": ["mean_demand", "mean", "avg_demand", "demand_mean", "expected_demand", "forecast"],
     "std_demand": ["std_demand", "std", "sigma", "demand_std", "stdev", "demand_sigma"],
     "salvage_value": ["salvage_value", "salvage"],
@@ -128,9 +143,27 @@ ALIASES: dict[str, list[str]] = {
     "dlt": ["dlt", "decoupled_lead_time"],
     "ltf": ["ltf", "lead_time_factor"],
     "vf": ["vf", "variability_factor"],
-    "moq": ["moq", "min_order_qty"],
+    # Terminos del proveedor. `moq` ya existia para intake_scan; ahora tambien lo
+    # emite el normalizador de demanda, junto con `order_multiple` (multiplo de
+    # caja / case pack). Los alias en espanol son los que exporta un maestro de
+    # proveedores de LatAm; "lote_minimo" es un minimo de pedido, no un lot_size.
+    "moq": ["moq", "min_order_qty", "minimum_order_quantity", "min_order_quantity",
+            "minimum_order_qty", "moq_units", "cantidad_minima", "cantidad_minima_pedido",
+            "pedido_minimo", "lote_minimo", "minimo_de_compra"],
+    "order_multiple": ["order_multiple", "order_multiples", "case_pack", "case_pack_qty",
+                       "pack_size", "units_per_case", "multiplo", "multiplo_de_pedido",
+                       "multiplo_pedido", "multiplo_de_caja", "unidades_por_caja",
+                       "lote_multiplo"],
     "order_cycle_days": ["order_cycle_days", "order_cycle", "order_cycle_period"],
-    "on_order": ["on_order", "open_po", "open_orders"],
+    # Stock ya comprado y en camino. Los encabezados salen de exports reales en los
+    # dos idiomas (los mismos que acepta jobs/excel_replenishment_job.py). "pedido"
+    # pelado NO esta, a proposito: es la columna de SALIDA de la planilla
+    # ("Pedir (Kern)") y un plan que la leyera como suministro entrante se netearia
+    # contra si mismo hasta colapsar a cero en la segunda corrida.
+    "on_order": ["on_order", "onorder", "on_order_qty", "qty_on_order", "open_po", "open_pos",
+                 "open_orders", "open_purchase_orders", "in_transit", "intransit", "inbound",
+                 "incoming", "en_transito", "stock_en_transito", "en_camino", "por_recibir",
+                 "oc_pendiente", "oc_pendientes", "oc_abierta", "oc_abiertas"],
     "qualified_demand": ["qualified_demand", "qualified", "open_demand", "sales_orders"],
     "lot_id": ["lot_id", "lot", "batch", "batch_id"],
     # "days" a secas queda afuera a proposito: es de la tupla de fefo, pero un
@@ -275,7 +308,79 @@ def _norm(value: object) -> str:
     return re.sub(r"[^a-z0-9]", "", folded)
 
 
+#: A slash/dash-delimited all-numeric date. Only these are ambiguous: an ISO
+#: date puts the year first and settles its own order.
+_SLASH_DATE_RE = re.compile(r"^\s*(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\s*$")
+
+
+def _slash_date_order(series: pd.Series) -> bool | None:
+    """Day-first or month-first for the SLASH dates in this column, or None.
+
+    A slash date whose FIRST component is > 12 can only be a day, and one whose
+    SECOND is > 12 can only be a month. Either settles the convention for the
+    whole column, because an export does not switch convention mid-column --
+    and one unambiguous row is enough to read every ambiguous one correctly.
+
+    This is what makes the narrow ``dayfirst`` below safe where a blanket one
+    was not (see ``_parse_dates``): the evidence comes from the slash dates
+    themselves, and the answer is applied to nothing else.
+
+    Returns None when no row decides (every slash date has both components
+    <= 12) or when rows CONTRADICT each other -- a column carrying both
+    "13/01" and "01/13" has no single convention, and guessing one would
+    corrupt half of it. The caller then falls back to per-value inference.
+    """
+    day_first = month_first = False
+    for value in series.dropna().astype(str):
+        match = _SLASH_DATE_RE.match(value)
+        if match is None:
+            continue
+        first, second = int(match.group(1)), int(match.group(2))
+        day_first |= first > 12
+        month_first |= second > 12
+    if day_first == month_first:
+        return None
+    return day_first
+
+
 def _parse_dates(series: pd.Series) -> pd.Series:
+    """Parse a date column, reading its slash-date convention from the column.
+
+    ``_parse_mixed`` below infers a format PER VALUE, which defaults an
+    ambiguous "06/01/2025" to month-first. That is a defensible reading of that
+    row alone -- and it was measured to be far more than one row's worth of
+    damage. On the scoreboard's cosmetic dirt level, a single ambiguous date
+    landing five months away stretched the resampled weekly grid from 4 periods
+    to 21, padded the rest with zeros that no one measured, and carried the
+    series across ``MIN_PERIODS_FOR_POLICY`` -- so the engine stopped REFUSING
+    to size and confidently emitted a policy ~70x too small, built on a series
+    it had invented. The declared blast radius was "one row mislabelled"; the
+    measured one was "the refusal gate stops firing".
+
+    So the order is read from the column instead of assumed: if any slash date
+    in it is unambiguous, its convention decides the ambiguous ones, and the
+    ``dayfirst`` is applied ONLY to slash-shaped values. That is the difference
+    from the reverted blanket ``dayfirst=True`` retry, which swapped month/day
+    on ~39% of ISO dates whenever a mixed column locked onto a slash format
+    first: ISO values never enter this path.
+    """
+    order = _slash_date_order(series)
+    if order is None:
+        return _parse_mixed(series)
+    text = series.astype(str)
+    is_slash = text.str.match(_SLASH_DATE_RE) & series.notna()
+    if not is_slash.any():
+        return _parse_mixed(series)
+    parsed = pd.Series(pd.NaT, index=series.index, dtype="datetime64[ns]")
+    parsed.loc[is_slash] = pd.to_datetime(
+        text[is_slash], errors="coerce", format="mixed", dayfirst=order)
+    rest = ~is_slash
+    if rest.any():
+        parsed.loc[rest] = _parse_mixed(series[rest])
+    return parsed
+
+
+def _parse_mixed(series: pd.Series) -> pd.Series:
     """Parse a date column, tolerating a genuinely mixed-format column.
 
     ``pd.to_datetime`` without ``format="mixed"`` locks onto whichever format
@@ -289,7 +394,9 @@ def _parse_dates(series: pd.Series) -> pd.Series:
     Known, accepted limitation: a slash-delimited date where BOTH components
     are <= 12 (e.g. "06/01/2025") is genuinely ambiguous without locale
     context, and this defaults to month-first (the international/US
-    convention) absent one. That is a narrow, honest ambiguity -- it never
+    convention) absent one. ``_parse_dates`` now supplies that context from
+    the column itself where the column contains it, so this default only
+    stands when NO slash date in the column is unambiguous. That is a narrow, honest ambiguity -- it never
     drops a row and it never corrupts an already-unambiguous date (ISO, or
     any slash date with a component > 12) the way an earlier, reverted
     ``dayfirst=True`` retry was found to do (it silently swapped month/day on
@@ -412,6 +519,11 @@ class IntakeQuality:
     # ``normalize()`` path and on hand-built records; ``normalize_tracked``
     # always fills it.
     reading: IntakeReading | None = None
+    # Canonical label -> the other spellings folded into it. Two codes that differ
+    # only in case or spacing are one product (``_fold_ids``), and merging them is
+    # the right default -- but a merge nobody can see is how a catalog that really
+    # distinguishes them loses a product without a single signal.
+    folded_ids: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
     @property
     def n_dropped(self) -> int:
@@ -768,6 +880,40 @@ def load_table(path: str | Path, *, aliases: AliasTable | None = None) -> pd.Dat
     return frame
 
 
+def _fold_ids(ids: pd.Series) -> tuple[pd.Series, tuple[tuple[str, tuple[str, ...]], ...]]:
+    """One product, one identity: fold spellings that differ only in case/spacing.
+
+    ``.str.strip()`` alone already handled " SKU-1", but not "sku-1" -- so a file
+    that writes the same code both ways became TWO products, each carrying half
+    the history. Measured on the scoreboard's cosmetic dirt level, that is not
+    cosmetic at all: 8 SKUs became 16, every series lost half its rows, and with
+    each twin below ``MIN_PERIODS_FOR_POLICY`` the engine sized from a fraction
+    of the real demand.
+
+    The label kept is the spelling that appears MOST, so the deliverable shows
+    the client the code as their file mostly writes it. Ties break
+    alphabetically rather than by row order: the same file has to produce the
+    same label twice, or two runs disagree about what a product is called.
+
+    What is folded is reported (``IntakeQuality.folded_ids``) and never assumed:
+    a catalog that really does distinguish "ab-100" from "AB-100" is rare but
+    possible, and the one thing that must not happen is merging them in silence.
+    """
+    if ids.empty:
+        return ids, ()
+    key = ids.str.casefold().str.replace(r"\s+", " ", regex=True)
+    label: dict[str, str] = {}
+    folded: list[tuple[str, tuple[str, ...]]] = []
+    for value, group in ids.groupby(key, sort=True):
+        counts = group.value_counts()
+        kept = sorted(counts.index[counts == counts.max()])[0]
+        label[value] = kept
+        others = tuple(sorted(set(group) - {kept}))
+        if others:
+            folded.append((kept, others))
+    return key.map(label), tuple(folded)
+
+
 def _normalize_core(
     df: pd.DataFrame,
     mapping: ColumnMapping,
@@ -788,7 +934,8 @@ def _normalize_core(
     m = mapping.mapping
     out = pd.DataFrame()
     out["date"] = _parse_dates(df[m["date"]])
-    out["product_id"] = df[m["product_id"]].astype(str).str.strip()
+    out["product_id"], folded_ids = _fold_ids(
+        df[m["product_id"]].astype(str).str.strip())
     out["quantity"] = _parse_quantities(df[m["quantity"]])
     if "unit_cost" in m:
         out["unit_cost"] = pd.to_numeric(df[m["unit_cost"]], errors="coerce")
@@ -806,6 +953,9 @@ def _normalize_core(
         out["lead_time_days"] = pd.to_numeric(df[m["lead_time_days"]], errors="coerce")
     if "lead_time_std" in m:
         out["lead_time_std"] = pd.to_numeric(df[m["lead_time_std"]], errors="coerce")
+    for col in SUPPLIER_TERMS_COLUMNS:
+        if col in m:
+            out[col] = pd.to_numeric(df[m[col]], errors="coerce")
 
     n_raw = len(out)
     after_date = out.dropna(subset=["date"])
@@ -819,6 +969,7 @@ def _normalize_core(
         n_dropped_bad_date=n_dropped_bad_date,
         n_dropped_bad_quantity=n_dropped_bad_quantity,
         n_dropped_negative_quantity=n_dropped_negative_quantity,
+        folded_ids=folded_ids,
     )
     if out.empty:
         raise ValueError("no usable rows after cleaning (check date/quantity columns)")
@@ -831,6 +982,11 @@ def _normalize_core(
         agg["lead_time_days"] = "median"
     if "lead_time_std" in out.columns:
         agg["lead_time_std"] = "median"
+    for col in SUPPLIER_TERMS_COLUMNS:
+        if col in out.columns:
+            # The strictest term seen wins: a SKU whose rows disagree on the MOQ
+            # has to be ordered to the largest one or some rows' supplier says no.
+            agg[col] = "max"
 
     grouped = out.groupby(["product_id", "bucket"], as_index=False).agg(agg).rename(columns={"bucket": "date"})
     synthesized: dict[str, int] = {}
@@ -851,6 +1007,12 @@ def _normalize_core(
     # 0.0 = "no dispersion known", which is what the engine assumed before this
     # column existed — so a file without it behaves exactly as it did.
     _fill("lead_time_std", 0.0)
+    # 0.0 = "no rule declared for this SKU". Only filled when the column exists:
+    # `_fill` on an absent column would ADD it and count every row as invented.
+    for col in SUPPLIER_TERMS_COLUMNS:
+        if col in grouped.columns:
+            _fill(col, 0.0)
+            grouped[col] = grouped[col].clip(lower=0.0)
 
     quality = replace(
         quality,
@@ -859,7 +1021,9 @@ def _normalize_core(
     )
 
     grouped = grouped.sort_values(["product_id", "date"]).reset_index(drop=True)
-    return grouped[["date", "product_id", "quantity", "unit_cost", "lead_time_days", "lead_time_std"]], quality
+    columns = ["date", "product_id", "quantity", "unit_cost", "lead_time_days", "lead_time_std"]
+    columns += [c for c in SUPPLIER_TERMS_COLUMNS if c in grouped.columns]
+    return grouped[columns], quality
 
 
 def normalize(
@@ -1010,6 +1174,207 @@ _NOTA_SIN_ENTREGA = (
     "Service measured from the file's own columns: {columnas}. Without a delivery date "
     "OTIF cannot be measured; fill rate can."
 )
+
+
+# -- posicion de inventario desde el archivo del cliente ---------------------------
+
+#: Las dos columnas de POSICION, que tampoco estan en ``CANONICAL_OPTIONAL`` y por la
+#: misma razon que el servicio: un stock es una FOTO, no un flujo. ``normalize_tracked``
+#: agrega por periodo, y sumar (o promediar) las existencias de cuatro semanas inventa
+#: un numero que ningun almacen tuvo. Las lee ``stock_position``: la ultima fila por
+#: SKU, en orden de fecha.
+POSITION_OPTIONAL = ("on_hand", "on_order")
+
+#: La fecha de fin de vida comercial por SKU. Fuera de `CANONICAL_OPTIONAL` por la misma
+#: razon que `on_hand`: aquellas son FLUJOS por periodo que `normalize_tracked` agrega, y
+#: esta es un ATRIBUTO del producto que se repite igual en cada fila.
+HORIZON_OPTIONAL = ("end_date",)
+
+_NOTA_POSICION_NETEADA = (
+    "Stock position read from the file's own columns: {columnas} (last row per SKU, as of "
+    "{fecha}). Order-now decisions are sized against on hand PLUS stock already on order, so "
+    "a purchase that transport delayed is not bought twice."
+)
+_NOTA_POSICION_SIN_TRANSITO = (
+    "Stock position read from the file's own columns: {columnas} (last row per SKU, as of "
+    "{fecha}). No on-order column was found, so the due-now list could NOT be netted against "
+    "open purchase orders: an order transport delayed looks like one that does not exist. "
+    "Check open POs by hand before cutting any of these orders, or add an on_order / "
+    "en_transito column."
+)
+
+
+def stock_position(
+    path: str | Path,
+    *,
+    overrides: dict[str, str] | None = None,
+    aliases: AliasTable | None = None,
+):
+    """La posicion de inventario por SKU que trae el archivo, o ``None`` si no trae stock.
+
+    El productor que le faltaba a ``jobs.inventory_optimization.run(on_hand_by_sku=...)``:
+    hasta aca el tool CSV dimensionaba ``s`` y ``Q`` y nunca miraba el estante, asi que no
+    podia decir CUANDO pedir -- y menos descontar lo que ya venia en camino (H4 de
+    ``documentation/KERN_DISRUPCIONES_Y_DESAJUSTES.md``).
+
+    Una fila por SKU con ``on_hand`` y ``on_order``. ``on_hand`` es obligatorio (sin
+    estante no hay posicion): sin esa columna se devuelve ``None``, no un frame vacio.
+    ``on_order`` queda en ``NaN`` -- que el consumidor lee como "nadie lo midio" -- cuando
+    el archivo no trae la columna o la celda del SKU esta vacia. Nunca ``0.0``: cero es
+    una medicion afirmada ("no hay nada en camino"), y la disciplina de
+    ``tests/test_neteo_en_transito.py`` es que la ausencia se declara, no se asume.
+
+    La foto es la ULTIMA fila de cada SKU en orden de fecha (las filas sin fecha van
+    primero, asi una fila fechada siempre gana). ``.attrs`` trae ``position_headers`` (que
+    columna del cliente fue cada campo), ``as_of`` (la fecha mas reciente) y
+    ``position_note`` (la frase que el entregable repite, incluida la advertencia de que
+    no pudo netear cuando no pudo).
+    """
+    raw = load_table(path, aliases=aliases)
+    mapeo = detect_columns(
+        raw, overrides, optional=CANONICAL_OPTIONAL + POSITION_OPTIONAL, aliases=aliases,
+    )
+    if not mapeo.ok or "on_hand" not in mapeo.mapping:
+        return None
+
+    presentes = {c: mapeo.mapping[c] for c in POSITION_OPTIONAL if c in mapeo.mapping}
+    frame = pd.DataFrame({
+        "product_id": raw[mapeo.mapping["product_id"]].astype(str).str.strip(),
+        "date": _parse_dates(raw[mapeo.mapping["date"]]),
+        "on_hand": pd.to_numeric(raw[presentes["on_hand"]], errors="coerce"),
+    })
+    if "on_order" in presentes:
+        on_order = pd.to_numeric(raw[presentes["on_order"]], errors="coerce")
+        # Un en-transito negativo no es una medicion de nada.
+        frame["on_order"] = on_order.where(on_order >= 0)
+    else:
+        frame["on_order"] = float("nan")
+    frame = frame[frame["product_id"].ne("") & ~frame["product_id"].str.lower().isin(("nan", "none"))]
+    frame = frame.sort_values(["product_id", "date"], na_position="first", kind="stable")
+    ultimo = (
+        frame.groupby("product_id", sort=True)
+        .agg(on_hand=("on_hand", "last"), on_order=("on_order", "last"), as_of=("date", "max"))
+        .dropna(subset=["on_hand"])
+        .reset_index()
+    )
+    if ultimo.empty:
+        return None
+    fecha = ultimo["as_of"].max()
+    fecha_txt = fecha.strftime("%Y-%m-%d") if pd.notna(fecha) else "undated rows"
+    columnas = ", ".join(f"{k} <- '{v}'" for k, v in sorted(presentes.items()))
+    plantilla = _NOTA_POSICION_NETEADA if "on_order" in presentes else _NOTA_POSICION_SIN_TRANSITO
+    ultimo.attrs["position_headers"] = dict(presentes)
+    ultimo.attrs["as_of"] = fecha_txt
+    ultimo.attrs["position_note"] = plantilla.format(columnas=columnas, fecha=fecha_txt)
+    return ultimo
+
+
+def position_maps(frame) -> tuple[dict[str, float] | None, dict[str, float] | None]:
+    """``(on_hand_by_sku, on_order_by_sku)`` en la forma que consume el job.
+
+    ``on_order_by_sku`` es ``None`` -- no ``{}`` -- cuando el archivo no traia la columna:
+    un mapa vacio se lee como "medido, y es cero en todos". Un SKU con la celda vacia
+    simplemente no esta en el mapa, y el job lo reporta como no medido.
+    """
+    if frame is None:
+        return None, None
+    on_hand = {
+        str(r.product_id): float(r.on_hand)
+        for r in frame.itertuples(index=False) if not math.isnan(float(r.on_hand))
+    }
+    if "on_order" not in frame.attrs.get("position_headers", {}):
+        return on_hand, None
+    on_order = {
+        str(r.product_id): float(r.on_order)
+        for r in frame.itertuples(index=False) if not math.isnan(float(r.on_order))
+    }
+    return on_hand, on_order
+
+
+_NOTA_HORIZONTE = (
+    "Per-SKU end-of-life dates read from '{columna}': {n} of {total} SKUs carry one. "
+    "The rest are sized without a horizon cap."
+)
+
+
+def sku_end_dates(
+    path: str | Path,
+    *,
+    overrides: dict[str, str] | None = None,
+    aliases: AliasTable | None = None,
+):
+    """La fecha de fin de vida comercial por SKU que trae el archivo, o ``None``.
+
+    El productor de `src/horizon.py`: discontinuacion, fin de temporada o cierre de
+    ventana promocional. Sin esa columna devuelve ``None`` -- no un frame vacio --,
+    porque un mapa vacio se lee como "medido, y ningun SKU tiene fecha", y lo que pasa es
+    que nadie la declaro. Un SKU con la celda vacia simplemente no entra: la mayoria de
+    una cartera real no trae fecha y eso NO es un problema del archivo.
+
+    Una fecha ILEGIBLE se descarta y se cuenta aparte en ``.attrs['unparsed']``; no se
+    reemplaza por hoy ni por la ultima fecha del historico. Un reloj como fallback
+    silencioso convertiria un typo en un tope sobre un SKU que sigue vendiendo, que es
+    justo el modo de falla que `src.horizon.cap_policy` existe para no tener.
+
+    Gana la ULTIMA fila fechada del SKU -- la misma regla que ``stock_position``, una
+    sola para todo el archivo. Un SKU con DOS fechas distintas se cuenta en
+    ``.attrs['conflicting']``: ahi el archivo se contradice sobre cuando muere un
+    producto, y la superficie tiene que poder decirlo en vez de quedarse con una callada.
+    """
+    raw = load_table(path, aliases=aliases)
+    mapeo = detect_columns(
+        raw, overrides, optional=CANONICAL_OPTIONAL + HORIZON_OPTIONAL, aliases=aliases,
+    )
+    if not mapeo.ok or "end_date" not in mapeo.mapping:
+        return None
+
+    columna = mapeo.mapping["end_date"]
+    crudo = raw[columna]
+    frame = pd.DataFrame({
+        "product_id": raw[mapeo.mapping["product_id"]].astype(str).str.strip(),
+        "date": _parse_dates(raw[mapeo.mapping["date"]]),
+        "end_date": _parse_dates(crudo),
+        # Una celda NO VACIA que no se pudo parsear: el unico caso que vale contar
+        # aparte. Una celda vacia es la ausencia normal y no se reporta como defecto.
+        "_ilegible": crudo.map(lambda v: _texto_o_none(v) is not None) & _parse_dates(crudo).isna(),
+    })
+    frame = frame[
+        frame["product_id"].ne("")
+        & ~frame["product_id"].str.lower().isin(("nan", "none"))
+    ]
+    total = int(frame["product_id"].nunique())
+    ilegibles = int(frame.loc[frame["_ilegible"], "product_id"].nunique())
+    con_fecha = frame.dropna(subset=["end_date"])
+    if con_fecha.empty:
+        return None
+
+    contradictorios = int((con_fecha.groupby("product_id")["end_date"].nunique() > 1).sum())
+    ultimo = (
+        con_fecha.sort_values(["product_id", "date"], na_position="first", kind="stable")
+        .groupby("product_id", sort=True)["end_date"]
+        .last()
+        .reset_index()
+    )
+    ultimo.attrs["end_date_header"] = columna
+    ultimo.attrs["n_products"] = total
+    ultimo.attrs["unparsed"] = ilegibles
+    ultimo.attrs["conflicting"] = contradictorios
+    ultimo.attrs["horizon_note"] = _NOTA_HORIZONTE.format(
+        columna=columna, n=len(ultimo), total=total,
+    )
+    return ultimo
+
+
+def end_date_map(frame) -> dict[str, object] | None:
+    """``{product_id: Timestamp}`` en la forma que consume el job, o ``None``.
+
+    ``None`` -- no ``{}`` -- cuando el archivo no traia la columna, por la misma razon
+    que ``position_maps`` devuelve ``None`` para el en-transito ausente: un mapa vacio
+    afirma que se midio.
+    """
+    if frame is None:
+        return None
+    return {str(r.product_id): r.end_date for r in frame.itertuples(index=False)}
 
 
 def _texto_o_none(valor: object) -> str | None:

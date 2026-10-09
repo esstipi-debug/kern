@@ -14,7 +14,8 @@ Either way no task ends in a dead end. Pure orchestration over the existing engi
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import date, datetime
 
 from nosilo_core.guided import GuidedOutcome, HandoffPacket, Residual, as_executed, as_handoff
 from nosilo_core.writeback import Changeset
@@ -45,6 +46,13 @@ class ReplenishmentLine:
     #: The position the quantity was sized against - ``on_hand + on_order``.
     #: ``None`` on refused lines, which were never sized at all.
     position: float | None = None
+    #: Units per CALENDAR day over the observed window (:func:`daily_demand_by_sku`),
+    #: which is NOT ``forecast_per_period``: that one's period is an order-DAY. The
+    #: distinction only shows up on an intermittent SKU, and there it is large. ``None``
+    #: when no usable order date was found - never ``0.0``, which would read as "measured,
+    #: and it does not sell". Emitted for consumers that reason in days: days of cover,
+    #: the Tower's ``stock`` state domain.
+    avg_daily_demand: float | None = None
 
 
 @dataclass(frozen=True)
@@ -53,6 +61,32 @@ class ReplenishmentPlan:
     restock: dict[str, float]          # only the SKUs that need topping up
     outcome: GuidedOutcome             # handoff packet (or executed when nothing's needed)
     changeset: Changeset | None        # staged dry-run, when a writable store was provided
+    #: The realized demand this plan forecast from, WITH its dates
+    #: (:func:`demand_points_by_sku`), carried out so a caller does not have to read the
+    #: backend's orders a SECOND time to get it. It is what ``jobs/state_bridge.py``
+    #: writes as the Tower's ``actual_qty`` outcomes: without a producer of realized
+    #: demand, ``forecast_error_out_of_band`` can never fire in production, because
+    #: ``forecast_cycle.freeze`` only ever writes the FORECAST. The dates travel because
+    #: whoever reads those outcomes back has to forecast on them, and a point with an
+    #: invented date is a point that cannot be audited against the ERP.
+    demand_points: dict[str, tuple[tuple[str, float], ...]] = field(default_factory=dict)
+
+
+def demand_points_by_sku(orders: list[Order]) -> dict[str, list[tuple[str, float]]]:
+    """``(fecha, cantidad)`` por SKU, sumado dentro de cada fecha y ordenado por fecha.
+
+    Es la fuente de :func:`demand_by_sku`, separada porque la fecha NO es descartable
+    para todo consumidor: quien escribe la demanda realizada en la memoria del Tower
+    (``jobs/state_bridge.py``) la necesita, y numerar los puntos ``p0001, p0002, ...``
+    obligaria despues a inventarles un dia para poder pronosticar sobre ellos. La serie
+    sin fechas alcanza para pronosticar y no para nada que se archive.
+    """
+    by_date: dict[str, dict[str, float]] = {}
+    for order in orders:
+        for line in order.lines:
+            bucket = by_date.setdefault(line.sku, {})
+            bucket[order.created_at] = bucket.get(order.created_at, 0.0) + line.quantity
+    return {sku: [(d, dates[d]) for d in sorted(dates)] for sku, dates in by_date.items()}
 
 
 def demand_by_sku(orders: list[Order]) -> dict[str, list[float]]:
@@ -62,12 +96,54 @@ def demand_by_sku(orders: list[Order]) -> dict[str, list[float]]:
     Un guion bajo importado desde otro modulo no protege nada -- solo avisa mal.
     El alias `_demand_by_sku` se conserva por si algo interno lo nombraba asi.
     """
-    by_date: dict[str, dict[str, float]] = {}
+    return {sku: [qty for _date, qty in points]
+            for sku, points in demand_points_by_sku(orders).items()}
+
+
+def _order_date(raw: object) -> date | None:
+    """La fecha de un pedido, tolerando los dos formatos que emiten los conectores.
+
+    Odoo escribe ``"2026-01-07"`` y Shopify ``"2026-01-07T10:00:00Z"``. Una fecha que
+    no parsea devuelve ``None`` y su pedido se descarta del calculo de la tasa diaria
+    -- descartar una observacion es honesto, inventarle una fecha no.
+    """
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    try:
+        return datetime.fromisoformat(raw.strip().replace("Z", "+00:00")).date()
+    except ValueError:
+        return None
+
+
+def daily_demand_by_sku(orders: list[Order]) -> dict[str, float]:
+    """Unidades por dia CALENDARIO, por SKU, sobre la ventana observada.
+
+    No es :func:`demand_by_sku` dividido por su largo, y la diferencia importa. Esa
+    serie agrega por FECHA CON PEDIDOS: su periodo es un dia-con-pedidos, no un dia.
+    Para un SKU que vende casi todos los dias las dos cosas coinciden; para uno
+    intermitente -- tres pedidos en dos meses -- el promedio por punto sobre-estima la
+    tasa diaria varias veces. Y esa tasa es justo con la que el Tower calcula dias de
+    cobertura (``scm_agent/monitors.py``): sobre-estimarla dispara falsas alarmas de
+    quiebre sobre stock que alcanza de sobra.
+
+    Ventana: del primer al ultimo dia con pedidos, inclusive (un solo dia da 1, no 0).
+    Un SKU sin ninguna fecha usable NO entra al mapa -- ausente, nunca ``0.0``, que
+    seria "medido, y no vende".
+    """
+    totals: dict[str, float] = {}
+    spans: dict[str, tuple[date, date]] = {}
     for order in orders:
+        when = _order_date(order.created_at)
+        if when is None:
+            continue
         for line in order.lines:
-            bucket = by_date.setdefault(line.sku, {})
-            bucket[order.created_at] = bucket.get(order.created_at, 0.0) + line.quantity
-    return {sku: [dates[d] for d in sorted(dates)] for sku, dates in by_date.items()}
+            totals[line.sku] = totals.get(line.sku, 0.0) + float(line.quantity)
+            first, last = spans.get(line.sku, (when, when))
+            spans[line.sku] = (min(first, when), max(last, when))
+    return {
+        sku: totals[sku] / ((last - first).days + 1)
+        for sku, (first, last) in spans.items()
+    }
 
 
 def _refusal_residual(refused: tuple[str, ...]) -> Residual:
@@ -157,7 +233,14 @@ def plan_replenishment(
     prevent.
     """
     on_hand = {lvl.sku: lvl.available for lvl in source.inventory_levels()}
-    series = demand_by_sku(source.orders())
+    orders = source.orders()
+    points = demand_points_by_sku(orders)
+    series = {sku: [qty for _date, qty in pts] for sku, pts in points.items()}
+    # La misma lectura de pedidos, en la otra unidad. El plan razona en periodos
+    # (un dia-con-pedidos); quien cuenta dias de cobertura necesita dias calendario,
+    # y derivar uno del otro dividiendo por la cantidad de puntos seria el error que
+    # `daily_demand_by_sku` documenta.
+    daily = daily_demand_by_sku(orders)
 
     lines: list[ReplenishmentLine] = []
     restock: dict[str, float] = {}
@@ -176,6 +259,10 @@ def plan_replenishment(
             lines.append(ReplenishmentLine(
                 sku, current, 0.0, 0.0, 0.0,
                 status="insufficient_history", n_observations=len(history),
+                # La tasa diaria SI se mide sobre lo poco que hay: no alcanza para
+                # pronosticar (que es lo que esta linea rechaza) y alcanza de sobra
+                # para decir a que ritmo se consume el estante.
+                avg_daily_demand=daily.get(sku),
             ))
             refused.append(sku)
             continue
@@ -190,7 +277,7 @@ def plan_replenishment(
         qty = max(0.0, round(target - position, 1))
         lines.append(ReplenishmentLine(
             sku, current, forecast, target, qty, n_observations=len(history),
-            on_order=on_order, position=position,
+            on_order=on_order, position=position, avg_daily_demand=daily.get(sku),
         ))
         if qty > 0:
             restock[sku] = qty
@@ -205,6 +292,7 @@ def plan_replenishment(
         restock=restock,
         outcome=_packet(restock, changeset, tuple(refused)),
         changeset=changeset,
+        demand_points={sku: tuple(pts) for sku, pts in points.items()},
     )
 
 

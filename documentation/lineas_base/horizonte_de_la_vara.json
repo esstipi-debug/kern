@@ -1,0 +1,636 @@
+{
+  "parametros": {
+    "colas": [
+      0,
+      12,
+      24
+    ],
+    "n_proveedores": 2,
+    "n_skus": 8,
+    "nivel": 0,
+    "replan": 4,
+    "semillas": [
+      1000,
+      1001,
+      1002,
+      1003,
+      1004
+    ],
+    "ventana_puntuada": 24
+  },
+  "por_semilla": [
+    {
+      "por_cola": {
+        "0": {
+          "kern": {
+            "a_costo": 14933.45747457818,
+            "a_precio": 35305.87528330374,
+            "canieria_a_costo": 2611.7025741876178,
+            "costo": 190653.60377161996,
+            "estante_a_costo": 12321.75490039056,
+            "unidades": 409.2833346565643,
+            "unidades_canieria": 140.96329904297423,
+            "unidades_estante": 268.32003561359005
+          },
+          "piso": {
+            "a_costo": 20051.9175,
+            "a_precio": 48125.265,
+            "canieria_a_costo": 10035.755,
+            "costo": 186637.92328125,
+            "estante_a_costo": 10016.162499999999,
+            "unidades": 494.75,
+            "unidades_canieria": 299.5,
+            "unidades_estante": 195.25
+          },
+          "techo": {
+            "a_costo": 0.0,
+            "a_precio": 0.0,
+            "canieria_a_costo": 0.0,
+            "costo": 132599.67716346154,
+            "estante_a_costo": 0.0,
+            "unidades": 0.0,
+            "unidades_canieria": 0.0,
+            "unidades_estante": 0.0
+          }
+        },
+        "12": {
+          "kern": {
+            "a_costo": 14933.45747457818,
+            "a_precio": 35305.87528330374,
+            "canieria_a_costo": 2611.7025741876178,
+            "costo": 190653.60377161996,
+            "estante_a_costo": 12321.75490039056,
+            "unidades": 409.2833346565643,
+            "unidades_canieria": 140.96329904297423,
+            "unidades_estante": 268.32003561359005
+          },
+          "piso": {
+            "a_costo": 20051.9175,
+            "a_precio": 48125.265,
+            "canieria_a_costo": 10035.755,
+            "costo": 186637.92328125,
+            "estante_a_costo": 10016.162499999999,
+            "unidades": 494.75,
+            "unidades_canieria": 299.5,
+            "unidades_estante": 195.25
+          },
+          "techo": {
+            "a_costo": 29477.149999999998,
+            "a_precio": 72366.87,
+            "canieria_a_costo": 15462.5,
+            "costo": 162635.4420673077,
+            "estante_a_costo": 14014.650000000001,
+            "unidades": 837.0,
+            "unidades_canieria": 307.0,
+            "unidades_estante": 530.0
+          }
+        },
+        "24": {
+          "kern": {
+            "a_costo": 14933.45747457818,
+            "a_precio": 35305.87528330374,
+            "canieria_a_costo": 2611.7025741876178,
+            "costo": 190653.60377161996,
+            "estante_a_costo": 12321.75490039056,
+            "unidades": 409.2833346565643,
+            "unidades_canieria": 140.96329904297423,
+            "unidades_estante": 268.32003561359005
+          },
+          "piso": {
+            "a_costo": 20051.9175,
+            "a_precio": 48125.265,
+            "canieria_a_costo": 10035.755,
+            "costo": 186637.92328125,
+            "estante_a_costo": 10016.162499999999,
+            "unidades": 494.75,
+            "unidades_canieria": 299.5,
+            "unidades_estante": 195.25
+          },
+          "techo": {
+            "a_costo": 27714.05,
+            "a_precio": 68092.06,
+            "canieria_a_costo": 16354.649999999998,
+            "costo": 160844.01451923078,
+            "estante_a_costo": 11359.400000000001,
+            "unidades": 831.0,
+            "unidades_canieria": 327.0,
+            "unidades_estante": 504.0
+          }
+        }
+      },
+      "seed": 1000
+    },
+    {
+      "por_cola": {
+        "0": {
+          "kern": {
+            "a_costo": 49153.192322352756,
+            "a_precio": 101464.93262181414,
+            "canieria_a_costo": 35165.972983069645,
+            "costo": 236556.26681571902,
+            "estante_a_costo": 13987.219339283114,
+            "unidades": 1186.3179957397213,
+            "unidades_canieria": 556.7762801131411,
+            "unidades_estante": 629.5417156265803
+          },
+          "piso": {
+            "a_costo": 31591.8275,
+            "a_precio": 65033.962499999994,
+            "canieria_a_costo": 28211.5875,
+            "costo": 227036.18036057695,
+            "estante_a_costo": 3380.24,
+            "unidades": 781.75,
+            "unidades_canieria": 676.5,
+            "unidades_estante": 105.25
+          },
+          "techo": {
+            "a_costo": 0.0,
+            "a_precio": 0.0,
+            "canieria_a_costo": 0.0,
+            "costo": 138300.60355769232,
+            "estante_a_costo": 0.0,
+            "unidades": 0.0,
+            "unidades_canieria": 0.0,
+            "unidades_estante": 0.0
+          }
+        },
+        "12": {
+          "kern": {
+            "a_costo": 49153.192322352756,
+            "a_precio": 101464.93262181414,
+            "canieria_a_costo": 35165.972983069645,
+            "costo": 236556.26681571902,
+            "estante_a_costo": 13987.219339283114,
+            "unidades": 1186.3179957397213,
+            "unidades_canieria": 556.7762801131411,
+            "unidades_estante": 629.5417156265803
+          },
+          "piso": {
+            "a_costo": 31591.8275,
+            "a_precio": 65033.962499999994,
+            "canieria_a_costo": 28211.5875,
+            "costo": 227036.18036057695,
+            "estante_a_costo": 3380.24,
+            "unidades": 781.75,
+            "unidades_canieria": 676.5,
+            "unidades_estante": 105.25
+          },
+          "techo": {
+            "a_costo": 56324.90999999999,
+            "a_precio": 108950.98,
+            "canieria_a_costo": 40926.05,
+            "costo": 195504.5329807692,
+            "estante_a_costo": 15398.859999999999,
+            "unidades": 1339.0,
+            "unidades_canieria": 925.0,
+            "unidades_estante": 414.0
+          }
+        },
+        "24": {
+          "kern": {
+            "a_costo": 49153.192322352756,
+            "a_precio": 101464.93262181414,
+            "canieria_a_costo": 35165.972983069645,
+            "costo": 236556.26681571902,
+            "estante_a_costo": 13987.219339283114,
+            "unidades": 1186.3179957397213,
+            "unidades_canieria": 556.7762801131411,
+            "unidades_estante": 629.5417156265803
+          },
+          "piso": {
+            "a_costo": 31591.8275,
+            "a_precio": 65033.962499999994,
+            "canieria_a_costo": 28211.5875,
+            "costo": 227036.18036057695,
+            "estante_a_costo": 3380.24,
+            "unidades": 781.75,
+            "unidades_canieria": 676.5,
+            "unidades_estante": 105.25
+          },
+          "techo": {
+            "a_costo": 49849.729999999996,
+            "a_precio": 95712.27,
+            "canieria_a_costo": 35788.31,
+            "costo": 188917.86206730767,
+            "estante_a_costo": 14061.42,
+            "unidades": 1126.0,
+            "unidades_canieria": 796.0,
+            "unidades_estante": 330.0
+          }
+        }
+      },
+      "seed": 1001
+    },
+    {
+      "por_cola": {
+        "0": {
+          "kern": {
+            "a_costo": 26937.280122193377,
+            "a_precio": 50624.423718532504,
+            "canieria_a_costo": 23087.559073770986,
+            "costo": 169615.30208603473,
+            "estante_a_costo": 3849.7210484223915,
+            "unidades": 778.4791164951304,
+            "unidades_canieria": 589.9032315730675,
+            "unidades_estante": 188.5758849220629
+          },
+          "piso": {
+            "a_costo": 21057.685,
+            "a_precio": 39750.07000000001,
+            "canieria_a_costo": 17822.72,
+            "costo": 162039.87280048078,
+            "estante_a_costo": 3234.965,
+            "unidades": 397.5,
+            "unidades_canieria": 291.25,
+            "unidades_estante": 106.25
+          },
+          "techo": {
+            "a_costo": 0.0,
+            "a_precio": 0.0,
+            "canieria_a_costo": 0.0,
+            "costo": 113857.45153846154,
+            "estante_a_costo": 0.0,
+            "unidades": 0.0,
+            "unidades_canieria": 0.0,
+            "unidades_estante": 0.0
+          }
+        },
+        "12": {
+          "kern": {
+            "a_costo": 26937.280122193377,
+            "a_precio": 50624.423718532504,
+            "canieria_a_costo": 23087.559073770986,
+            "costo": 169615.30208603473,
+            "estante_a_costo": 3849.7210484223915,
+            "unidades": 778.4791164951304,
+            "unidades_canieria": 589.9032315730675,
+            "unidades_estante": 188.5758849220629
+          },
+          "piso": {
+            "a_costo": 21057.685,
+            "a_precio": 39750.07000000001,
+            "canieria_a_costo": 17822.72,
+            "costo": 162039.87280048078,
+            "estante_a_costo": 3234.965,
+            "unidades": 397.5,
+            "unidades_canieria": 291.25,
+            "unidades_estante": 106.25
+          },
+          "techo": {
+            "a_costo": 25682.85,
+            "a_precio": 48177.56,
+            "canieria_a_costo": 7670.950000000001,
+            "costo": 140039.98197115384,
+            "estante_a_costo": 18011.899999999998,
+            "unidades": 651.0,
+            "unidades_canieria": 101.0,
+            "unidades_estante": 550.0
+          }
+        },
+        "24": {
+          "kern": {
+            "a_costo": 26937.280122193377,
+            "a_precio": 50624.423718532504,
+            "canieria_a_costo": 23087.559073770986,
+            "costo": 169615.30208603473,
+            "estante_a_costo": 3849.7210484223915,
+            "unidades": 778.4791164951304,
+            "unidades_canieria": 589.9032315730675,
+            "unidades_estante": 188.5758849220629
+          },
+          "piso": {
+            "a_costo": 21057.685,
+            "a_precio": 39750.07000000001,
+            "canieria_a_costo": 17822.72,
+            "costo": 162039.87280048078,
+            "estante_a_costo": 3234.965,
+            "unidades": 397.5,
+            "unidades_canieria": 291.25,
+            "unidades_estante": 106.25
+          },
+          "techo": {
+            "a_costo": 30073.58,
+            "a_precio": 56086.17,
+            "canieria_a_costo": 14086.150000000001,
+            "costo": 144474.93889423079,
+            "estante_a_costo": 15987.429999999998,
+            "unidades": 764.0,
+            "unidades_canieria": 173.0,
+            "unidades_estante": 591.0
+          }
+        }
+      },
+      "seed": 1002
+    },
+    {
+      "por_cola": {
+        "0": {
+          "kern": {
+            "a_costo": 33939.139686977505,
+            "a_precio": 71288.27731975753,
+            "canieria_a_costo": 16167.890188604142,
+            "costo": 356319.3652623888,
+            "estante_a_costo": 17771.249498373363,
+            "unidades": 807.7662763998264,
+            "unidades_canieria": 545.360876416715,
+            "unidades_estante": 262.4053999831114
+          },
+          "piso": {
+            "a_costo": 40514.58,
+            "a_precio": 88494.2775,
+            "canieria_a_costo": 25070.025,
+            "costo": 310232.7659375,
+            "estante_a_costo": 15444.555,
+            "unidades": 702.25,
+            "unidades_canieria": 432.5,
+            "unidades_estante": 269.75
+          },
+          "techo": {
+            "a_costo": 0.0,
+            "a_precio": 0.0,
+            "canieria_a_costo": 0.0,
+            "costo": 229385.43855769228,
+            "estante_a_costo": 0.0,
+            "unidades": 0.0,
+            "unidades_canieria": 0.0,
+            "unidades_estante": 0.0
+          }
+        },
+        "12": {
+          "kern": {
+            "a_costo": 33939.139686977505,
+            "a_precio": 71288.27731975753,
+            "canieria_a_costo": 16167.890188604142,
+            "costo": 356319.3652623888,
+            "estante_a_costo": 17771.249498373363,
+            "unidades": 807.7662763998264,
+            "unidades_canieria": 545.360876416715,
+            "unidades_estante": 262.4053999831114
+          },
+          "piso": {
+            "a_costo": 40514.58,
+            "a_precio": 88494.2775,
+            "canieria_a_costo": 25070.025,
+            "costo": 310232.7659375,
+            "estante_a_costo": 15444.555,
+            "unidades": 702.25,
+            "unidades_canieria": 432.5,
+            "unidades_estante": 269.75
+          },
+          "techo": {
+            "a_costo": 32493.510000000002,
+            "a_precio": 67072.60999999999,
+            "canieria_a_costo": 12636.189999999999,
+            "costo": 262332.68379807693,
+            "estante_a_costo": 19857.32,
+            "unidades": 588.0,
+            "unidades_canieria": 224.0,
+            "unidades_estante": 364.0
+          }
+        },
+        "24": {
+          "kern": {
+            "a_costo": 33939.139686977505,
+            "a_precio": 71288.27731975753,
+            "canieria_a_costo": 16167.890188604142,
+            "costo": 356319.3652623888,
+            "estante_a_costo": 17771.249498373363,
+            "unidades": 807.7662763998264,
+            "unidades_canieria": 545.360876416715,
+            "unidades_estante": 262.4053999831114
+          },
+          "piso": {
+            "a_costo": 40514.58,
+            "a_precio": 88494.2775,
+            "canieria_a_costo": 25070.025,
+            "costo": 310232.7659375,
+            "estante_a_costo": 15444.555,
+            "unidades": 702.25,
+            "unidades_canieria": 432.5,
+            "unidades_estante": 269.75
+          },
+          "techo": {
+            "a_costo": 38845.12,
+            "a_precio": 81483.46,
+            "canieria_a_costo": 21175.48,
+            "costo": 268753.37086538464,
+            "estante_a_costo": 17669.64,
+            "unidades": 715.0,
+            "unidades_canieria": 363.0,
+            "unidades_estante": 352.0
+          }
+        }
+      },
+      "seed": 1003
+    },
+    {
+      "por_cola": {
+        "0": {
+          "kern": {
+            "a_costo": 25972.015694544705,
+            "a_precio": 59460.004682016195,
+            "canieria_a_costo": 14250.987442389716,
+            "costo": 257872.0610413276,
+            "estante_a_costo": 11721.028252154989,
+            "unidades": 649.2460782687758,
+            "unidades_canieria": 341.2281824462041,
+            "unidades_estante": 308.01789582257186
+          },
+          "piso": {
+            "a_costo": 20535.275,
+            "a_precio": 44270.582500000004,
+            "canieria_a_costo": 11650.5975,
+            "costo": 228168.62489182694,
+            "estante_a_costo": 8884.6775,
+            "unidades": 507.75,
+            "unidades_canieria": 283.25,
+            "unidades_estante": 224.5
+          },
+          "techo": {
+            "a_costo": 0.0,
+            "a_precio": 0.0,
+            "canieria_a_costo": 0.0,
+            "costo": 156536.69754807692,
+            "estante_a_costo": 0.0,
+            "unidades": 0.0,
+            "unidades_canieria": 0.0,
+            "unidades_estante": 0.0
+          }
+        },
+        "12": {
+          "kern": {
+            "a_costo": 25972.015694544705,
+            "a_precio": 59460.004682016195,
+            "canieria_a_costo": 14250.987442389716,
+            "costo": 257872.0610413276,
+            "estante_a_costo": 11721.028252154989,
+            "unidades": 649.2460782687758,
+            "unidades_canieria": 341.2281824462041,
+            "unidades_estante": 308.01789582257186
+          },
+          "piso": {
+            "a_costo": 20535.275,
+            "a_precio": 44270.582500000004,
+            "canieria_a_costo": 11650.5975,
+            "costo": 228168.62489182694,
+            "estante_a_costo": 8884.6775,
+            "unidades": 507.75,
+            "unidades_canieria": 283.25,
+            "unidades_estante": 224.5
+          },
+          "techo": {
+            "a_costo": 32040.75,
+            "a_precio": 71104.03,
+            "canieria_a_costo": 13203.249999999998,
+            "costo": 189149.29317307693,
+            "estante_a_costo": 18837.5,
+            "unidades": 846.0,
+            "unidades_canieria": 399.0,
+            "unidades_estante": 447.0
+          }
+        },
+        "24": {
+          "kern": {
+            "a_costo": 25972.015694544705,
+            "a_precio": 59460.004682016195,
+            "canieria_a_costo": 14250.987442389716,
+            "costo": 257872.0610413276,
+            "estante_a_costo": 11721.028252154989,
+            "unidades": 649.2460782687758,
+            "unidades_canieria": 341.2281824462041,
+            "unidades_estante": 308.01789582257186
+          },
+          "piso": {
+            "a_costo": 20535.275,
+            "a_precio": 44270.582500000004,
+            "canieria_a_costo": 11650.5975,
+            "costo": 228168.62489182694,
+            "estante_a_costo": 8884.6775,
+            "unidades": 507.75,
+            "unidades_canieria": 283.25,
+            "unidades_estante": 224.5
+          },
+          "techo": {
+            "a_costo": 49762.439999999995,
+            "a_precio": 114614.46,
+            "canieria_a_costo": 35446.28,
+            "costo": 206969.3854326923,
+            "estante_a_costo": 14316.159999999998,
+            "unidades": 1020.0,
+            "unidades_canieria": 731.0,
+            "unidades_estante": 289.0
+          }
+        }
+      },
+      "seed": 1004
+    }
+  ],
+  "rescate_sobre_lo_publicado": {
+    "kern": {
+      "0.00": -0.27623947911345204,
+      "0.25": -0.2758133756626926,
+      "0.50": -0.27581380001766187,
+      "0.75": -0.2763366226854528,
+      "1.00": -0.2775035313532248
+    },
+    "piso": {
+      "0.00": 0.0,
+      "0.25": 0.0,
+      "0.50": 0.0,
+      "0.75": 0.0,
+      "1.00": 0.0
+    },
+    "plazo_obs": {
+      "0.00": -0.25224438058885895,
+      "0.25": -0.23235961338296085,
+      "0.50": -0.21179057462148912,
+      "0.75": -0.19049450093172654,
+      "1.00": -0.1684259235876528
+    },
+    "proveedor_medido": {
+      "0.00": -0.22778232920362948,
+      "0.25": -0.19178251185523715,
+      "0.50": -0.15379655965288963,
+      "0.75": -0.11359885948462434,
+      "1.00": -0.07092325282560288
+    },
+    "servicio_econ": {
+      "0.00": -0.08750831890194849,
+      "0.25": -0.03243097761472178,
+      "0.50": 0.025512721954285,
+      "0.75": 0.08663949332461335,
+      "1.00": 0.1513239884681228
+    },
+    "sigma_obs": {
+      "0.00": -0.22609374936041254,
+      "0.25": -0.20618090875978784,
+      "0.50": -0.18548300738451323,
+      "0.75": -0.16395173689055226,
+      "1.00": -0.14153755015075978
+    },
+    "techo": {
+      "0.00": 1.0,
+      "0.25": 1.0,
+      "0.50": 1.0,
+      "0.75": 1.0,
+      "1.00": 1.0
+    },
+    "todo": {
+      "0.00": -0.18616535425448896,
+      "0.25": -0.09979418090735565,
+      "0.50": -0.008481232789010792,
+      "0.75": 0.08836200416333863,
+      "1.00": 0.19143739267468712
+    }
+  },
+  "resumen": {
+    "0": {
+      "a_costo": {
+        "0.00": -0.2647068247294565,
+        "0.00_mundos_medibles": 5,
+        "1.00": -0.3942331637558042,
+        "1.00_mundos_medibles": 5
+      },
+      "a_precio": {
+        "0.00": -0.2647068247294565,
+        "0.00_mundos_medibles": 5,
+        "1.00": -0.4627422564410858,
+        "1.00_mundos_medibles": 4
+      },
+      "costo_techo": 154135.97367307692,
+      "terminal_techo_a_costo": 0.0
+    },
+    "12": {
+      "a_costo": {
+        "0.00": -0.5073906573207502,
+        "0.00_mundos_medibles": 5,
+        "1.00": -0.3989725993209114,
+        "1.00_mundos_medibles": 5
+      },
+      "a_precio": {
+        "0.00": -0.5073906573207502,
+        "0.00_mundos_medibles": 5,
+        "1.00": -0.49892128633302574,
+        "1.00_mundos_medibles": 5
+      },
+      "costo_techo": 189932.38679807694,
+      "terminal_techo_a_costo": 35203.833999999995
+    },
+    "24": {
+      "a_costo": {
+        "0.00": -0.6697887010892186,
+        "0.00_mundos_medibles": 5,
+        "1.00": -0.39964977323943146,
+        "1.00_mundos_medibles": 5
+      },
+      "a_precio": {
+        "0.00": -0.6697887010892186,
+        "0.00_mundos_medibles": 5,
+        "1.00": -0.3748412698356824,
+        "1.00_mundos_medibles": 5
+      },
+      "costo_techo": 193991.91435576923,
+      "terminal_techo_a_costo": 39248.984
+    }
+  }
+}

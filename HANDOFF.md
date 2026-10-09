@@ -72,6 +72,102 @@ EMPATES como `implements()`: archivo con el nombre del termino, despues `src/`. 
 mismos 20 terminos: implementacion 59% -> 100% del top-5; top-1 en el modulo con el nombre
 del termino 7/20 -> 14/20. `search()` sigue devolviendo tests, pero ya no stubs sin origen.
 
+## 2026-09-17 — Terminos del proveedor (MOQ / multiplo): dos terminales, nunca un punto muerto (PR #369)
+
+Pregunta que lo disparo: "Kern recomienda 40 y el proveedor vende de a 30, 60, 90".
+Antes el unico camino era `apply_order_rules` (redondeo hacia arriba, sin decir que
+30 existia ni que costaba) y solo lo usaba `src/sop_engine/purchase_plan.py`; el job
+de inventario, los sombreros y `cross_impact` ignoraban los terminos.
+
+- **Motor**: `src/constraints.py::cheapest_feasible_lot` (+ `feasible_neighbours`,
+  `feasible_lots`, `is_feasible_lot`, `lot_rule`). Elige entre los lotes legales
+  vecinos por costo EOQ y devuelve el otro como alternativa con penalidad.
+- **Inventario**: intake emite `moq` / `order_multiple` solo si el archivo los trae
+  (alias es/en); el job mueve Q al lote elegido y lleva la alternativa; QA, CSV,
+  deck, md y OPTIONS ("Renegotiate supplier terms") lo muestran. `(R,S)` con
+  terminos = residual.
+- **Sombreros**: grilla sobre lotes legales, baseline = mismo lote que el job,
+  gates de factibilidad en tension y settlement. `cross_impact` nombra los vecinos
+  legales de una propuesta infactible. CLI: `--moq` / `--order-multiple`.
+- **Fuera**: `product.packaging` en Odoo (solo se lee `min_qty`); pendiente con
+  una instancia viva. Tests: `tests/test_lot_constraints.py`.
+- **N1d (H4 de la investigacion) cerrado en la misma rama**: `jobs.intake.stock_position`
+  lee `on_hand` / `on_order` del archivo (ultima fila por SKU), el job agrega
+  `inventory_position` / `order_now` / `order_qty_now` por SKU con
+  `src.ddmrp.net_flow_position`, QA lo gatea, CSV/Excel/md/deck/OPTIONS lo muestran y
+  dicen cuando NO pudieron netear. Tests: `tests/test_inventory_en_transito.py`.
+  Siguen abiertos del Nivel 1: N1a (rutear los dos monitores con la serie real), N1b
+  (reloj del Tower, necesita un secreto de repo), N1c (snapshot `stock` desde los jobs
+  que leen `on_hand`). Y N2b (shocks en el marcador) es el siguiente por doctrina.
+- **C cerrada (las tres brechas hermanas de H4)**: `shopify_replenishment` netea con la
+  cantidad `incoming` de Shopify (una sola consulta por item, memoizada);
+  `channel_replenishment` reusa `odoo_job.read_on_order` y nombra al ERP que no expone
+  OC abiertas; `drp` gana `Branch.scheduled_receipts` (grid + columna por sucursal y
+  periodo + params del CD). En los tres, sin dato `on_order`/`scheduled_receipt` es
+  `None`/vacio y el deck, el CSV y las OPTIONS lo dicen. Tests:
+  `tests/test_shopify_en_transito.py` (9), `tests/test_channel_en_transito.py` (13),
+  `tests/test_drp_en_transito.py` (14). Siguen abiertas A, D y B del diseño.
+- **A cerrada (barrido de neteo)**: `src/bateria/barrido_neteo.py` sondea los **14**
+  tools del registro que ponen un numero de compra en manos del operador -- dos corridas
+  cada uno, con y sin en-transito, exigiendo que la cantidad baje -- y obliga a los 60 a
+  declararse (`EMISORES` con sonda o `NO_EMISORES` con razon): `tests/test_barrido_neteo.py`
+  (17) se pone rojo si un tool nuevo no dice cual es. Resultado congelado en
+  `ESTADOS_NETEO` y publicado en `documentation/KERN_BARRIDO_NETEO.md`: **7 netean, 7
+  `sin_canal`** (`newsvendor`, `sop`, `multi_echelon`, `simulation`, `hat_tension`,
+  `hat_settlement`, `launch_readiness`) y **ninguno** con el dato sin usar. T05 ahora
+  CONSUME esas sondas (una sola definicion de "netea" en el repo) y el puntaje publicado
+  no se movio: 65,00% · 13/20. Siguen abiertas D y B del diseño.
+- **D cerrada (el Tower con datos reales)**: `jobs/state_bridge.py` es el unico lugar
+  donde se dice como cada job mapea al dominio `stock`, y los CINCO que leen una posicion
+  lo escriben (`inventory_optimization`, `odoo`, `shopify`, `channel`, `excel`); los tres
+  de conector escriben ademas la demanda REALIZADA como `outcomes`/`actual_qty` con la
+  fecha de cada pedido. Identidad opt-in por `params["state_client_id"]`, misma regla que
+  `forecast_cycle.store_from_params`: sin la clave no se escribe nada y nunca la particion
+  compartida. Con eso los dos monitores huerfanos tienen ruta (`config/event_routing.yaml`
+  pasa a 9): leen la serie real y se niegan (`EventRoutingError`, regla 7) si un SKU no
+  llega al minimo de `forecast_job`. Tres errores de unidad que el diseno traia y se
+  corrigieron: la demanda diaria es por dia CALENDARIO (`daily_demand_by_sku`, no
+  `forecast_per_period/7`), el `lead_times` del drift va en PERIODOS
+  (`lead_time_periods_from_days`, no dias crudos) y el `cycle_id` es ISO y no
+  `tool-fecha` (que ordenaba por nombre de tool y rechazaba al segundo escritor).
+  Tests: `tests/test_state_bridge_stock.py` (18), `tests/test_event_intent_real_series.py`
+  (20). Queda abierta **B** (N2b, shocks en el marcador); y N1b (el reloj del Tower)
+  sigue necesitando un secreto de repo, no codigo.
+- **B cerrada (captura bajo disrupcion)**: `src/simworld/shocks.py` perturba el mundo YA
+  sorteado con una transformacion pura (misma semilla + mismo shock => mismo mundo), los
+  tres corredores corren sobre el perturbado y `score_shock` devuelve TTR (desde la primera
+  salida de banda, no desde el arranque), unidades perdidas por las DOS definiciones de H5
+  con signo, fill minimo y exceso de costo. `run_world_sim.py --shock`,
+  `verify_fidelidad.py --shock` + `agregar(metrica=...)`. **Medido: captura -0,105** (VENCIDO:
+  medido con la funcion de costo que restaba unit_cost dos veces; ver `KERN_CAPTURA_BAJO_DISRUPCION.md`) con un
+  corte de proveedor en la semilla 4 -- Kern decide peor que un punto de reorden fijo bajo
+  disrupcion, que es el resultado que la investigacion pedia poder ver. Una revision
+  adversarial de la entrega encontro 7 defectos reales (nan/inf, redondeo bancario de la
+  magnitud, no-ops garantizados reportados como "absorbido", un `hold` satisfecho con
+  semanas muertas, atribucion cruzada con varios shocks, lineas base de experimentos
+  distintos comparadas entre si) y los 7 estan cerrados con test. **Una segunda vuelta de
+  la revision (2026-09-18) encontro 4 mas, y uno ANULA la solucion del tercero de arriba**:
+  rechazar el shock que cae dentro del calentamiento cubre una sola causa de no-op, no la
+  general. Con el ejemplo literal del diseno (`lead_time_spike:SKU-1003:10:3:2`, semilla 4)
+  el carril de Kern publicaba `absorbido / recupero si / captura bajo disrupcion -0,221` (VENCIDO, idem)
+  con un costo total identico al ultimo digito al de su corrida limpia: el SKU apuntado no
+  se pide en la ventana. Ahora `ShockImpact.reached` compara las trayectorias, el veredicto
+  queda vacio (`recovered=None`) y la fila sale `NO ALCANZADO`; ese carril no publica
+  `capture_under_shock` y el barrido lo cuenta como mundo no medible. No se puede rechazar
+  por corrida: en esa misma corrida el piso SI recibe el shock. Los otros tres: la guarda
+  del calentamiento no cubre `replan_every`; la frase vendible del barrido decia "captura"
+  a secas para las dos metricas; y el corte Anunciado/Silencio se titulaba "si Kern vio
+  venir el golpe" cuando `Policy.announced` habla de la calidad de los datos leidos (medido:
+  las semanas anunciadas no se mueven con el shock mientras el costo si). Tests:
+  `tests/test_simworld_shocks.py` (56). **Las cuatro brechas del diseno estan construidas**;
+  lo unico que sigue abierto de esa linea es N1b, el reloj, que necesita un secreto de repo.
+- **Diseño de las cuatro brechas siguientes, verificado contra el codigo, cero codigo**:
+  `docs/superpowers/specs/2026-09-17-cuatro-brechas-post-n1d-design.md`. Orden propuesto:
+  C (tres hermanas de H4: `shopify_replenishment` sin `incoming`, `channel_replenishment`
+  sin en-transito, `drp` sin entradas programadas) -> A (barrido de neteo con la sonda de
+  la bateria sobre todo emisor de cantidad, vector congelado) -> D (N1c + N1a) -> B (N2b).
+  Ninguna toca el registro (60), el puntaje congelado (65,00 %) ni la semilla del marcador.
+
 ## 2026-09-08 — Preventa / busqueda de productos Mercado Libre (catalogo oficial, solo lectura)
 
 **Leer esto primero si se retoma el hilo ML.** No es reposicion de canal

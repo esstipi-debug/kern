@@ -364,7 +364,20 @@ def _sheet_calidad(ws, value: GapValue) -> None:
     _cell(ws, row, 1, "3. SKU valorizados: los que cumplen las tres a la vez", font=bold)
     _cell(ws, row, 2, len(value.gaps), fmt=FMT_COUNT, font=bold)
     _cell(ws, row, 3, share(len(value.gaps)), fmt=FMT_PCT_1, font=bold)
-    row += 2
+    row += 1
+    # Solo cuando hubo alguno: una exclusion que no ocurrio no necesita renglon, y
+    # asi el embudo de una corrida sin SKU sin dimensionar queda igual que siempre.
+    # Cuando SI ocurrio hay que decirlo, porque la fila de arriba ya no es "los que
+    # cumplen las tres": estos cumplen las tres y quedaron fuera igual.
+    if value.n_unsized_skus:
+        _cell(ws, row, 1,
+              "   ...y cuantos quedaron fuera porque el motor NO los dimensiono "
+              "(menos historia que el minimo, o sin costo usable): no tienen los dos "
+              "buffers que esta planilla resta")
+        _cell(ws, row, 2, value.n_unsized_skus, fmt=FMT_COUNT)
+        _cell(ws, row, 3, share(value.n_unsized_skus), fmt=FMT_PCT_1)
+        row += 1
+    row += 1
     # Fila propia: NO es un subconjunto del archivo de movimientos, y meterla en el
     # embudo dibujaria una barra mas alta que la primera.
     _cell(ws, row, 1, "SKU en tus recepciones que NO aparecen en el archivo de movimientos")

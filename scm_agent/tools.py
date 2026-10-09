@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import date, datetime
 from pathlib import Path
 
 from jobs import (
@@ -65,12 +66,15 @@ from jobs import (
     sop_deliverable,
     sop_job,
     sourcing_job,
+    state_bridge,
     supplier_management_job,
     transportation_job,
     vehicle_routing_job,
     whatif_job,
 )
+from jobs.cycle_count_job import CountPolicy
 from jobs.inventory_optimization import run as run_inventory
+from jobs.inventory_optimization import unsized_note
 from jobs.pricing import prepare_pricing
 from jobs.pricing import run as run_pricing
 from nosilo_core.llm import LLMProvider
@@ -100,6 +104,35 @@ LEADERSHIP_SCHEMA = {
 }
 
 
+def _fecha_param(params: dict, clave: str):
+    """``params[clave]`` como ``date``, o ``None`` si no vino.
+
+    Los parametros cruzan una frontera JSON, asi que una fecha llega como texto. Se
+    acepta tambien un ``date``/``datetime`` ya construido, que es como la pasa un test o
+    un llamador en proceso.
+
+    Una fecha ilegible **levanta**, nombrando la clave: el reloj del sistema como
+    fallback silencioso convertiria un typo en un reporte fechado hoy que dice estar
+    fechado en otro lado, y fechar mal un analisis de vencimientos o de envejecimiento
+    es la clase de error que nadie encuentra leyendo el entregable. Mismo criterio que
+    `jobs/procedure_audit_job.py::_as_of_from_params`, que ya lo resolvia asi para su
+    propio `as_of`.
+    """
+    crudo = params.get(clave)
+    if crudo is None or crudo == "":
+        return None
+    if isinstance(crudo, datetime):
+        return crudo.date()
+    if isinstance(crudo, date):
+        return crudo
+    try:
+        return date.fromisoformat(str(crudo))
+    except ValueError as exc:
+        raise ValueError(
+            f"params[{clave!r}] debe ser una fecha ISO (YYYY-MM-DD): recibido {crudo!r}"
+        ) from exc
+
+
 # ---- inventory_optimization --------------------------------------------------
 
 def _inventory_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
@@ -111,12 +144,28 @@ def _inventory_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
         # instead of silently delivered with unqualified confidence — see
         # scm_agent/tool_options.py's _apply_intake_quality.
         period = request.params.get("period", "W")
+        # `column_overrides` es la escotilla del operador cuando la deteccion elige MAL
+        # o no encuentra nada, y es distinta de `column_aliases`: los alias son un
+        # vocabulario ("a veces la cantidad se llama `unidades`"), el override es una
+        # afirmacion sobre ESTE archivo ("mi columna `bultos_despachados` ES la
+        # cantidad") y por eso gana. Hasta el 2026-09-20 el agente exponia el
+        # vocabulario y no la escotilla: un archivo cuya columna de cantidad la tabla
+        # no conoce salia `needs_data` y no habia forma de contestarle desde afuera.
+        # Los TRES lectores del mismo archivo lo reciben, porque si no el operador
+        # arregla la demanda y sigue sin poder nombrar su columna de stock.
+        overrides_col = request.params.get("column_overrides")
         demand, quality = intake.prepare_tracked(
             request.data_path,
             period=period,
+            overrides=overrides_col,
             # Client-wide lead time (typically from the client profile) fills in only
             # where the CSV carries none; per-SKU CSV values always win.
             default_lead_days=float(request.params.get("lead_time_days", 14.0)),
+            # Mismo argumento que el plazo: un costo unitario declarado por el cliente
+            # solo rellena donde el archivo no trae ninguno, y `IntakeQuality` lo sigue
+            # contando como sintetizado. El 1.0 por omision no es un costo, es un
+            # marcador de posicion que infla toda cifra de inversion.
+            default_unit_cost=float(request.params.get("default_unit_cost", 1.0)),
             aliases=request.params.get("column_aliases"),
         )
     except (ValueError, FileNotFoundError, TypeError) as exc:
@@ -135,10 +184,33 @@ def _inventory_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
     # entregable es peor que no tenerlo.
     try:
         order_lines = intake.service_lines(
-            request.data_path, aliases=request.params.get("column_aliases")
+            request.data_path, overrides=overrides_col,
+            aliases=request.params.get("column_aliases"),
         )
     except (ValueError, KeyError, TypeError, FileNotFoundError):
         order_lines = None
+    # La posicion de inventario, si el archivo la trae (stock en estante y, opcional,
+    # stock en camino). Es el productor que le faltaba a `run(on_hand_by_sku=...)`: sin
+    # el, el tool dice cuanto pedir y nunca cuando, y menos descuenta lo que ya viene.
+    # Misma envoltura que el servicio: es un extra, y un extra que falla no puede
+    # tumbar la politica.
+    try:
+        stock_position = intake.stock_position(
+            request.data_path, overrides=overrides_col,
+            aliases=request.params.get("column_aliases"),
+        )
+    except (ValueError, KeyError, TypeError, FileNotFoundError):
+        stock_position = None
+    try:
+        # La fecha de fin de vida comercial por SKU. Mismo contrato que las dos de
+        # arriba: si el archivo no la trae, `None` -- nunca un mapa vacio, que afirmaria
+        # que se midio y ningun SKU tiene fecha.
+        end_dates = intake.sku_end_dates(
+            request.data_path, overrides=overrides_col,
+            aliases=request.params.get("column_aliases"),
+        )
+    except (ValueError, KeyError, TypeError, FileNotFoundError):
+        end_dates = None
     # `period` rides along: src/sources.py needs it to rebuild the COMPLETE period
     # grid per SKU. Without it a SKU's series is only the periods it sold in, which
     # makes every real export look like regular demand (ADI == 1.0) and overstates
@@ -150,6 +222,8 @@ def _inventory_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
             "intake_quality": quality,
             "period": period,
             "order_lines": order_lines,
+            "stock_position": stock_position,
+            "end_dates": end_dates,
             # Decided here because prepare() is the only stage that sees the brief;
             # run() reads it to tell a requester who named EOQ which SKUs did not get
             # one (src/requested_method.py).
@@ -158,7 +232,62 @@ def _inventory_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
     )
 
 
+def _record_state(report, summary: str, params: dict, *, tool: str, lines, n_candidates=None,
+                  demand_points=None, lead_times_by_sku=None):
+    """Escribe la memoria del Tower y devuelve (reporte, resumen) actualizados.
+
+    N1c: hasta esto, el unico escritor del dominio ``stock`` era el puente del marcador
+    (``examples/run_world_sim.py``), asi que ``run_all_monitors`` sensaba sobre vacio en
+    produccion -- hallazgo H1. Los cinco jobs que leen una posicion lo escriben ahora por
+    ``jobs/state_bridge.py``, que es donde vive el mapeo de cada uno.
+
+    ``demand_points`` (N1a) agrega el OTRO dominio que al Tower le faltaba: la demanda
+    REALIZADA como ``outcomes``/``actual_qty``. ``forecast_cycle.freeze`` escribe el
+    pronostico y el MAPE, nunca lo realizado, asi que ``forecast_error_out_of_band``
+    tenia con que comparar solo cuando corria el marcador. Viene del plan, que ya leyo
+    los pedidos: no cuesta una segunda lectura del backend.
+
+    La particion sale de ``params['state_client_id']`` con la MISMA regla que la memoria
+    de ciclos (``forecast_cycle.store_from_params``): sin la clave no se escribe nada y
+    nunca la particion compartida; un id invalido levanta en vez de degradar. La nota va
+    siempre al reporte, y al resumen solo cuando alguien nombro una particion -- con la
+    memoria apagada por configuracion, una linea en cada resumen seria ruido.
+    """
+    store = forecast_cycle.store_from_params(params)
+    note = state_bridge.record_stock_snapshot(
+        store, tool=tool, lines=lines, n_candidates=n_candidates,
+    )
+    textos = [note.text]
+    if demand_points is not None or lead_times_by_sku is not None:
+        # UN solo ciclo de `outcomes` con las dos metricas. `lead_time_drift_monitor`
+        # compara los dos snapshots mas recientes del dominio: escribirlas en ciclos
+        # separados dejaria arriba uno sin plazos y el monitor no podria disparar nunca.
+        medido = state_bridge.record_outcomes(
+            store, tool=tool, points_by_sku=demand_points,
+            lead_times_by_sku=lead_times_by_sku,
+        )
+        # Una sola frase para el operador: las dos escrituras son del mismo ciclo de
+        # sensado, y separarlas en dos lineas invita a leer una y no la otra.
+        textos.append(medido.text)
+    texto = " ".join(textos)
+    report = replace(report, state_note=texto)
+    if note.store_named:
+        summary = f"{summary} {texto}"
+    return report, summary
+
+
 def _inventory_run(payload: object, params: dict) -> Produced:
+    stock_position = payload.get("stock_position")
+    on_hand_by_sku, on_order_by_sku = intake.position_maps(stock_position)
+    position_note = (
+        str(stock_position.attrs.get("position_note", "") or "")
+        if stock_position is not None else ""
+    )
+    end_dates_frame = payload.get("end_dates")
+    horizon_note = (
+        str(end_dates_frame.attrs.get("horizon_note", "") or "")
+        if end_dates_frame is not None else ""
+    )
     report = run_inventory(
         payload["demand"],
         service_level=params.get("service_level", 0.95),
@@ -169,6 +298,15 @@ def _inventory_run(payload: object, params: dict) -> Produced:
         service_levels=params.get("service_levels"),
         differentiate_by_class=params.get("differentiate_by_class", False),
         lead_times=params.get("lead_times"),
+        # La dispersion del plazo que el cliente declaro. Hasta el 2026-09-20 esta
+        # linea NO existia: el job la aceptaba, el agente la tiraba, y no se avisaba.
+        # Es la peor forma de perder un dato, porque INFLA la confianza -- sin
+        # `sigma_L` el periodo de riesgo pierde el termino `sigma_L^2 * mu_d^2`, que
+        # es el DOMINANTE cuando la demanda es grande frente a su propia dispersion.
+        # Medido: con `lead_time_stds={"A": 3.0}` el buffer pasa de 11,9 a 238,4
+        # llamando al job, y quedaba en 11,9 pasando por el orquestador, con el
+        # entregable diciendo igual "95% service level".
+        lead_time_stds=params.get("lead_time_stds"),
         observed_fill_rates=params.get("observed_fill_rates"),
         target_fill_rate=params.get("target_fill_rate", 0.95),
         intake_quality=payload["intake_quality"],
@@ -181,14 +319,38 @@ def _inventory_run(payload: object, params: dict) -> Produced:
         # "no medido"; con ella sale medido contra una vara dicha, y el entregable
         # lo declara. Nunca pisa una fecha del sistema.
         delivery_promise_days=params.get("delivery_promise_days"),
+        # Per-SKU supplier terms typed into the request win over the file's columns.
+        minimum_order_quantities=params.get("minimum_order_quantities"),
+        order_multiples=params.get("order_multiples"),
+        # Today's position from the file; explicit per-SKU maps in the request win.
+        on_hand_by_sku=params.get("on_hand_by_sku", on_hand_by_sku),
+        on_order_by_sku=params.get("on_order_by_sku", on_order_by_sku),
+        position_note=position_note,
+        end_dates=intake.end_date_map(end_dates_frame),
+        horizon_note=horizon_note,
     )
-    summary = (
-        f"Analyzed {report.n_skus} SKUs; recommended inventory investment "
-        f"${report.final_investment:,.0f} at {report.params['service_level'] * 100:.0f}% service level."
-    )
+    # El titular y la cola las escribe UNA sola funcion, en el productor
+    # (`jobs/inventory_optimization.unsized_note`), porque el deck que lee el
+    # cliente arma su propio encabezado y arreglar solo este dejaba al otro
+    # diciendo "recommended $0 inventory investment" sobre una corrida en la que
+    # no se decidio nada.
+    titular, cola = unsized_note(report)
+    if titular is not None:
+        summary = titular
+    else:
+        summary = (
+            f"Analyzed {report.n_skus} SKUs; recommended inventory investment "
+            f"${report.final_investment:,.0f} at {report.params['service_level'] * 100:.0f}% service level."
+            + cola
+        )
     # The brief named EOQ and the engine did not give EOQ to every SKU: say so, and
     # why, before the operator finds part of the catalog with no EOQ quantity. The
     # numbers are untouched -- run_inventory already put intermittent SKUs on (R, S).
+    #
+    # Se aplica DESPUES del titular y no en vez de el: cuando `unsized_note` devuelve
+    # titular NINGUN SKU quedo dimensionado, asi que el filtro de abajo no encuentra
+    # ninguna politica y `eoq_reframe` devuelve None. O sea que componerlos es inerte
+    # justo en el caso en que el titular manda, y no hay que elegir entre los dos.
     if payload.get("eoq_requested"):
         reframe = eoq_reframe(
             (r.product_id, r.intermittent)
@@ -204,6 +366,17 @@ def _inventory_run(payload: object, params: dict) -> Produced:
     nota = getattr(order_lines, "attrs", {}).get("service_note") if order_lines is not None else None
     if nota:
         summary = f"{summary} {nota}"
+    if report.n_positioned:
+        summary = (
+            f"{summary} {report.n_order_now} of {report.n_positioned} positioned SKU(s) are due "
+            f"for an order now. {report.position_note}"
+        )
+    report, summary = _record_state(
+        report, summary, params,
+        tool="inventory_optimization",
+        lines=state_bridge.stock_lines_from_inventory(report),
+        n_candidates=len(report.recommendations),
+    )
     return Produced(report=report, summary=summary)
 
 
@@ -229,7 +402,16 @@ def inventory_tool() -> Tool:
         # there -- detected but never emitted, it exists only to recover a real unit
         # cost from a file that carries money but no cost column.
         required_columns=("date", "product_id", "quantity"),
-        optional_columns=("unit_cost", "lead_time_days", "lead_time_std", "revenue"),
+        # `moq` / `order_multiple` are the supplier's terms: with them every (s,Q)
+        # quantity is a lot the supplier accepts, with the runner-up lot on the
+        # record (jobs/inventory_optimization.py, src/constraints.py).
+        # `on_hand` / `on_order` are today's stock position: with them every row also
+        # says whether an order is due NOW, sized against on hand plus stock already
+        # in transit (jobs/intake.py::stock_position).
+        optional_columns=(
+            "unit_cost", "lead_time_days", "lead_time_std", "revenue", "moq", "order_multiple",
+            "on_hand", "on_order", "end_date",
+        ),
         options=tool_options.inventory_options,
         prepare=_inventory_prepare,
         run=_inventory_run,
@@ -525,6 +707,11 @@ def _abc_xyz_run(payload: object, params: dict) -> Produced:
         payload,
         abc_thresholds=tuple(params.get("abc_thresholds", (0.80, 0.95))),
         cv_cuts=tuple(params.get("cv_cuts", (0.5, 1.0))),
+        # El nivel de servicio por clase que declara el pack del rubro
+        # (`VerticalProfile.classification.service_level_by_class`, hoy en tres YAML de
+        # config/verticals/). `src.classification` lo soportaba y el job no lo pasaba;
+        # se arreglo ahi, y quedo el mismo drop una capa mas arriba.
+        service_level_by_class=params.get("service_level_by_class"),
     )
     return Produced(report=report, summary=(
         f"Classified {report.n_skus} SKUs; {report.n_a} A-items hold "
@@ -697,7 +884,9 @@ def _ddmrp_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
 
 
 def _ddmrp_run(payload: object, params: dict) -> Produced:
-    report = ddmrp_job.run(payload)
+    # `today` ancla las fechas de orden, requerimiento y llegada del plan. Igual que
+    # `as_of` de risk: sin el parametro no se puede replanificar contra otra fecha.
+    report = ddmrp_job.run(payload, today=_fecha_param(params, "today"))
     return Produced(report=report, summary=(
         f"Sized DDMRP buffers for {report.n_parts} parts; {report.n_red} in the red, "
         f"{report.n_order} need an order ({report.total_order_qty:,.0f} units)."
@@ -969,6 +1158,11 @@ def _financial_kpis_run(payload: object, params: dict) -> Produced:
         # No default: DSO/DPO come from the AR/AP ledgers, not from inventory data.
         # A 0.0 stand-in made cash-to-cash == DIO and printed it as a measured cycle.
         payload, dso=params.get("dso"), dpo=params.get("dpo"),
+        # Del log de disponibilidad, no del archivo de inventario. Sin los dos,
+        # `stockout_rate` queda en `None` y el KPI no sale -- misma forma que DSO/DPO,
+        # que ya se pasaban por la misma razon.
+        stockout_periods=params.get("stockout_periods"),
+        total_periods=params.get("total_periods"),
     )
     # Any of these is None when this data could not support it (see src/financial_kpis).
     # verify() only gates `turns`, so the others still have to be printable as absent.
@@ -1079,6 +1273,10 @@ def _returns_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
 def _returns_run(payload: object, params: dict) -> Produced:
     report = returns_job.run(
         payload,
+        # Sin las unidades vendidas no hay denominador, asi que `return_rate_by_reason`
+        # no se calcula: la tasa de devolucion por motivo -- el numero por el que se
+        # corre este tool -- salia en `None` sobre todo archivo.
+        units_sold=params.get("units_sold"),
         restock_handling_per_unit=params.get("restock_handling_per_unit", 0.0),
         refurbish_cost_per_unit=params.get("refurbish_cost_per_unit", 0.0),
         refurbish_resale_factor=params.get("refurbish_resale_factor", 0.6),
@@ -1316,13 +1514,19 @@ def hat_tension_tool() -> Tool:
         key="hat_tension",
         title="Decision Tension Map (Replenishment)",
         description="Score one replenishment decision (order quantity + service level) through "
-                    "4 role hats (comprador / planner / cfo / comercial) and render the "
-                    "disagreement as ranked options with the $ gaps. The human resolves - "
-                    "nothing is reconciled or executed here.",
+                    "5 role hats (comprador / planner / cfo / comercial / transporte) and "
+                    "render the disagreement as ranked options with the $ gaps. transporte "
+                    "only joins when the file carries weight_kg AND a distance_km param is "
+                    "given; otherwise it is named as off the table, never scored at zero. "
+                    "The human resolves - nothing is reconciled or executed here.",
         intent_keywords=(
             "mapa de tension", "tension entre areas", "conflicto compras finanzas",
             "trade-off entre roles", "perspectivas de la decision", "decision tension map",
             "cuanto pedir segun cada area",
+            # Multi-word on purpose: "transporte" alone would steal routing from the
+            # `transportation` tool, which answers a different question (which MODE).
+            "desacuerdo con transporte", "transporte vs finanzas",
+            "cada area quiere otra cantidad",
         ),
         requires_data=True,
         # jobs/hats_job.py:123. Both hats share `_hats_prepare`, so both declare the
@@ -1330,6 +1534,12 @@ def hat_tension_tool() -> Tool:
         # a file where every SKU is skipped refuses -- the column contract is met and
         # the tool still cannot run. `required_columns` says nothing about row counts.
         required_columns=("product_id", "quantity", "unit_cost", "lead_time_days"),
+        # weight_kg is the per-SKU half of the transporte hat; the lane half
+        # (distance_km) is a param, not a column. Optional on purpose: without it
+        # the council runs with four areas and declares the fifth as unmeasured.
+        # moq / order_multiple are the supplier's terms: with them the grid holds
+        # only lots the supplier accepts (jobs/hats_job.py module docstring).
+        optional_columns=("weight_kg", "moq", "order_multiple"),
         prepare=_hats_prepare,
         run=_hat_tension_run,
         qa=lambda report: hats_job.verify_tension(report),
@@ -1348,7 +1558,7 @@ def hat_settlement_tool() -> Tool:
     return Tool(
         key="hat_settlement",
         title="Reconciled Replenishment Plan",
-        description="Reconcile the 4 role hats into ONE replenishment plan (Q*, SL*) via the "
+        description="Reconcile the role hats into ONE replenishment plan (Q*, SL*) via the "
                     "operator's explicit weight policy, with a concession record (acta) and the "
                     "signed $ value vs today's baseline. Ends in a human HANDOFF - never applies "
                     "anything.",
@@ -1359,6 +1569,8 @@ def hat_settlement_tool() -> Tool:
         requires_data=True,
         # Same contract as hat_tension by construction: one shared `_hats_prepare`.
         required_columns=("product_id", "quantity", "unit_cost", "lead_time_days"),
+        # Same file, same prepare, same optional halves as hat_tension above.
+        optional_columns=("weight_kg", "moq", "order_multiple"),
         prepare=_hats_prepare,
         run=_hat_settlement_run,
         qa=lambda report: hats_job.verify_settlement(report),
@@ -1404,13 +1616,16 @@ def cross_impact_tool() -> Tool:
         title="Cross-Area Impact of a Proposed Decision",
         description="Take a replenishment decision ALREADY proposed by one area "
                     "(order quantity + service level) and measure what it does to the "
-                    "other three, then judge whether each would object against the "
+                    "others, then judge whether each would object against the "
                     "threshold the operator declared. Zero objections means the "
-                    "meeting does not need to happen. Nothing is executed.",
+                    "meeting does not need to happen. An area nobody could measure "
+                    "(transporte without a unit weight and a lane distance) makes the "
+                    "verdict 'indeterminado', never a clean zero. Nothing is executed.",
         intent_keywords=(
             "impacto cruzado", "impacto en las otras areas", "en las otras areas",
             "quien objeta", "costo de coordinacion", "cross-area impact",
             "objection threshold", "si cambio esto que pasa", "necesito convocar",
+            "transporte objeta", "impacto en transporte", "que dice transporte",
         ),
         requires_data=True,
         prepare=_cross_impact_prepare,
@@ -1443,9 +1658,13 @@ def _risk_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
 
 def _risk_run(payload: object, params: dict) -> Produced:
     thresholds = params.get("severity_thresholds")
+    # `as_of` fecha el analisis: un operador que reconcilia el cierre del trimestre
+    # pasado necesita poder decir contra que fecha se mide el envejecimiento. Sin el
+    # parametro la unica respuesta posible era "hoy".
+    as_of = _fecha_param(params, "as_of")
     report = (
-        risk_job.run(payload, severity_thresholds=tuple(thresholds))
-        if thresholds else risk_job.run(payload)
+        risk_job.run(payload, severity_thresholds=tuple(thresholds), as_of=as_of)
+        if thresholds else risk_job.run(payload, as_of=as_of)
     )
     return Produced(report=report, summary=report.summary)
 
@@ -1509,6 +1728,9 @@ def _disruption_scan_run(payload: object, params: dict) -> Produced:
         payload,
         fetcher=params.get("fetcher"),
         timespan=params.get("timespan", "3m"),
+        # La ventana de `timespan` se cuenta desde aca. Fijarlo es lo que vuelve
+        # repetible una corrida sobre un fetcher enlatado.
+        now=params.get("now"),
     )
     return Produced(report=report, summary=report.summary)
 
@@ -1992,7 +2214,22 @@ def _odoo_run(payload: object, params: dict) -> Produced:
         cover_periods=params.get("cover_periods", 8.0),
         financial_threshold=params.get("financial_threshold", 50_000.0),
     )
-    return Produced(report=report, summary=report.summary)
+    report, summary = _record_state(
+        report, report.summary, params,
+        tool="odoo_replenishment",
+        lines=state_bridge.stock_lines_from_replenishment(report.lines),
+        n_candidates=len(report.lines),
+        demand_points=report.demand_points,
+        # El tercer insumo del Tower, y el unico que cuesta una lectura aparte:
+        # `receipts()` recorre stock.move, asi que se pide a proposito. Sin el,
+        # `lead_time_drift` no puede disparar nunca en produccion -- y con el plazo
+        # DECLARADO tampoco, porque una media sobre un campo fijo no deriva.
+        lead_times_by_sku=(
+            odoo_job.read_measured_lead_times(payload["connector"])[0]
+            if params.get("state_record_lead_times") else None
+        ),
+    )
+    return Produced(report=report, summary=summary)
 
 
 def odoo_replenishment_tool() -> Tool:
@@ -2040,8 +2277,23 @@ def _channel_run(payload: object, params: dict) -> Produced:
         payload,
         cover_periods=params.get("cover_periods", 8.0),
         financial_threshold=params.get("financial_threshold", 50_000.0),
+        # La clave de idempotencia con la que se estaciona el changeset. `nosilo_core`
+        # garantiza que "the same idempotency_key never lands twice", asi que la
+        # constante por omision del job hace que la SEGUNDA reposicion legitima de un
+        # cliente choque contra la primera. Poder pasarla es la mitad del arreglo; la
+        # otra -- que el default no deberia ser una constante -- es una decision de
+        # diseno sobre las claves de writeback y no se toma aca.
+        **({"idempotency_key": str(params["idempotency_key"])}
+           if params.get("idempotency_key") else {}),
     )
-    return Produced(report=report, summary=report.summary)
+    report, summary = _record_state(
+        report, report.summary, params,
+        tool="channel_replenishment",
+        lines=state_bridge.stock_lines_from_channel(report),
+        n_candidates=len(report.lines),
+        demand_points=report.demand_points,
+    )
+    return Produced(report=report, summary=summary)
 
 
 def channel_replenishment_tool() -> Tool:
@@ -2102,7 +2354,14 @@ def _shopify_run(payload: object, params: dict) -> Produced:
         cover_periods=params.get("cover_periods", 8.0),
         financial_threshold=params.get("financial_threshold", 50_000.0),
     )
-    return Produced(report=report, summary=report.summary)
+    report, summary = _record_state(
+        report, report.summary, params,
+        tool="shopify_replenishment",
+        lines=state_bridge.stock_lines_from_replenishment(report.lines),
+        n_candidates=len(report.lines),
+        demand_points=report.demand_points,
+    )
+    return Produced(report=report, summary=summary)
 
 
 def shopify_replenishment_tool() -> Tool:
@@ -2154,7 +2413,16 @@ def _excel_replenishment_run(payload: object, params: dict) -> Produced:
         optimized_targets=params.get("optimized_targets"),
         prefer_optimized_policy=params.get("prefer_optimized_policy", True),
     )
-    return Produced(report=report, summary=report.summary)
+    # La planilla es la unica de las cinco fuentes que puede quedarse sin escribir por
+    # diseno: en modo punto-de-reorden no tiene columna de demanda, y el dominio exige
+    # una tasa diaria. Las filas crudas traen esa columna cuando existe.
+    report, summary = _record_state(
+        report, report.summary, params,
+        tool="excel_replenishment",
+        lines=state_bridge.stock_lines_from_excel(report, payload["rows"]),
+        n_candidates=len(report.lines),
+    )
+    return Produced(report=report, summary=summary)
 
 
 def excel_replenishment_tool() -> Tool:
@@ -2260,7 +2528,16 @@ def _cycle_count_prepare(request: JobRequest, provider: LLMProvider) -> Prepared
 
 
 def _cycle_count_run(payload: object, params: dict) -> Produced:
-    report = cycle_count_job.run(payload, working_days=params.get("working_days", 250))
+    # Cada cuanto cuenta el cliente cada clase es SU politica, no una constante del
+    # motor: `DEFAULT_POLICY` (A mensual, B trimestral, C anual) es la cadencia comun,
+    # no la de nadie en particular. Llega como dict porque cruza una frontera JSON.
+    counts = params.get("counts_per_year")
+    report = cycle_count_job.run(
+        payload,
+        working_days=params.get("working_days", 250),
+        **({"policy": CountPolicy(counts_per_year={str(k): int(v) for k, v in counts.items()})}
+           if counts else {}),
+    )
     return Produced(report=report, summary=report.summary)
 
 

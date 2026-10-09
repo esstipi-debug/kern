@@ -44,25 +44,64 @@ class Distribucion:
     p90: float | None
     peor: float | None
     mejor: float | None
+    #: Que se agrego: ``"capture"`` (captura limpia) o ``"capture_under_shock"``.
+    #:
+    #: Viaja DENTRO de la distribucion y no solo en el ``contexto`` del archivo porque
+    #: :meth:`frase` es "la afirmacion vendible" -- la linea que alguien copia y pega en
+    #: una propuesta. Sin esto, un barrido con ``--shock`` emitia una frase byte a byte
+    #: identica a la de un barrido limpio ("L0/forced: captura -5.0% ..."), y en este
+    #: repo "captura" a secas significa la limpia. Copiar esa linea publicaba un numero
+    #: bajo disrupcion como si fuera de datos limpios.
+    metrica: str = "capture"
+    #: Media de ``input_fidelity``: que fraccion de la demanda verdadera le llego al
+    #: motor por la lente en este nivel (1.0 = intacta, <1 se la comio, >1 la invento).
+    #:
+    #: NO entra en :meth:`frase`, a proposito: esa linea es la afirmacion vendible y
+    #: agregarle un termino cambiaria toda cita publicada. Esto es contexto, y lo lee
+    #: :func:`degrada_con_la_suciedad` -- que sin el solo podia comparar el ORDINAL del
+    #: nivel. ``None`` en toda linea base grabada antes de que existiera.
+    fidelidad_media: float | None = None
+
+    @property
+    def error_de_fidelidad(self) -> float | None:
+        """Cuan lejos de la verdad quedo el archivo, sin importar para que lado.
+
+        Inflar la demanda un 26% y desinflarla un 26% son igual de infieles: la
+        razon cruda no ordena dos niveles, su DISTANCIA a 1 si.
+        """
+        return None if self.fidelidad_media is None else abs(1.0 - self.fidelidad_media)
 
     @property
     def cobertura(self) -> float:
         """Fraccion de mundos donde la captura fue medible."""
         return self.n_medibles / self.n_mundos if self.n_mundos else 0.0
 
+    @property
+    def nombre_metrica(self) -> str:
+        """Como se llama lo que se agrego, en la frase que alguien va a copiar."""
+        return ("captura bajo disrupcion" if self.metrica == "capture_under_shock"
+                else "captura")
+
     def frase(self) -> str:
         """La afirmacion vendible, o la razon por la que no hay ninguna."""
         if self.media is None:
             return (
                 f"L{self.nivel}/{self.carril}: ninguno de los {self.n_mundos} mundos "
-                "fue medible (piso no mas caro que techo)"
+                f"fue medible ({self._por_que_no_medible()})"
             )
         sd = f" +/- {self.desviacion * 100:.1f}%" if self.desviacion is not None else ""
         return (
-            f"L{self.nivel}/{self.carril}: captura {self.media * 100:.1f}%{sd} "
+            f"L{self.nivel}/{self.carril}: {self.nombre_metrica} "
+            f"{self.media * 100:.1f}%{sd} "
             f"· peor mundo {self.peor * 100:.1f}% "
             f"· {self.n_medibles}/{self.n_mundos} mundos medibles"
         )
+
+    def _por_que_no_medible(self) -> str:
+        """Bajo disrupcion hay una segunda causa, y no decirla manda a buscar la otra."""
+        if self.metrica == "capture_under_shock":
+            return "piso no mas caro que techo, o el shock no llego al carril"
+        return "piso no mas caro que techo"
 
 
 def _percentil(orden: Sequence[float], q: float) -> float:
@@ -84,7 +123,7 @@ def _percentil(orden: Sequence[float], q: float) -> float:
     return orden[bajo] + (orden[alto] - orden[bajo]) * (pos - bajo)
 
 
-def agregar(reportes: Iterable[dict]) -> tuple[Distribucion, ...]:
+def agregar(reportes: Iterable[dict], *, metrica: str = "capture") -> tuple[Distribucion, ...]:
     """Convierte una coleccion de reportes de ``run_grid`` en distribuciones.
 
     Agrupa por (carril, nivel de suciedad). Cada reporte aporta un mundo, asi que
@@ -92,25 +131,49 @@ def agregar(reportes: Iterable[dict]) -> tuple[Distribucion, ...]:
     semilla no produjo una entrada para un nivel, ese nivel tendra menos mundos
     y el numero lo dira, en vez de que la media se calcule sobre una muestra
     distinta de la anunciada.
+
+    ``metrica`` elige que clave de cada entrada se agrega. Por defecto ``"capture"``,
+    la captura normalizada de siempre; ``"capture_under_shock"`` (N2b) agrega la misma
+    medida sobre mundos perturbados, que es como "captura bajo un salto de lead time de
+    3 semanas: X% +/- Y, peor mundo Z" pasa a ser una frase con numero. Una entrada sin
+    esa clave cuenta como no medible (``None``), igual que un span degenerado: el
+    ``n_medibles`` lo dice en vez de que la media se calcule sobre otra muestra.
+
+    Esa ausencia es deliberada y la produce ``run_grid``: un carril al que el shock NO
+    LLEGO (``ShockImpact.reached`` en ``False`` -- corrida perturbada identica a la
+    limpia) no publica ``capture_under_shock``, porque su captura es la limpia con otra
+    etiqueta. Promediarla entre las demas subiria la media con mundos donde no paso
+    nada, que es la manera exacta en que una frase vendible se vuelve falsa.
+
+    La ``metrica`` viaja a cada :class:`Distribucion` para que su ``frase()`` diga cual
+    es: la linea es para copiar, y "captura" a secas significa la limpia.
     """
     por_grupo: dict[tuple[str, int], list[float | None]] = {}
+    fidelidades: dict[tuple[str, int], list[float]] = {}
     for rep in reportes:
         for entrada in rep["kern"].values():
             clave = (entrada["lane"], entrada["level"])
-            por_grupo.setdefault(clave, []).append(entrada["capture"])
+            por_grupo.setdefault(clave, []).append(entrada.get(metrica))
+            fid = entrada.get("input_fidelity")
+            if fid is not None:
+                fidelidades.setdefault(clave, []).append(float(fid))
 
     out: list[Distribucion] = []
     for (carril, nivel), capturas in sorted(por_grupo.items(), key=lambda kv: (kv[0][1], kv[0][0])):
+        fid = fidelidades.get((carril, nivel))
+        # Se promedia sobre los mundos que la MIDIERON, no sobre todos: un mundo cuyo
+        # archivo el intake no pudo leer no aporta un cero, aporta una ausencia.
+        fid_media = statistics.fmean(fid) if fid else None
         medibles = sorted(c for c in capturas if c is not None)
         if not medibles:
             out.append(Distribucion(
                 carril=carril, nivel=nivel, n_mundos=len(capturas), n_medibles=0,
                 media=None, desviacion=None, p10=None, mediana=None, p90=None,
-                peor=None, mejor=None,
+                peor=None, mejor=None, metrica=metrica, fidelidad_media=fid_media,
             ))
             continue
         out.append(Distribucion(
-            carril=carril, nivel=nivel,
+            carril=carril, nivel=nivel, metrica=metrica, fidelidad_media=fid_media,
             n_mundos=len(capturas), n_medibles=len(medibles),
             media=statistics.fmean(medibles),
             desviacion=statistics.stdev(medibles) if len(medibles) > 1 else None,
@@ -127,10 +190,44 @@ def degrada_con_la_suciedad(dists: Sequence[Distribucion], carril: str) -> list[
 
     No se exige que empeore -- Kern limpia parte de la suciedad a proposito, asi
     que un nivel 1 casi igual al 0 es exito, no fallo. Lo que no puede pasar es
-    que ensuciar los datos haga a Kern *mejor*: eso significa que el nivel de
-    suciedad esta entrando en la decision por una via que nadie diseno, y es el
-    sintoma clasico de una fuga de informacion entre el generador de suciedad y
-    el marcador.
+    que ensuciar los datos haga a Kern *mejor* **sin que el archivo mas sucio sea
+    mas fiel**: eso si significa que el nivel esta entrando en la decision por
+    una via que nadie diseno.
+
+    **Por que la condicion tiene dos mitades desde el 2026-09-22.** Hasta esa
+    fecha alcanzaba con "capturo mejor", y la inferencia era que un ordinal mas
+    alto implica un archivo mas dañado. Deja de valer: medido sobre 25 mundos,
+    el archivo de nivel 3 le entrega al motor el **1,26** de la demanda
+    verdadera y el de nivel 2 el **0,59** -- los inyectores del 3 INFLAN
+    (``inject_duplicate_rows``, ``inject_unmarked_promo``) y los del 2
+    DESINFLAN (``inject_mixed_units``, ``inject_calendar_gaps``). En distancia
+    a la verdad el archivo del 3 es el MENOS malo, asi que Kern comprando mas al
+    leerlo no es una fuga: es la respuesta correcta a un archivo mas fiel. Los
+    niveles son monotonos en CANTIDAD DE DEFECTOS, no en DISTORSION, y la alarma
+    vieja confundia las dos cosas.
+
+    La alarma conserva sus dientes donde importa: si el nivel mas sucio capturo
+    mejor con un archivo IGUAL de fiel o PEOR, sigue acusando. Ese es el caso que
+    detecto el signo de la funcion de costo en 2026-09-18, y ahi las fidelidades
+    eran identicas porque el defecto no estaba en la lente.
+
+    Una inversion EXPLICADA no se traga en silencio: sale por
+    :func:`inversiones_explicadas`, que el barrido imprime aparte. Una exencion
+    que nadie ve es como se pierde una verificacion.
+
+    Sin fidelidad medida (linea base vieja, o un archivo que el intake no pudo
+    leer) se acusa igual -- no se puede exculpar con una medicion que no existe.
+
+    **Cuidado con el diagnostico.** Hasta el 2026-09-18 este docstring afirmaba
+    que eso es "el sintoma clasico de una fuga de informacion entre el generador
+    de suciedad y el marcador". La primera vez que el detector disparo de verdad
+    -- 25 mundos, L1 34,3% contra L0 7,6% -- NO habia ninguna fuga: la lente no
+    toca el scorer en ningun punto. La causa estaba en el signo de la funcion de
+    costo (la venta perdida se valuaba a ``margin``, que ya viene neto de
+    ``unit_cost``, asi que servir era contablemente peor que no servir en el 42%
+    del catalogo; ver la nota larga de ``src/simworld/scorer.py::score_run``).
+    Esta alarma dice QUE algo entro por una via no disenada, no CUAL: la fuga es
+    una hipotesis a descartar, no la conclusion.
     """
     del_carril = sorted(
         (d for d in dists if d.carril == carril and d.media is not None),
@@ -139,7 +236,7 @@ def degrada_con_la_suciedad(dists: Sequence[Distribucion], carril: str) -> list[
     anomalias: list[str] = []
     for previo, siguiente in zip(del_carril, del_carril[1:]):
         margen = _margen(previo, siguiente)
-        if siguiente.media > previo.media + margen:
+        if siguiente.media > previo.media + margen and not _mas_fiel(siguiente, previo):
             anomalias.append(
                 f"{carril}: L{siguiente.nivel} captura {siguiente.media * 100:.1f}% "
                 f"> L{previo.nivel} {previo.media * 100:.1f}% "
@@ -147,6 +244,41 @@ def degrada_con_la_suciedad(dists: Sequence[Distribucion], carril: str) -> list[
             )
     return anomalias
 
+
+
+def _mas_fiel(siguiente: Distribucion, previo: Distribucion) -> bool:
+    """El archivo del nivel mas sucio, ¿quedo MAS cerca de la verdad que el otro?
+
+    Sin las dos fidelidades medidas devuelve False: exculpar por una medicion
+    ausente convertiria la alarma en un adorno.
+    """
+    a, b = siguiente.error_de_fidelidad, previo.error_de_fidelidad
+    return a is not None and b is not None and a < b
+
+
+def inversiones_explicadas(dists: Sequence[Distribucion], carril: str) -> list[str]:
+    """Las inversiones que :func:`degrada_con_la_suciedad` NO acusa, y por que.
+
+    Existe para que una exencion sea visible. La alarma calla cuando el nivel mas
+    sucio leyo un archivo mas fiel, y eso es correcto -- pero un barrido que pase
+    en verde sin decir que hubo una inversion le esconde a quien lee la tabla que
+    dos de sus filas no estan ordenadas como su ordinal sugiere.
+    """
+    del_carril = sorted(
+        (d for d in dists if d.carril == carril and d.media is not None),
+        key=lambda d: d.nivel,
+    )
+    fuera: list[str] = []
+    for previo, siguiente in zip(del_carril, del_carril[1:]):
+        margen = _margen(previo, siguiente)
+        if siguiente.media > previo.media + margen and _mas_fiel(siguiente, previo):
+            fuera.append(
+                f"{carril}: L{siguiente.nivel} captura {siguiente.media * 100:.1f}% "
+                f"> L{previo.nivel} {previo.media * 100:.1f}%, y su archivo es MAS "
+                f"fiel (fidelidad {siguiente.fidelidad_media:.2f} contra "
+                f"{previo.fidelidad_media:.2f}) -- explicado, no es una anomalia"
+            )
+    return fuera
 
 #: Suelo del margen, en fraccion de captura. Por debajo de un punto porcentual
 #: la diferencia no es interpretable ni con muestra infinita.
@@ -212,8 +344,21 @@ def guardar_linea_base(dists: Sequence[Distribucion], ruta: str | Path,
     return out
 
 
+#: Claves del ``contexto`` que, si difieren, hacen que la comparacion contra la linea
+#: base no signifique nada. ``metrica`` y ``shocks`` entraron con N2b: una captura bajo
+#: disrupcion contra una captura limpia SIEMPRE sale peor, y eso se leeria como una
+#: regresion del producto cuando lo unico que cambio fue el experimento.
+CLAVES_INCOMPARABLES = ("metrica", "shocks")
+
+
+class ContextoIncomparable(ValueError):
+    """La linea base se grabo con otro experimento. Comparar daria un numero con forma
+    de medicion y sin significado, que es peor que no comparar."""
+
+
 def comparar_con_linea_base(dists: Sequence[Distribucion],
-                            ruta: str | Path) -> tuple[list[str], list[str]]:
+                            ruta: str | Path,
+                            *, contexto: dict | None = None) -> tuple[list[str], list[str]]:
     """Devuelve (regresiones, avisos) contra la linea base grabada.
 
     Los avisos no son fallos: cubren los casos en los que la comparacion NO se
@@ -221,8 +366,31 @@ def comparar_con_linea_base(dists: Sequence[Distribucion],
     desviacion. Salen listados en vez de tratarse como "todo bien", porque un
     grupo que deja de medirse es exactamente como se pierde una verificacion
     sin que nadie lo note.
+
+    ``contexto`` es el de la corrida actual. Cuando se pasa, se compara contra el de la
+    linea base en las :data:`CLAVES_INCOMPARABLES` y se levanta si difieren: una captura
+    bajo disrupcion medida contra una linea base limpia sale peor por construccion, y sin
+    esta guarda el driver la reportaria como "Kern decide peor que cuando se grabo la
+    referencia" -- una frase falsa sobre el producto.
     """
     datos = json.loads(Path(ruta).read_text(encoding="utf-8"))
+    if contexto is not None:
+        base_ctx = datos.get("contexto", {}) or {}
+        difieren = {
+            clave: (base_ctx.get(clave), contexto.get(clave))
+            for clave in CLAVES_INCOMPARABLES
+            if base_ctx.get(clave) != contexto.get(clave)
+        }
+        if difieren:
+            detalle = "; ".join(
+                f"{clave}: la linea base dice {antes!r} y esta corrida {ahora!r}"
+                for clave, (antes, ahora) in sorted(difieren.items())
+            )
+            raise ContextoIncomparable(
+                f"la linea base {Path(ruta)} se grabo con otro experimento -- {detalle}. "
+                "Comparar daria una regresion falsa: graba una linea base propia para "
+                "este experimento en vez de medir contra el otro."
+            )
     base = {(d["carril"], d["nivel"]): d for d in datos["distribuciones"]}
     actual = {(d.carril, d.nivel): d for d in dists}
 

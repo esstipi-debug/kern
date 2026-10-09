@@ -56,6 +56,8 @@ import os
 
 import pandas as pd
 
+from jobs.inventory_optimization import NOT_FULLY_SIZED_POLICY_KINDS
+
 from .packages import PackageInput, PackageSpec, PackageStep
 
 # ---- shared intake slots -----------------------------------------------------
@@ -237,17 +239,26 @@ def _optimized_targets_from_inventory(reports: dict[str, object]) -> dict:
         return {}
     targets: dict[str, dict] = {}
     for rec in report.recommendations:
-        # A skipped SKU (zero aggregate demand, or no row with a usable unit_cost -
-        # see jobs/inventory_optimization.py's run()) has no real policy:
-        # reorder_point=0.0/order_up_to=None are placeholders, not a computed
-        # "reorder at zero" decision. Including it here would override the
-        # client's own sheet value with a fabricated 0.0 (silently suppressing a real
-        # restock need, or - with negative on-hand - ordering just enough to reach 0) and
-        # mislabel the line "kern_optimized" as if Kern deliberately chose zero. Leaving
-        # it out of the dict makes it degrade to the client's own sheet value exactly, as
-        # excel_replenishment_job.run's docstring promises for any SKU with no computable
-        # policy.
-        if rec.policy_kind in ("skipped_zero_demand", "skipped_zero_cost"):
+        # A SKU the engine did not size has no real policy: its reorder_point /
+        # order_up_to are not a computed "reorder at zero" decision. Including it here
+        # would override the client's own sheet value with a fabricated number (silently
+        # suppressing a real restock need, or - with negative on-hand - ordering just
+        # enough to reach 0) and mislabel the line "kern_optimized" as if Kern
+        # deliberately chose it. Leaving it out makes the line degrade to the client's
+        # own sheet value exactly, as excel_replenishment_job.run's docstring promises
+        # for any SKU with no computable policy.
+        #
+        # This used to be a hand-written ("skipped_zero_demand", "skipped_zero_cost")
+        # and it MISSED `insufficient_history` -- the reasoning above applied to it word
+        # for word, and it was the one that reached the client's order sheet. It now
+        # reads the producer's own set so a fourth class cannot slip through.
+        #
+        # A `provisional_cover` is excluded too, and for the SAME reason rather than a
+        # new one: it is a cover with no dispersion behind it, so overriding the
+        # client's own sheet number with it -- under the label "kern_optimized", as if
+        # Kern had sized it -- is exactly the claim it is not entitled to make. It
+        # travels as an OPTION the buyer can take, not as a silent replacement.
+        if rec.policy_kind in NOT_FULLY_SIZED_POLICY_KINDS:
             continue
         order_up_to = rec.order_up_to
         if order_up_to is None and rec.order_quantity is not None:

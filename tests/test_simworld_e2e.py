@@ -200,23 +200,35 @@ def test_grid_writes_a_json_and_a_markdown_report(floor_ceiling_report):
 # historia, ver `run_grid`), el costo real y estable del piso GENUINAMENTE
 # congelado en este fixture es 185,472.66 (medido directamente, ver
 # task-11-report.md).
-GOLDEN_FLOOR_COST = 185472.66449519232
-GOLDEN_CEILING_COST = 125825.87317307692
+# Re-medidos el 2026-09-18, cuando la venta perdida paso a valuarse a `price` en
+# vez de `margin` (ver la nota larga de `src/simworld/scorer.py::score_run`). Los
+# dos numeros TENIAN que moverse: el del piso porque su quiebre se valua distinto,
+# y el del techo porque el oraculo optimiza la funcion nueva y ahora compra lo que
+# antes le convenia no comprar. Valores anteriores, por si alguien busca el diff:
+# piso 185.472,66 y techo 125.825,87.
+GOLDEN_FLOOR_COST = 224460.90949519232
+GOLDEN_CEILING_COST = 136123.74639423075
 
 
 def test_golden_floor_and_ceiling_costs_are_stable(floor_ceiling_report):
-    """No se pin-ea `ceiling.fill_rate > floor.fill_rate` a proposito: el
-    brief original (stale) lo asumia, pero la revision post-hoc del oraculo
-    (Task 7) documenta que un oraculo optimo en COSTO gana en costo mucho
-    mas seguido de lo que gana en unidades perdidas -- a veces acepta un
-    quiebre porque es mas barato que evitarlo. Medido directamente en este
-    fixture: ceiling.fill_rate (0.565) < floor.fill_rate (0.628) mientras
-    ceiling.total_cost sigue siendo estrictamente menor. Afirmar lo
-    contrario aca haria un test flakey/falso contra el comportamiento
-    correcto y documentado del oraculo."""
+    """Hasta el 2026-09-18 este test se NEGABA a pinear `ceiling.fill_rate >
+    floor.fill_rate`, y la razon escrita era que "un oraculo optimo en COSTO a
+    veces acepta un quiebre porque es mas barato que evitarlo": medido entonces,
+    ceiling.fill_rate 0,565 contra floor 0,628.
+
+    Eso no era una propiedad del oraculo sino el sintoma de la doble resta de
+    `unit_cost` en la funcion de costo: valuada la venta perdida a `margin`,
+    servir era contablemente peor que no servir en todo SKU con
+    `price < 2*unit_cost`, y el techo dejaba de comprarlos. Con el quiebre a
+    `price` el mismo fixture da ceiling.fill_rate **1,000** contra floor 0,764.
+
+    Asi que ahora SI se fija, y es la invariante que mas dice de las tres: un
+    techo que sirve menos que el piso no es un techo de nada -- es la senal de
+    que la vara premia no comprar."""
     report, _ = floor_ceiling_report
     assert report["floor"]["total_cost"] == pytest.approx(GOLDEN_FLOOR_COST, rel=1e-6)
     assert report["ceiling"]["total_cost"] == pytest.approx(GOLDEN_CEILING_COST, rel=1e-6)
+    assert report["ceiling"]["fill_rate"] >= report["floor"]["fill_rate"]
 
 
 # ---------------------------------------------------------------------------
@@ -289,8 +301,21 @@ def test_run_grid_only_calls_the_lens_for_kern_never_for_the_floor_or_oracle():
     oraculo tambien por `export_history` -- contariamos el techo (o el piso)
     contra datos que nunca deberian haber visto.
 
-    Cuenta las llamadas reales: con 2 niveles x 1 replan minimo cada uno,
-    debe haber EXACTAMENTE ese numero de llamadas a la lente, ni una mas.
+    Cuenta las llamadas reales, y el total tiene que cuadrar EXACTAMENTE con
+    la suma de sus dos origenes legitimos, ni una mas:
+
+    1. **Los replanes de Kern.** Uno por nivel y por replan con historia.
+    2. **La medicion de fidelidad** (`lens.fidelidad_del_nivel`, agregada el
+       2026-09-22). Una por carril y nivel, sobre las salidas de ESE carril.
+       No alimenta ninguna politica: su resultado va a un campo del reporte
+       (`input_fidelity`) y lo lee la compuerta de suciedad. El piso y el
+       oraculo siguen sin ver la lente, que es lo que este test protege.
+
+    El total se deja CLAVADO en vez de aflojarlo a ">= 1": un mutante que
+    enrute el piso por la lente sumaria una tercera llamada, y con un umbral
+    inferior pasaria sin que nadie lo note. Si el numero cambia porque se
+    agrego un origen nuevo, hay que sumarlo aca explicitamente -- ese es el
+    trabajo que el test existe para obligar.
 
     Historial de este test (por que ya no parchea `export_history` por
     nombre): la primera version solo parcheaba
@@ -336,10 +361,19 @@ def test_run_grid_only_calls_the_lens_for_kern_never_for_the_floor_or_oracle():
                 seed=7, n_skus=2, n_suppliers=2, weeks=8, levels=(0,),
                 replan_every=4, out_dir=tmp, include_kern=True,
             )
-    # weeks=8, replan_every=4 -> replans en semana 0 (sin historia, no
-    # llama a Kern) y semana 4 (si llama) = exactamente 1 llamada real.
-    assert call_count["n"] == 1
+    # weeks=8, replan_every=4 -> replans en semana 0 (sin historia, no llama a
+    # Kern) y semana 4 (si llama) = 1 llamada. Mas 1 carril x 1 nivel de
+    # fidelidad = 1. Total 2.
+    replanes_de_kern = 1
+    mediciones_de_fidelidad = len(report["kern"])  # un carril-nivel, una medicion
+    assert mediciones_de_fidelidad == 1
+    assert call_count["n"] == replanes_de_kern + mediciones_de_fidelidad
     assert "forced-L0" in report["kern"]
+    # Y la segunda llamada hizo lo que dice: el reporte trae la fidelidad medida.
+    assert report["kern"]["forced-L0"]["input_fidelity"] == pytest.approx(1.0), (
+        "el nivel 0 no ensucia nada: si su fidelidad no es 1.0, la medicion esta "
+        "leyendo otra cosa que el archivo que Kern leyo"
+    )
 
 
 def test_dirt_levels_genuinely_change_kerns_recommendation_not_a_cached_reuse(kern_grid_report):
@@ -465,6 +499,32 @@ def test_degradation_is_reported_only_for_dirty_levels_not_the_clean_baseline(ke
     deg = report["kern"]["forced-L3"]["degradation"]
     assert deg["level"] == 3
     assert deg["silent"] == pytest.approx(deg["drop"] - deg["announced"])
+
+
+def test_degradation_no_depende_del_orden_en_que_se_pidieron_los_niveles(tmp_path):
+    """La degradacion de un nivel sucio contra su nivel 0 es la misma sin importar en que
+    orden el operador escribio ``--levels``.
+
+    Cambio de comportamiento del 2026-09-18, introducido al extraer ``_run_lanes`` para
+    poder correr la grilla sobre dos mundos (N2b, shocks). Antes la referencia limpia se
+    iba poblando DENTRO del bucle, asi que ``--levels 3 0`` no producia ninguna
+    degradacion: cuando le tocaba al nivel 3, el nivel 0 todavia no se habia corrido.
+    El numero existia y se omitia por el orden de un argumento, que es justo la clase de
+    dependencia silenciosa que este arnes existe para no tener. Ahora la referencia se
+    arma antes del bucle y el resultado es el mismo con ``0 3`` que con ``3 0``.
+    """
+    from examples.run_world_sim import run_grid
+
+    directo = run_grid(seed=4, n_skus=3, n_suppliers=1, weeks=12, levels=(0, 3),
+                       lanes=("forced",), replan_every=4, out_dir=tmp_path / "a")
+    invertido = run_grid(seed=4, n_skus=3, n_suppliers=1, weeks=12, levels=(3, 0),
+                         lanes=("forced",), replan_every=4, out_dir=tmp_path / "b")
+    assert "degradation" in invertido["kern"]["forced-L3"]
+    assert (invertido["kern"]["forced-L3"]["degradation"]
+            == directo["kern"]["forced-L3"]["degradation"])
+    # Y el nivel 0 sigue sin tener degradacion contra si mismo, en los dos ordenes.
+    assert "degradation" not in invertido["kern"]["forced-L0"]
+    assert "degradation" not in directo["kern"]["forced-L0"]
 
 
 def test_degradation_largest_week_is_present_and_bounded(kern_grid_report):

@@ -62,8 +62,12 @@ def _oracle(w, st, outs):
 # field (and both weekly costs) can be computed independently by hand. This
 # is the fixture the report's replay log exercises most heavily.
 #
-# SKU A: unit_cost=10, price=25 (margin=15)
-# SKU B: unit_cost=4,  price=10 (margin=6)
+# SKU A: unit_cost=10, price=25
+# SKU B: unit_cost=4,  price=10
+#
+# La venta perdida se valua a PRICE (no a margin): ver la nota larga de
+# ``score_run``. El margen aparece abajo solo para mostrar que numero daria la
+# formula anterior, que es contra lo que estos tests discriminan.
 #
 # Week 0: A orders 5 (on_hand_end=3, demand=5, sold=5, lost=0)
 #         B orders 8 (on_hand_end=6, demand=8, sold=8, lost=0)
@@ -91,12 +95,13 @@ def _oracle(w, st, outs):
 #   week1: procurement = 0
 #          holding     = 1*weekly_holding_A + 0*weekly_holding_B
 #                      = 0.04807692307692308
-#          shortage    = 2*15 + 3*6        = 30 + 18 = 48
+#          shortage    = 2*25 + 3*10       = 50 + 30 = 80
+#                        (con la formula vieja, a margin: 2*15 + 3*6 = 48)
 #          fixed       = 75 * 0 (neither ordered)        = 0
-#          week1 total = 0 + 0.04807692307692308 + 48 + 0 = 48.04807692307692
+#          week1 total = 0 + 0.04807692307692308 + 80 + 0 = 80.04807692307692
 #
-#   totals: procurement=82, holding=0.3076923076923077, shortage=48,
-#           fixed=150, total_cost=280.3076923076923
+#   totals: procurement=82, holding=0.3076923076923077, shortage=80,
+#           fixed=150, total_cost=312.3076923076923
 #
 #   service_level = fraction of the 4 sku-weeks with lost<=0 = 2/4 = 0.5
 #   fill_rate = sold.sum()/demand.sum() = (5+8+4+0)/(5+8+6+3) = 17/22
@@ -104,7 +109,10 @@ def _oracle(w, st, outs):
 #   unfulfilled_units = lost.sum() = 0+0+2+3 = 5.0
 #   mean_on_hand = mean([3,6,1,0]) = 2.5
 #   revenue = 5*25 + 8*10 + 4*25 + 0*10 = 125+80+100+0 = 305.0
-#   profit = 305.0 - 280.3076923076923 = 24.692307692307693
+#   profit = revenue - (procurement + holding + fixed)
+#          = 305.0 - (82 + 0.3076923076923077 + 150) = 72.69230769230769
+#     NO se le resta `shortage`: la venta perdida ya esta descontada de
+#     `revenue` -- no se cobro. Restarla otra vez la cobraba dos veces.
 #
 #   order_series (sum across skus per week) = [13.0, 0.0]
 #   demand_series (sum across skus per week) = [13.0, 9.0]
@@ -136,18 +144,21 @@ def test_weekly_cost_matches_the_hand_computed_per_week_totals():
     """Pins the exact per-week totals derived above. Discriminates against:
     - dropping the /WEEKS_PER_YEAR from the holding formula (holding would be
       52x too large: week0 holding would be ~13.5 instead of ~0.26);
-    - swapping margin for price in the shortage term (week1 shortage would be
-      2*25+3*10=80 instead of 48);
+    - **valuing the lost sale at ``margin`` instead of ``price``** (week1
+      shortage would be 2*15+3*6=48 instead of 80). Until 2026-09-18 this
+      assertion read the other way round and called ``price`` the mutant; the
+      measurement that inverted it is in ``score_run``'s long note -- valuing
+      the shortfall at a margin that is already net of ``unit_cost`` subtracts
+      that cost twice and makes serving accounting-worse than not serving;
     - counting the fixed order cost once per calendar week instead of once
       per SKU-week (week0 fixed would be 75 instead of 150, since A and B
       both order in week 0 -- this is the discriminating week by design).
-    Confirmed by replay: mutating each of these three lines independently in
-    ``weekly_cost`` made this exact assertion fail; reverting restored the
-    pass (see task-9-report.md).
+    Week 0 carries no shortfall by design, so it is unchanged (232.2596...) and
+    keeps pinning the holding and fixed-cost terms on their own.
     """
     w, outs = _two_sku_two_week_fixture()
     costs = weekly_cost(w, outs)
-    assert costs == pytest.approx([232.25961538461536, 48.04807692307692])
+    assert costs == pytest.approx([232.25961538461536, 80.04807692307692])
 
 
 def test_score_run_hand_computed_kpis_for_a_known_two_week_fixture():
@@ -155,8 +166,10 @@ def test_score_run_hand_computed_kpis_for_a_known_two_week_fixture():
     every single field by hand -- not a "looks reasonable" range check.
     Discriminates against the same three cost-formula mutants as the test
     above, PLUS:
-    - forgetting to subtract unit_cost from price for margin/revenue (would
-      change shortage_cost and profit);
+    - valuing ``profit`` as ``revenue - total_cost`` (the pre-2026-09-18
+      formula): that charges the lost sale TWICE -- once by not earning it,
+      once as ``shortage`` -- and would give -7.31 here instead of +72.69.
+      ``profit`` is the economic one: revenue minus what it cost to operate;
     - computing service_level/fill_rate/mean_on_hand over the wrong axis or
       the wrong array (sold vs demand vs on_hand_end swapped);
     - an inverted bullwhip ratio (var(demand)/var(orders) instead of
@@ -177,11 +190,11 @@ def test_score_run_hand_computed_kpis_for_a_known_two_week_fixture():
     assert k.mean_on_hand == pytest.approx(2.5)
     assert k.procurement_cost == pytest.approx(82.0)
     assert k.holding_cost == pytest.approx(0.3076923076923077)
-    assert k.shortage_cost == pytest.approx(48.0)
+    assert k.shortage_cost == pytest.approx(80.0)          # 2*25 + 3*10, a PRICE
     assert k.fixed_order_cost == pytest.approx(150.0)
-    assert k.total_cost == pytest.approx(280.3076923076923)
+    assert k.total_cost == pytest.approx(312.3076923076923)
     assert k.revenue == pytest.approx(305.0)
-    assert k.profit == pytest.approx(24.692307692307693)
+    assert k.profit == pytest.approx(72.69230769230769)    # 305 - (82 + 0.3077 + 150)
     assert k.bullwhip == pytest.approx(10.5625)
     assert k.anchoring == pytest.approx(0.4090909090909091)
     assert k.demand_chasing == pytest.approx(0.0)  # short-series guard (2 < 3)
@@ -827,3 +840,55 @@ def test_zero_length_weeks_raise():
     """
     with pytest.raises(ValueError, match="no hay semanas"):
         degradation(np.array([]), np.array([]), [], level=0)
+
+
+def test_servir_una_unidad_nunca_puede_costar_mas_que_perderla():
+    """La invariante que la doble resta de ``unit_cost`` rompia, dicha como
+    propiedad del producto y no como formula.
+
+    Comprar una unidad y venderla cuesta ``unit_cost`` (mas almacenaje si se
+    queda en estante, mas el fijo si abre una orden). Perderla cuesta lo que el
+    modelo diga que vale un quiebre. Si perderla sale MAS BARATO, el marcador
+    esta premiando el desabastecimiento, y todo lo que se puntue con el -- la
+    captura, el techo, la degradacion -- mide otra cosa.
+
+    Hasta el 2026-09-18 el quiebre se valuaba a ``margin = price - unit_cost``, y
+    como ``procurement`` ya cobra ``unit_cost``, servir neteaba
+    ``unit_cost - margin = 2*unit_cost - price``: positivo, o sea PEOR que no
+    servir, en todo SKU con ``price < 2*unit_cost``. ``generate_world`` sortea
+    ``price = unit_cost * U(1.4, 2.8)``, asi que el 42,86% del catalogo caia de
+    ese lado por construccion -- no era un caso de borde.
+
+    Este test recorre SKU reales del generador (no inventados a mano, para que
+    siga valiendo si el rango de markup cambia) y compara las dos trazas minimas
+    posibles: una semana en la que la unidad se vende, contra la misma semana en
+    la que se pierde. Sin fijar ninguna formula: solo el orden entre los dos
+    costos.
+    """
+    total = 0
+    for seed in (1000, 1001, 1002, 4):
+        w = generate_world(seed=seed, n_skus=8, n_suppliers=2, weeks=4)
+        for i, sku in enumerate(w.skus):
+            n = len(w.skus)
+            cero = np.zeros(n)
+            uno = np.zeros(n)
+            uno[i] = 1.0
+            # Servida: se compro, llego y se vendio en la semana. Nada en estante.
+            servida = [WeekOutcome(week=0, demand=uno.copy(), sold=uno.copy(),
+                                   lost=cero.copy(), received=uno.copy(),
+                                   ordered=uno.copy(), on_hand_end=cero.copy())]
+            # Perdida: no se compro nada y la demanda quedo sin servir.
+            perdida = [WeekOutcome(week=0, demand=uno.copy(), sold=cero.copy(),
+                                   lost=uno.copy(), received=cero.copy(),
+                                   ordered=cero.copy(), on_hand_end=cero.copy())]
+            costo_servida = float(weekly_cost(w, servida)[0])
+            costo_perdida = float(weekly_cost(w, perdida)[0])
+            # Se le da a "servir" la desventaja del costo fijo de abrir la orden
+            # (75) y aun asi tiene que convenir servir sobre el margen unitario:
+            # se compara sin ese fijo, que es un costo por ORDEN y no por unidad.
+            assert costo_perdida > costo_servida - 75.0, (
+                f"{sku.sku} (seed {seed}): perder la venta cuesta {costo_perdida:.2f} y "
+                f"servirla {costo_servida:.2f} -- el marcador premia el quiebre"
+            )
+            total += 1
+    assert total == 32, f"se esperaban 32 SKU, se probaron {total}"

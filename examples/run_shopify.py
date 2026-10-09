@@ -106,7 +106,13 @@ def main() -> None:
         raise SystemExit("--count writes to the storefront; pass --approved-by to name the approver")
 
     print("\n=== Reconciliation (the one write this connector offers) ===")
-    changeset = connector.stage_reconciliation(counted, idempotency_key="run-shopify-1")
+    changeset = connector.stage_reconciliation(
+        counted,
+        # Derivada del conteo, no constante: correr el demo dos veces con conteos
+        # distintos tiene que estacionar dos operaciones, no una y un duplicado.
+        idempotency_key=writeback.derive_idempotency_key(
+            "run-shopify", {sku: {"counted": qty} for sku, qty in counted.items()}),
+    )
     print(f"  Staged (dry-run): {changeset.summary()}")
 
     approval = writeback.approve(changeset, args.approved_by)

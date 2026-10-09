@@ -11,6 +11,7 @@ acumulan: 3 incluye 2 incluye 1.
 from __future__ import annotations
 
 import re
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -71,6 +72,64 @@ def export_history(
     out.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(out, index=False)
     return out
+
+
+def fidelidad_del_nivel(
+    world: World,
+    outcomes: list[WeekOutcome],
+    *,
+    level: int = 0,
+    seed: int = 0,
+    omit: frozenset[str] | set[str] | tuple[str, ...] = (),
+) -> float | None:
+    """Que fraccion de la demanda verdadera sobrevive el viaje hasta el motor.
+
+    1.0 = el archivo sucio le entrega a Kern exactamente las mismas unidades que
+    el limpio. Por debajo, la suciedad se las come; por encima, se las INVENTA
+    (``inject_duplicate_rows`` y ``inject_unmarked_promo`` inflan). Devuelve
+    ``None`` cuando el limpio no declara ninguna unidad, porque ahi la razon no
+    existe y un 1.0 diria "fiel" sobre un archivo vacio.
+
+    **Se mide POR INTAKE, no sobre el CSV crudo, y esa es la decision.** Medir
+    sobre el crudo diria que el nivel 1 es perfecto: sus tres inyectores son
+    cosmeticos por construccion y no tocan una sola unidad. Lo que se midio es
+    que hasta el 2026-09-22 ese nivel le entregaba al motor el **35%** de las
+    unidades -- una SKU partida en dos por la caja y una fecha ambigua que
+    estiraba la grilla -- porque el dano no estaba en el archivo sino en leerlo.
+    Una fidelidad que no pase por el mismo lector que el producto daria por
+    bueno exactamente el defecto que existe para detectar.
+
+    Es una propiedad del NIVEL sobre esta historia, no de un replan puntual: se
+    mide sobre el historico completo, con la misma semilla de suciedad, asi que
+    dos niveles se pueden comparar entre si -- que es para lo que la lee
+    ``verify.barrido.degrada_con_la_suciedad``.
+    """
+    # Import perezoso: `jobs.intake` arrastra el lector entero y esta lente la
+    # importan tests que no lo necesitan. Tambien mantiene a `src/simworld` sin
+    # una dependencia de modulo hacia `jobs/`.
+    from jobs import intake
+
+    limpio = history_frame(world, outcomes)
+    sucio = apply_dirt(limpio, level=level, seed=seed, omit=omit)
+
+    def _unidades(df: pd.DataFrame) -> float | None:
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = Path(tmp) / "view.csv"
+            df.to_csv(ruta, index=False)
+            try:
+                leido, _ = intake.prepare_tracked(ruta)
+            except Exception:
+                # Un archivo que el intake no puede leer NO es fidelidad cero:
+                # es una medicion que no se pudo hacer, y publicarla como 0.0
+                # la volveria la peor lectura posible en vez de una ausencia.
+                return None
+        return float(pd.to_numeric(leido["quantity"], errors="coerce").sum())
+
+    verdad = _unidades(limpio)
+    if not verdad:
+        return None
+    visto = _unidades(sucio)
+    return None if visto is None else visto / verdad
 
 
 CASE_SIZE = 12.0

@@ -15,12 +15,31 @@ from src.objection import NO_EVALUABLE, OBJETA, Verdict
 
 @pytest.fixture
 def demand_csv(tmp_path):
+    """The default fixture is FULLY evaluable: it carries weight_kg so that, with
+    `distance_km` in params, all five areas are on the table. The verdict-shape
+    tests below are about ejecutar/bilateral/reunion, and on a partially
+    measurable SKU every one of them would collapse into `indeterminado` and stop
+    testing what they are named after."""
     path = tmp_path / "demanda.csv"
     pd.DataFrame({
         "product_id": ["SKU-1"] * 30 + ["SKU-2"] * 30,
         "quantity": ([100, 110, 95, 105, 120] * 6)[:30] * 2,
         "unit_cost": [10.0] * 60,
         "lead_time_days": [14.0] * 60,
+        "weight_kg": [2.0] * 60,
+    }).to_csv(path, index=False)
+    return str(path)
+
+
+@pytest.fixture
+def demand_csv_sin_peso(tmp_path):
+    """The same file with no unit weight: transporte cannot be scored at all."""
+    path = tmp_path / "demanda_sin_peso.csv"
+    pd.DataFrame({
+        "product_id": ["SKU-1"] * 30,
+        "quantity": ([100, 110, 95, 105, 120] * 6)[:30],
+        "unit_cost": [10.0] * 30,
+        "lead_time_days": [14.0] * 30,
     }).to_csv(path, index=False)
     return str(path)
 
@@ -31,8 +50,10 @@ def _params(**over):
         "current": {"q": 200.0, "sl": 0.95},
         "proposed": {"q": 400.0, "sl": 0.95},
         "proposed_by": HAT_COMPRADOR,
+        "distance_km": 500.0,
         "objection_thresholds": {"comprador": 0.2, "planner": 5_000.0,
-                                 "cfo": 3_000.0, "comercial": 0.03},
+                                 "cfo": 3_000.0, "comercial": 0.03,
+                                 "transporte": 0.5},
     }
     base.update(over)
     return base
@@ -151,7 +172,7 @@ def test_two_objections_verdict_is_reunion(demand_csv):
 def test_unevaluable_beats_zero_objections(demand_csv):
     # THE honesty rule: a declared gap outranks an optimistic verdict
     r = cross_impact_job.run(_payload(demand_csv, objection_thresholds={"cfo": 1e9}))
-    assert r.n_unevaluable == 3
+    assert r.n_unevaluable == 4
     assert r.n_objections == 0
     assert r.verdict == cross_impact_job.INDETERMINADO
 
@@ -341,7 +362,7 @@ def test_unevaluable_cells_are_empty_not_zero(demand_csv, tmp_path):
     paths = cross_impact_job.write(r, tmp_path, "Acme")
     rows = list(csv.DictReader(paths["csv"].open(encoding="utf-8")))
     unevaluable = [row for row in rows if row["status"] == NO_EVALUABLE]
-    assert len(unevaluable) == 3
+    assert len(unevaluable) == 4
     for row in unevaluable:
         assert row["value_current"] == ""
         assert row["value_proposed"] == ""

@@ -15,7 +15,7 @@ ready RPC via ``params['odoo_rpc']``.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from nosilo_core.escalation import escalation_banner, maybe_escalate_financial
@@ -52,6 +52,17 @@ class OdooReplenishmentReport:
     on_order_by_sku: dict[str, float] | None = None
     #: En palabras, que se neteo o por que no. Viaja al resumen, al deck y al CSV.
     netting_note: str = ""
+    #: Que paso con la memoria del Tower en esta corrida: el ciclo con el que se
+    #: escribio el snapshot ``stock``, o por que no se escribio
+    #: (``jobs/state_bridge.py``). Viaja en el reporte y no solo en el resumen, para
+    #: que un llamador pueda comprobarlo sin parsear prosa.
+    state_note: str = ""
+    #: La demanda REALIZADA que el plan pronostico, CON sus fechas, por SKU
+    #: (``src.connectors.replenish.demand_points_by_sku``). Viaja en el reporte para que
+    #: el puente del Tower la escriba como ``actual_qty`` sin volver a leer el backend, y
+    #: con las fechas reales: quien despues pronostica sobre esos puntos no puede
+    #: inventarles un dia.
+    demand_points: dict[str, tuple[tuple[str, float], ...]] = field(default_factory=dict)
 
 
 #: How many SKUs the missing-lead-time finding names before summarising the rest.
@@ -86,6 +97,44 @@ def read_on_order(connector: OdooConnector) -> tuple[dict[str, float] | None, st
     if abiertas.truncated:
         partes.append("lectura truncada: el en-camino esta sub-estimado y el plan compra de mas")
     return abiertas.by_sku, "; ".join(partes)
+
+
+def read_measured_lead_times(connector: OdooConnector) -> tuple[dict[str, list[float]], str]:
+    """SKU -> plazos OBSERVADOS en dias, uno por recepcion, o por que no se pudo medir.
+
+    El plazo MEDIDO, no el declarado. ``declared_lead_times()`` lee
+    ``product.supplierinfo.delay``, que es la promesa del ERP: una media sobre ese campo
+    no se mueve nunca, y ``lead_time_drift_monitor`` compara justamente medias entre dos
+    ciclos. Alimentarlo con la promesa haria que el monitor no pueda disparar jamas --
+    peor que no alimentarlo, porque parece que si.
+
+    ``unit="line"`` y no ``"shipment"``: la recepcion colapsada pierde el SKU, y el
+    dominio ``outcomes`` es por ``product_id``. Una fila sin SKU o sin plazo se descarta;
+    un SKU sin ninguna recepcion medible no entra al mapa -- ausente, nunca una lista
+    vacia que se leeria como "medido, y nunca tarda".
+
+    Es una lectura CARA (recorre ``stock.move``), asi que el llamador la pide a
+    proposito: ``params['state_record_lead_times']``. Ver ``scm_agent/tools.py``.
+    """
+    try:
+        recepciones = connector.receipts(unit="line")
+    except OdooError as exc:
+        return {}, f"no se midieron plazos de entrega: {exc}"
+    por_sku: dict[str, list[float]] = {}
+    sin_sku = 0
+    for filas in recepciones.grouped.values():
+        for fila in filas:
+            sku = fila.get("product_id")
+            dias = fila.get("lead_time_days")
+            if not sku or dias is None:
+                sin_sku += 1
+                continue
+            por_sku.setdefault(str(sku), []).append(float(dias))
+    partes = [f"plazos medidos sobre {sum(len(v) for v in por_sku.values())} recepcion(es) "
+              f"en {len(por_sku)} SKU(s)"]
+    if sin_sku:
+        partes.append(f"{sin_sku} recepcion(es) sin SKU o sin plazo quedaron fuera")
+    return por_sku, "; ".join(partes)
 
 
 def _make_rpc(params: dict) -> tuple[OdooRPC, str]:
@@ -217,6 +266,7 @@ def run(
         summary=summary,
         on_order_by_sku=on_order,
         netting_note=netting_note,
+        demand_points=plan.demand_points,
     )
 
 

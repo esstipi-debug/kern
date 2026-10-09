@@ -19,8 +19,11 @@
 
 ## Simworld (alarma de regresion, no puntua)
 
-- `forced-L0`: captura -0.446
-- `forced-L1`: captura +0.437
+- `forced-L0`: captura -0.446  *(vencido 2026-09-18: hoy -0,6019)*
+- `forced-L1`: captura +0.437  *(vencido 2026-09-18: hoy -0,0180)*
+
+> **Vencido el 2026-09-18.** Estos numeros se midieron con una funcion de costo que valuaba la venta perdida a `margin` mientras `procurement` ya cobraba `unit_cost`: restaba el costo unitario DOS VECES por unidad servida, asi que servir era contablemente peor que no servir en el 42,86% del catalogo, y la captura premiaba sub-servir. Corregido en `7aa08c5` (`shortage = lost * price`). A la MISMA escala, los valores pasan a **-0,6019 (L0)** y **-0,0180 (L1)**, con el techo sirviendo 0,974 en vez de 0,565. La linea base sobre 25 mundos, con su lectura completa, esta en [`KERN_CAPTURA_BAJO_DISRUPCION.md`](KERN_CAPTURA_BAJO_DISRUPCION.md).
+
 
 Config con semilla fija: {"seed": 4, "n_skus": 8, "n_suppliers": 2, "weeks": 12, "levels": [0, 1], "lanes": ["forced"]}
 

@@ -104,6 +104,36 @@ README y `documentation/KERN_BATERIA_20_TAREAS.md` publiquen el mismo número qu
 `scripts/bateria_puntaje.py`. Un cambio en `jobs/` que mueva el marcador pone rojo
 ese test; subirlo o bajarlo es un diff explícito, con el motivo en el commit.
 
+## Lo que la vara no puede ver: el barrido de neteo
+
+La batería pregunta **«¿Kern puede?»** y varias tareas se puntúan con el **mejor**
+candidato. T05 es el caso claro: sondea tres entregables de reposición y se queda con
+el mejor de los tres. Eso es correcto para una vara — la pregunta es si la capacidad
+existe — y **ciego para el producto**, cuya pregunta es la contraria: *«¿cuál de los
+emisores **no** puede?»*.
+
+El costo de esa ceguera está medido. `inventory_optimization`, el tool central,
+dimensionaba `s` y `Q` sin mirar jamás el estante ni lo que venía en camino, y la
+batería estuvo en verde todo ese tiempo: nunca fue candidato de T05. Tres tools
+hermanos (`shopify_replenishment`, `channel_replenishment`, `drp`) estaban igual.
+**Un tool que nadie sondea no se puede poner rojo.**
+
+`src/bateria/barrido_neteo.py` es el diagnóstico que cierra eso, al lado de la vara y
+sin tocarla: `tareas.json` es externa y `TOTAL_TAREAS` sigue en 20. Sondea **los
+catorce** tools del registro que ponen un número de compra en manos de un operador,
+uno por uno y con la misma disciplina (dos corridas, el valor se mueve, la ausencia se
+declara). T05 pasó a **consumir** esas sondas, así que «netea» está definido una sola
+vez en el repo.
+
+```bash
+python scripts/barrido_neteo.py              # tabla + evidencia (unos 3 s)
+python scripts/barrido_neteo.py --markdown   # para pegar en el documento
+```
+
+Resultado publicado en `documentation/KERN_BARRIDO_NETEO.md`, congelado por
+`tests/test_barrido_neteo.py` — que además **obliga a clasificar**: un tool nuevo que
+no diga si emite un número de compra pone rojo la CI.
+
 ## Discrepancias con el doc publicado — ambas cerradas
 
 `documentation/KERN_BATERIA_20_TAREAS.md` estuvo desalineado con la fuente en dos
