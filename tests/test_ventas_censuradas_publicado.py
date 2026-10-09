@@ -50,12 +50,12 @@ def _plano(texto: str) -> str:
 
 @pytest.fixture(scope="module")
 def datos() -> dict:
-    return json.loads(BASE.read_text())
+    return json.loads(BASE.read_text(encoding="utf-8"))
 
 
 @pytest.fixture(scope="module")
 def doc() -> str:
-    return _plano(DOC.read_text())
+    return _plano(DOC.read_text(encoding="utf-8"))
 
 
 @pytest.fixture(scope="module")
@@ -201,7 +201,7 @@ def test_el_control_reproduce_la_linea_base_de_horizonte_por_sku(datos):
     ultimo digito. Si se separan, los deltas de esta palanca dejan de ser comparables
     contra el +16,2 de aquella.
     """
-    otro = json.loads(HORIZONTE.read_text())
+    otro = json.loads(HORIZONTE.read_text(encoding="utf-8"))
     suyas = {f["seed"]: f for f in otro["por_semilla"]}
     mias = {f["seed"]: f for f in datos["por_semilla"]}
     assert set(suyas) <= set(mias), "faltan las semillas canonicas en esta linea base"
@@ -237,7 +237,7 @@ def test_el_techo_de_la_palanca_NO_se_distingue_de_cero(datos, doc):
         f"mejora en {techo['mundos_que_mejoran']}/{n}: dejo de ser una moneda"
     )
     # Y contra la palanca que SI pago, en la misma rama: un orden de magnitud.
-    horizonte = json.loads(HORIZONTE.read_text())
+    horizonte = json.loads(HORIZONTE.read_text(encoding="utf-8"))
     assert techo["mejora_vs_kern"] < 0.5 * horizonte["resumen"]["horizonte_estimado"][
         "mejora_vs_kern"
     ], "el techo de esta palanca alcanzo a la fecha de fin por SKU"
@@ -322,7 +322,7 @@ def test_borrar_la_fila_censurada_es_PEOR_que_no_hacer_nada(datos, doc):
         "el carril que borra dejo de quebrar mas que el control; el documento publica "
         "42,7% contra 34,8% como la prueba de que el bucle corre para atras"
     )
-    assert "cambia la distribución de la que estima" in DOC.read_text()
+    assert "cambia la distribución de la que estima" in DOC.read_text(encoding="utf-8")
 
 
 def test_el_documento_declara_los_limites_del_titular(doc):
@@ -362,7 +362,7 @@ def test_el_experimento_tenia_potencia_para_ver_una_palanca_que_valiera(datos, d
 
     # Y la potencia contra la palanca que SI pago en esta rama, medida sobre los mismos
     # mundos: si esto cayera, "no paga" pasaria a ser "no se vio".
-    horizonte = json.loads(HORIZONTE.read_text())
+    horizonte = json.loads(HORIZONTE.read_text(encoding="utf-8"))
     efecto = horizonte["resumen"]["horizonte_estimado"]["mejora_vs_kern"]
     ncp = efecto / se
     potencia = (

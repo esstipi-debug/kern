@@ -34,12 +34,12 @@ def _plano(texto: str) -> str:
 
 @pytest.fixture(scope="module")
 def datos() -> dict:
-    return json.loads(BASE.read_text())
+    return json.loads(BASE.read_text(encoding="utf-8"))
 
 
 @pytest.fixture(scope="module")
 def doc() -> str:
-    return _plano(DOC.read_text())
+    return _plano(DOC.read_text(encoding="utf-8"))
 
 
 def test_la_palanca_paga_en_TODOS_los_mundos(datos, doc):

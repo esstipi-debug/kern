@@ -38,12 +38,12 @@ def _plano(texto: str) -> str:
 
 @pytest.fixture(scope="module")
 def datos() -> dict:
-    return json.loads(COMPARACION.read_text())["palancas"]
+    return json.loads(COMPARACION.read_text(encoding="utf-8"))["palancas"]
 
 
 @pytest.fixture(scope="module")
 def doc() -> str:
-    return _plano(DOC.read_text())
+    return _plano(DOC.read_text(encoding="utf-8"))
 
 
 def test_el_control_reproduce_las_lineas_base_congeladas(datos):
@@ -130,7 +130,7 @@ def test_las_lineas_base_de_CINCO_mundos_siguen_siendo_de_cinco(datos):
         ("horizonte_por_sku_25.json", 25),
         ("residuo_de_la_brecha_25.json", 25),
     ):
-        d = json.loads((BASES / archivo).read_text())
+        d = json.loads((BASES / archivo).read_text(encoding="utf-8"))
         n = len(d["por_semilla"])
         assert n == esperado, f"{archivo} pasó a tener {n} mundos, no {esperado}"
         if esperado == 5:
@@ -142,7 +142,7 @@ def test_los_documentos_de_cinco_mundos_declaran_que_fueron_superados():
     ahi mismo de que su orden de palancas cambio, sin depender de encontrar el documento
     nuevo por su cuenta."""
     for nombre in ("KERN_HORIZONTE_POR_SKU.md", "KERN_RESIDUO_DE_LA_BRECHA.md"):
-        texto = (RAIZ / "documentation" / nombre).read_text()
+        texto = (RAIZ / "documentation" / nombre).read_text(encoding="utf-8")
         assert "KERN_PALANCAS_SOBRE_25_MUNDOS.md" in texto, (
             f"{nombre} no apunta a la re-medicion sobre 25 mundos"
         )
@@ -152,7 +152,7 @@ def test_la_prediccion_se_escribio_antes_y_el_documento_dice_cual_fallo(doc):
     """Las tres predicciones son parte del resultado: publicarlas solo cuando aciertan es
     lo que vuelve inservible a una prediccion. El documento tambien tiene que decir lo que
     NO anticipo."""
-    assert "La predicción, escrita antes de correr" in DOC.read_text()
+    assert "La predicción, escrita antes de correr" in DOC.read_text(encoding="utf-8")
     for p in ("P1", "P2", "P3"):
         assert p in doc
     assert "no anticipó" in doc or "no anticipo" in doc

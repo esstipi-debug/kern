@@ -357,7 +357,7 @@ def test_la_planilla_deja_la_celda_vacia_y_el_markdown_una_raya():
 def test_el_markdown_no_imprime_un_cero_en_el_disparador(tmp_path):
     reporte, _ = _rec(_archivo("NUEVO", _SERIE_SIN_MEDIA), "NUEVO")
     destino = deliverables.write_report_md(reporte, tmp_path / "r.md")
-    fila = [ln for ln in destino.read_text().splitlines()
+    fila = [ln for ln in destino.read_text(encoding="utf-8").splitlines()
             if ln.startswith("| NUEVO |")]
 
     assert fila, "el SKU refusado tiene que aparecer en la tabla, no desaparecer"

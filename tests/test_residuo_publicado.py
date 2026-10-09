@@ -52,12 +52,12 @@ def _plano(texto: str) -> str:
 
 @pytest.fixture(scope="module")
 def datos() -> dict:
-    return json.loads(BASE.read_text())
+    return json.loads(BASE.read_text(encoding="utf-8"))
 
 
 @pytest.fixture(scope="module")
 def doc() -> str:
-    return _plano(DOC.read_text())
+    return _plano(DOC.read_text(encoding="utf-8"))
 
 
 # ---------------------------------------------------------------------------
@@ -72,7 +72,7 @@ def test_el_control_es_identico_al_carril_publicado(datos):
     carril de control no reprodujera ESE numero, el residuo que se diagnostica aqui
     seria otro, y las comparaciones contra el no valdrian.
     """
-    previo = json.loads(COBERTURA.read_text())
+    previo = json.loads(COBERTURA.read_text(encoding="utf-8"))
 
     assert datos["resumen"]["kern"]["capture"] == previo["promedios"]["kern"]["capture"]
     # Y no solo la captura: las tres varas del cociente, al ultimo digito.
@@ -84,7 +84,7 @@ def test_el_control_es_identico_al_carril_publicado(datos):
 
 
 def test_los_parametros_son_los_de_la_linea_base(datos):
-    p, previo = datos["parametros"], json.loads(COBERTURA.read_text())["contexto"]
+    p, previo = datos["parametros"], json.loads(COBERTURA.read_text(encoding="utf-8"))["contexto"]
     assert p["semillas"] == previo["semillas"]
     assert p["n_skus"] == previo["n_skus"]
     assert p["n_proveedores"] == previo["n_proveedores"]

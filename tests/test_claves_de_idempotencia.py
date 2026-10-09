@@ -133,7 +133,7 @@ def _sitios_con_clave() -> list[tuple[str, int, ast.AST]]:
     fuera: list[tuple[str, int, ast.AST]] = []
     for ruta in _archivos_py():
         try:
-            arbol = ast.parse(ruta.read_text())
+            arbol = ast.parse(ruta.read_text(encoding="utf-8"))
         except SyntaxError:      # pragma: no cover - un .py que no parsea no es nuestro
             continue
         envolvente: dict[int, ast.AST] = {}
@@ -149,7 +149,7 @@ def _sitios_con_clave() -> list[tuple[str, int, ast.AST]]:
                 continue
             for kw in nodo.keywords:
                 if kw.arg == "idempotency_key":
-                    fuera.append((str(ruta.relative_to(RAIZ)), nodo.lineno, kw.value))
+                    fuera.append((ruta.relative_to(RAIZ).as_posix(), nodo.lineno, kw.value))
     return fuera
 
 

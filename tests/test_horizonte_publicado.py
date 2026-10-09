@@ -41,12 +41,12 @@ def _plano(texto: str) -> str:
 
 @pytest.fixture(scope="module")
 def datos() -> dict:
-    return json.loads(BASE.read_text())
+    return json.loads(BASE.read_text(encoding="utf-8"))
 
 
 @pytest.fixture(scope="module")
 def doc() -> str:
-    return _plano(DOC.read_text())
+    return _plano(DOC.read_text(encoding="utf-8"))
 
 
 # ---------------------------------------------------------------------------
@@ -256,7 +256,7 @@ def test_el_rescate_sobre_lo_publicado_casi_no_mueve_al_control(datos):
         "mover la captura; el camino 1 del documento hay que reescribirlo"
     )
     # Y el residuo que se queria explicar sigue siendo el que el documento cita.
-    previo = json.loads(RESIDUO.read_text())["resumen"]["kern"]["capture"]
+    previo = json.loads(RESIDUO.read_text(encoding="utf-8"))["resumen"]["kern"]["capture"]
     assert pub["0.00"] == pytest.approx(previo), (
         "el camino 1 dejo de reproducir la captura publicada del residuo"
     )

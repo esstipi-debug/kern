@@ -135,7 +135,7 @@ def _params_por_destino() -> tuple[dict, dict]:
       Las claves constantes de esos dicts cuentan como pasadas.
     """
     modulo = inspect.getfile(tools)
-    arbol = ast.parse(Path(modulo).read_text())
+    arbol = ast.parse(Path(modulo).read_text(encoding="utf-8"))
     ns = vars(tools)
 
     def resolver(func):
@@ -344,7 +344,7 @@ def test_el_override_llega_y_mueve_el_campo_que_tiene_que_mover(tool, tmp_path):
     ruta = _fixture_path(tool, tmp_path)
     if ruta is None:
         ruta = tmp_path / f"{tool}.csv"
-        ruta.write_text(_CSV[tool])
+        ruta.write_text(_CSV[tool], encoding="utf-8")
 
     def corrida(etiqueta, ov):
         res = Orchestrator(clients_root=None).run(
