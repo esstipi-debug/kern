@@ -17,6 +17,7 @@ from nosilo_core.registry import Prepared, Produced, Tool, ToolRegistry
 from nosilo_core.types import STATUS_NEEDS_CLARIFICATION, STATUS_NEEDS_DATA, STATUS_OK, JobRequest
 
 from .engine import (
+    MIN_DIAS_ANUALIZAR,
     MIN_ENVIOS_DEFAULT,
     MOTIVO_POCOS_ENVIOS,
     MOTIVO_SIN_FECHAS,
@@ -27,6 +28,7 @@ from .engine import (
     Celda,
     Comparacion,
     Pesos,
+    Recomendacion,
     comparar,
 )
 from .loader import OPTIONAL_COLUMNS, REQUIRED_COLUMNS, LoadError, load_envios
@@ -102,10 +104,26 @@ def _money(value: Decimal) -> str:
     return f"{value.quantize(Decimal('1')):,}"
 
 
+def _ahorro_anual_texto(comp: Comparacion) -> str:
+    """El total anualizado, o por que no existe: un total que no se midio no se muestra como 0."""
+    n = len(comp.recomendaciones)
+    if n == 0:
+        return "sin recomendaciones"
+    total = comp.ahorro_anual_total
+    if total is None:
+        return f"sin anualizar ({n} recomendacion(es) con menos de {MIN_DIAS_ANUALIZAR} dias de historia)"
+    texto = f"{_money(total)} {comp.moneda}"
+    anualizadas = comp.recomendaciones_anualizadas
+    if anualizadas < n:
+        texto += (f" ({anualizadas} de {n} recomendaciones; las otras tienen menos de "
+                  f"{MIN_DIAS_ANUALIZAR} dias de historia)")
+    return texto
+
+
 def _summary(comp: Comparacion) -> str:
     return (
         f"{len(comp.rutas)} ruta(s), {comp.rutas_comparables} comparable(s), "
-        f"{len(comp.recomendaciones)} recomendacion(es); ahorro anualizado {_money(comp.ahorro_anual_total)} {comp.moneda}"
+        f"{len(comp.recomendaciones)} recomendacion(es); ahorro anualizado: {_ahorro_anual_texto(comp)}"
     )
 
 
@@ -137,6 +155,7 @@ def _fmt(value: Decimal | None, places: int) -> str:
 
 MATRIZ_COLUMNAS = (
     "ruta", "transportista", "es_actual", "envios", "kg_total", "costo_total", "costo_kg",
+    "envios_costo_cero", "primer_despacho", "ultimo_despacho",
     "envios_fechados", "otd", "elegible", "motivo", "indice_costo", "indice_servicio",
     "peso_costo", "peso_servicio", "puntaje",
 )
@@ -145,8 +164,9 @@ MATRIZ_COLUMNAS = (
 def _fila(ruta_actual: str, c: Celda, comp: Comparacion) -> list[str]:
     return [
         c.ruta, c.transportista, "si" if c.transportista == ruta_actual else "no", str(c.envios),
-        _fmt(c.kg_total, 2), _fmt(c.costo_total, 2), _fmt(c.costo_kg, 4), str(c.envios_fechados),
-        _fmt(c.otd, 4), "si" if c.elegible else "no", c.motivo or "",
+        _fmt(c.kg_total, 2), _fmt(c.costo_total, 2), _fmt(c.costo_kg, 4),
+        str(c.envios_costo_cero), c.primer_despacho.isoformat(), c.ultimo_despacho.isoformat(),
+        str(c.envios_fechados), _fmt(c.otd, 4), "si" if c.elegible else "no", c.motivo or "",
         _fmt(c.indice_costo, 4), _fmt(c.indice_servicio, 4),
         str(comp.pesos.costo), str(comp.pesos.servicio), _fmt(c.puntaje, 4),
     ]
@@ -177,25 +197,52 @@ def _orden_recomendaciones(comp: Comparacion):
     )
 
 
-def _avisos(comp: Comparacion) -> list[str]:
-    """Un transportista puntuado con costo 0 recibe indice de costo 1: se anota, no se esconde."""
-    return [
-        f"- **{ruta.ruta} / {c.transportista}**: costo 0 en todos sus envios; se le asigna indice de costo 1. "
-        "Revisa que el costo este cargado."
-        for ruta in comp.rutas
-        for c in ruta.celdas
-        if c.elegible and c.costo_kg == 0
-    ]
+def _aviso_costo_cero(ruta: str, c: Celda) -> str:
+    """Un costo 0 suele ser un costo todavia sin cargar: baja el costo/kg del transportista en silencio."""
+    base = f"- **{ruta} / {c.transportista}**: "
+    revisar = "Revisa que el costo este cargado."
+    if c.envios_costo_cero == c.envios:
+        if c.elegible:
+            return base + f"costo 0 en todos sus envios; se le asigna indice de costo 1. {revisar}"
+        return base + f"costo 0 en todos sus envios. {revisar}"
+    return base + (f"{c.envios_costo_cero} de {c.envios} envios tienen costo 0; si es un costo aun no cargado, "
+                   f"su costo/kg sale subestimado. {revisar}")
+
+
+def _aviso_volumen_movido(rec: Recomendacion) -> str | None:
+    """Si el mejor empieza despues de que el actual dejo de despachar, el cambio ya ocurrio."""
+    if rec.mejor.primer_despacho <= rec.actual.ultimo_despacho:
+        return None
+    return (
+        f"- **{rec.ruta}**: el volumen ya parece haberse movido: {rec.mejor.transportista} empieza el "
+        f"{rec.mejor.primer_despacho.isoformat()} y {rec.actual.transportista} no envia despues del "
+        f"{rec.actual.ultimo_despacho.isoformat()}. El ahorro de esta recomendacion puede estar ya capturado."
+    )
+
+
+def _avisos(comp: Comparacion) -> tuple[list[str], set[str]]:
+    """Las lineas de la seccion Avisos y las rutas cuya recomendacion lleva un aviso de volumen movido."""
+    lineas: list[str] = []
+    movidas: set[str] = set()
+    for ruta in comp.rutas:
+        lineas += [_aviso_costo_cero(ruta.ruta, c) for c in ruta.celdas if c.envios_costo_cero]
+        if ruta.recomendacion is not None:
+            aviso = _aviso_volumen_movido(ruta.recomendacion)
+            if aviso is not None:
+                lineas.append(aviso)
+                movidas.add(ruta.ruta)
+    return lineas, movidas
 
 
 def _render(comp: Comparacion, client: str) -> str:
+    avisos, movidas = _avisos(comp)
     lines = [
         f"# Comparador de transportistas - {client}",
         "",
         f"- Envios analizados: **{comp.envios}** en **{len(comp.rutas)}** ruta(s); moneda **{comp.moneda}**",
         f"- Pesos del puntaje: costo **{comp.pesos.costo}**, servicio (OTD) **{comp.pesos.servicio}**",
         f"- Muestra minima para recomendar: **{comp.min_envios}** envios con fecha prometida y de entrega",
-        f"- Ahorro anualizado de las recomendaciones: **{_money(comp.ahorro_anual_total)} {comp.moneda}**",
+        f"- Ahorro anualizado de las recomendaciones: **{_ahorro_anual_texto(comp)}**",
         "",
         "Servicio = OTD (entregado en o antes de la fecha prometida), no OTIF: un archivo de fletes "
         "no dice si el pedido llego completo.",
@@ -214,6 +261,7 @@ def _render(comp: Comparacion, client: str) -> str:
             f"Ahorro del periodo {_money(r.ahorro_periodo)} {comp.moneda} ({anual}); "
             f"OTD {r.delta_otd_pp.quantize(Decimal('0.1')):+} pp; "
             f"puntaje {_fmt(r.mejor.puntaje, 3)} contra {_fmt(r.actual.puntaje, 3)}."
+            + (" (ver Avisos)" if r.ruta in movidas else "")
         )
     lines += ["", "## Rutas sin recomendacion", ""]
     sin = [r for r in comp.rutas if r.recomendacion is None]
@@ -221,13 +269,12 @@ def _render(comp: Comparacion, client: str) -> str:
         lines.append("Ninguna.")
     for r in sin:
         lines.append(f"- **{r.ruta}**: {MOTIVOS_TEXTO.get(r.motivo or '', r.motivo or '')}")
-    avisos = _avisos(comp)
     if avisos:
         lines += ["", "## Avisos", "", *avisos]
     lines += [
         "",
-        "Los nombres de transportista se agrupan sin distinguir mayusculas ni espacios; "
-        "alias distintos (por ejemplo una razon social y una marca) cuentan como dos transportistas.",
+        "Los nombres de transportista, origen y destino se agrupan sin distinguir mayusculas, acentos ni "
+        "espacios de mas; alias distintos (por ejemplo una razon social y una marca) cuentan como dos transportistas.",
         "",
     ]
     return "\n".join(lines)

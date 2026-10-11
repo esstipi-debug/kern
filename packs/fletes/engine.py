@@ -31,6 +31,9 @@ class Celda:
     costo_total: Decimal
     costo_kg: Decimal
     envios_fechados: int
+    envios_costo_cero: int
+    primer_despacho: date
+    ultimo_despacho: date
     otd: Decimal | None
     elegible: bool
     motivo: str | None
@@ -89,6 +92,7 @@ def _celda(ruta: str, transportista: str, envios: list[Envio], min_envios: int) 
     else:
         elegible, motivo = False, MOTIVO_POCOS_ENVIOS
 
+    despachos = [e.fecha_despacho for e in envios]
     return Celda(
         ruta=ruta,
         transportista=transportista,
@@ -97,6 +101,9 @@ def _celda(ruta: str, transportista: str, envios: list[Envio], min_envios: int) 
         costo_total=costo,
         costo_kg=costo / kg,
         envios_fechados=len(fechados),
+        envios_costo_cero=sum(1 for e in envios if e.costo == 0),
+        primer_despacho=min(despachos),
+        ultimo_despacho=max(despachos),
         otd=otd,
         elegible=elegible,
         motivo=motivo,
@@ -158,11 +165,14 @@ class Comparacion:
         return tuple(r.recomendacion for r in self.rutas if r.recomendacion is not None)
 
     @property
-    def ahorro_anual_total(self) -> Decimal:
-        return sum(
-            (rec.ahorro_anual for rec in self.recomendaciones if rec.ahorro_anual is not None),
-            Decimal(0),
-        )
+    def recomendaciones_anualizadas(self) -> int:
+        return sum(1 for rec in self.recomendaciones if rec.ahorro_anual is not None)
+
+    @property
+    def ahorro_anual_total(self) -> Decimal | None:
+        """Suma de lo anualizable; None si ninguna recomendacion se anualiza (no medido, no cero)."""
+        anuales = [rec.ahorro_anual for rec in self.recomendaciones if rec.ahorro_anual is not None]
+        return sum(anuales, Decimal(0)) if anuales else None
 
     @property
     def rutas_comparables(self) -> int:

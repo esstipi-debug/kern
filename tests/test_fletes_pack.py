@@ -6,7 +6,7 @@ import csv
 from dataclasses import replace
 from decimal import Decimal
 
-from _fletes_fixtures import lote
+from _fletes_fixtures import envio, lote
 
 from nosilo_core.guided import HANDOFF, OPTIONS, verify_guided
 from nosilo_core.registry import ToolRegistry
@@ -246,3 +246,89 @@ def test_qa_veta_un_elegible_sin_puntaje(tmp_path) -> None:
 def test_el_informe_dice_ninguna_cuando_toda_ruta_tiene_recomendacion(tmp_path) -> None:
     comp = _comparacion(tmp_path, lote("A", 15, a_tiempo=12, costo="150") + lote("B", 12, costo="120"))
     assert "## Rutas sin recomendacion\n\nNinguna." in _informe(tmp_path, comp)
+
+
+def _matriz(tmp_path, comp: Comparacion) -> dict[str, dict[str, str]]:
+    out = deliver(comp, tmp_path / "out", "Cliente X")
+    with out["matriz"].open(encoding="utf-8", newline="") as handle:
+        return {row["transportista"]: row for row in csv.DictReader(handle)}
+
+
+def _dos_rutas_una_anualizable() -> list:
+    return (
+        lote("A", 15, a_tiempo=12, costo="150", paso=4) + lote("B", 12, costo="120", paso=4)
+        + lote("C", 15, a_tiempo=12, costo="150", destino="Valdivia")
+        + lote("D", 12, costo="120", destino="Valdivia")
+    )
+
+
+def _a_con_ceros_y_b_mas_caro() -> list:
+    a = [envio(i, "A", dia=i, costo="0" if i % 3 == 0 else "150") for i in range(15)]  # 5 de 15 en cero
+    return a + lote("B", 12, costo="130")
+
+
+def _viejo_y_nuevo() -> list:
+    # Viejo despacha los dias 0..78; el cliente se paso a Nuevo desde el dia 80.
+    return lote("Viejo", 40, costo="150", paso=2) + lote("Nuevo", 15, costo="120", dia0=80)
+
+
+# --- I3: sin anualizar no es cero ---------------------------------------------------------------
+
+
+def test_resumen_y_titular_dicen_sin_anualizar_en_vez_de_cero(tmp_path) -> None:
+    prepared = _prepared(tmp_path, lote("A", 15, a_tiempo=12, costo="150") + lote("B", 12, costo="120"))
+    produced = run(prepared.payload, {})
+    assert "sin anualizar" in produced.summary
+    informe = _informe(tmp_path, produced.report)
+    assert "sin anualizar" in informe
+    assert "**0 CLP**" not in informe
+
+
+def test_titular_parcial_dice_cuantas_recomendaciones_se_sumaron(tmp_path) -> None:
+    informe = _informe(tmp_path, _comparacion(tmp_path, _dos_rutas_una_anualizable()))
+    assert "1 de 2 recomendaciones" in informe
+
+
+# --- I4: costo 0 parcial ------------------------------------------------------------------------
+
+
+def test_el_informe_avisa_de_envios_con_costo_cero_dentro_de_un_transportista_con_costo(tmp_path) -> None:
+    informe = _informe(tmp_path, _comparacion(tmp_path, _a_con_ceros_y_b_mas_caro()))
+    assert "**Santiago -> Concepcion / A**: 5 de 15 envios tienen costo 0" in informe
+
+
+def test_la_matriz_cuenta_los_envios_con_costo_cero(tmp_path) -> None:
+    filas = _matriz(tmp_path, _comparacion(tmp_path, _a_con_ceros_y_b_mas_caro()))
+    assert filas["A"]["envios_costo_cero"] == "5"
+    assert filas["B"]["envios_costo_cero"] == "0"
+
+
+# --- I5: el informe declara como agrupa nombres -------------------------------------------------
+
+
+def test_el_informe_declara_que_agrupa_sin_acentos_tambien_origen_y_destino(tmp_path) -> None:
+    informe = _informe(tmp_path, _comparacion(tmp_path))
+    assert "acentos" in informe and "origen y destino" in informe
+
+
+# --- I6: la recomendacion no puede ocultar que el cambio ya ocurrio -----------------------------
+
+
+def test_avisa_cuando_el_volumen_ya_parece_haberse_movido(tmp_path) -> None:
+    informe = _informe(tmp_path, _comparacion(tmp_path, _viejo_y_nuevo()))
+    assert "el volumen ya parece haberse movido" in informe
+    assert "Nuevo empieza el 2026-03-22" in informe
+    assert "Viejo no envia despues del 2026-03-20" in informe
+    assert "(ver Avisos)" in informe
+
+
+def test_si_los_dos_transportistas_despachan_a_la_vez_no_hay_aviso_de_volumen_movido(tmp_path) -> None:
+    informe = _informe(tmp_path, _comparacion(tmp_path))
+    assert "ya parece haberse movido" not in informe
+    assert "(ver Avisos)" not in informe
+
+
+def test_la_matriz_trae_primer_y_ultimo_despacho(tmp_path) -> None:
+    filas = _matriz(tmp_path, _comparacion(tmp_path, _viejo_y_nuevo()))
+    assert (filas["Viejo"]["primer_despacho"], filas["Viejo"]["ultimo_despacho"]) == ("2026-01-01", "2026-03-20")
+    assert (filas["Nuevo"]["primer_despacho"], filas["Nuevo"]["ultimo_despacho"]) == ("2026-03-22", "2026-04-05")

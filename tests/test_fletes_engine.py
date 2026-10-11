@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from decimal import Decimal
 
 import pytest
-from _fletes_fixtures import envio, lote
+from _fletes_fixtures import INICIO, envio, lote
 
 from packs.fletes.engine import (
     MIN_DIAS_ANUALIZAR,
@@ -244,9 +245,6 @@ def test_comparar_arma_la_corrida_completa() -> None:
     assert comp.ahorro_anual_total == comp.recomendaciones[0].ahorro_anual
 
 
-def test_ahorro_anual_total_ignora_los_no_anualizables() -> None:
-    envios = lote("A", 15, a_tiempo=12, costo="150") + lote("B", 12, costo="120")
-    assert comparar(envios).ahorro_anual_total == Decimal(0)
 
 
 def test_comparar_rechaza_vacio_y_monedas_mezcladas() -> None:
@@ -280,3 +278,62 @@ def test_ruta_sin_ningun_elegible_no_rompe_y_no_recomienda() -> None:
     res = puntuar(_ruta(lote("A", 4) + lote("B", 3, costo="90")), Pesos())
     assert (res.recomendacion, res.motivo) == (None, RUTA_ACTUAL_NO_ELEGIBLE)
     assert all(c.puntaje is None for c in res.celdas)
+
+
+# --- I3: un total que no se midio es None, nunca 0 ----------------------------------------------
+
+
+def test_ahorro_anual_total_es_none_si_ninguna_recomendacion_se_anualiza() -> None:
+    envios = lote("A", 15, a_tiempo=12, costo="150") + lote("B", 12, costo="120")  # 15 dias
+    comp = comparar(envios)
+    assert len(comp.recomendaciones) == 1
+    assert comp.ahorro_anual_total is None
+    assert comp.recomendaciones_anualizadas == 0
+
+
+def _dos_rutas_una_anualizable() -> list:
+    return (
+        lote("A", 15, a_tiempo=12, costo="150", paso=4) + lote("B", 12, costo="120", paso=4)
+        + lote("C", 15, a_tiempo=12, costo="150", destino="Valdivia")
+        + lote("D", 12, costo="120", destino="Valdivia")
+    )
+
+
+def test_ahorro_anual_total_parcial_cuenta_cuantas_recomendaciones_entraron() -> None:
+    comp = comparar(_dos_rutas_una_anualizable())
+    assert len(comp.recomendaciones) == 2
+    assert comp.recomendaciones_anualizadas == 1
+    anual = [r.ahorro_anual for r in comp.recomendaciones if r.ahorro_anual is not None]
+    assert comp.ahorro_anual_total == anual[0]
+
+
+# --- I4: los envios con costo 0 se cuentan, no se esconden dentro del promedio -----------------
+
+
+def test_cuenta_los_envios_con_costo_cero() -> None:
+    envios = [envio(i, "A", dia=i, costo="0" if i % 3 == 0 else "150") for i in range(15)]  # 5 ceros
+    c = _celda(agrupar(envios), "Santiago -> Concepcion", "A")
+    assert (c.envios, c.envios_costo_cero) == (15, 5)
+
+
+# --- I5: la misma ciudad con o sin acento es una sola ruta --------------------------------------
+
+
+def test_ciudades_con_y_sin_acento_son_la_misma_ruta() -> None:
+    envios = [
+        envio(1, "A", destino="Concepción"),
+        envio(2, "A", destino="Concepcion", dia=1),
+        envio(3, "A", destino="Concepción", dia=2),
+    ]
+    (ruta,) = agrupar(envios)
+    assert ruta.celdas[0].envios == 3
+    assert ruta.ruta == "Santiago -> Concepción"  # la primera grafia vista
+
+
+# --- I6: cuando empezo y cuando termino de despachar cada transportista -------------------------
+
+
+def test_celda_lleva_primer_y_ultimo_despacho() -> None:
+    c = _celda(agrupar(lote("A", 5, dia0=10, paso=3)), "Santiago -> Concepcion", "A")  # dias 10,13,16,19,22
+    assert c.primer_despacho == INICIO + timedelta(days=10)
+    assert c.ultimo_despacho == INICIO + timedelta(days=22)
