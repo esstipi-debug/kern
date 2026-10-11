@@ -332,3 +332,10 @@ def test_la_matriz_trae_primer_y_ultimo_despacho(tmp_path) -> None:
     filas = _matriz(tmp_path, _comparacion(tmp_path, _viejo_y_nuevo()))
     assert (filas["Viejo"]["primer_despacho"], filas["Viejo"]["ultimo_despacho"]) == ("2026-01-01", "2026-03-20")
     assert (filas["Nuevo"]["primer_despacho"], filas["Nuevo"]["ultimo_despacho"]) == ("2026-03-22", "2026-04-05")
+
+
+def test_aviso_de_costo_cero_en_un_transportista_sin_muestra_no_promete_indice_de_costo(tmp_path) -> None:
+    envios = lote("A", 12, costo="0", fechados=3) + lote("B", 12, costo="100")
+    informe = _informe(tmp_path, _comparacion(tmp_path, envios))
+    assert "**Santiago -> Concepcion / A**: costo 0 en todos sus envios. Revisa" in informe
+    assert "indice de costo 1" not in informe
