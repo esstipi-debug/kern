@@ -135,6 +135,7 @@ def test_parametros_ilegibles_piden_aclaracion(tmp_path) -> None:
     assert _prepared(tmp_path, peso_costo="mucho", peso_servicio="0.4").status == STATUS_NEEDS_CLARIFICATION
     assert _prepared(tmp_path, min_envios=0).status == STATUS_NEEDS_CLARIFICATION
     assert _prepared(tmp_path, min_envios="diez").status == STATUS_NEEDS_CLARIFICATION
+    assert _prepared(tmp_path, peso_costo="NaN", peso_servicio="0.4").status == STATUS_NEEDS_CLARIFICATION
 
 
 def test_caso_integral_recomienda_lo_esperado(tmp_path) -> None:
@@ -224,3 +225,24 @@ def test_sin_recomendaciones_entrega_un_handoff_que_cumple_el_contrato(tmp_path)
     outcome = options(comp)
     assert outcome.status == HANDOFF
     assert verify_guided(outcome) == []
+
+
+def _con_celda_rota(comp: Comparacion, **cambios) -> Comparacion:
+    ruta = next(r for r in comp.rutas if r.ruta == "Santiago -> Concepcion")
+    rota = replace(ruta, celdas=(replace(ruta.celdas[0], **cambios), *ruta.celdas[1:]))
+    return replace(comp, rutas=tuple(rota if r is ruta else r for r in comp.rutas))
+
+
+def test_qa_veta_un_puntaje_fuera_de_rango(tmp_path) -> None:
+    roto = _con_celda_rota(_comparacion(tmp_path), puntaje=Decimal("1.5"))
+    assert any("fuera de [0, 1]" in issue for issue in qa(roto))
+
+
+def test_qa_veta_un_elegible_sin_puntaje(tmp_path) -> None:
+    roto = _con_celda_rota(_comparacion(tmp_path), puntaje=None)
+    assert any("no coinciden" in issue for issue in qa(roto))
+
+
+def test_el_informe_dice_ninguna_cuando_toda_ruta_tiene_recomendacion(tmp_path) -> None:
+    comp = _comparacion(tmp_path, lote("A", 15, a_tiempo=12, costo="150") + lote("B", 12, costo="120"))
+    assert "## Rutas sin recomendacion\n\nNinguna." in _informe(tmp_path, comp)

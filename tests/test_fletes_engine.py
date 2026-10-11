@@ -274,3 +274,9 @@ def test_con_peso_de_servicio_cero_un_empate_en_costo_no_mueve_volumen_a_peor_ot
     res = puntuar(_ruta(envios), Pesos(Decimal(1), Decimal(0)))
     assert res.actual == "Beta"
     assert (res.recomendacion, res.motivo) == (None, RUTA_ACTUAL_ES_EL_MEJOR)
+
+
+def test_ruta_sin_ningun_elegible_no_rompe_y_no_recomienda() -> None:
+    res = puntuar(_ruta(lote("A", 4) + lote("B", 3, costo="90")), Pesos())
+    assert (res.recomendacion, res.motivo) == (None, RUTA_ACTUAL_NO_ELEGIBLE)
+    assert all(c.puntaje is None for c in res.celdas)

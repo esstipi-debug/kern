@@ -148,3 +148,8 @@ def test_nombres_normalizados() -> None:
     assert name_key("  CHILE   express ") == name_key("Chile Express")
     (envio,) = parse_envios(_text("E1,  Rapido   Sur ,Santiago,Concepcion,2026-01-05,150,CLP,100,,"))
     assert envio.transportista == "Rapido Sur"
+
+
+def test_fecha_imposible_del_calendario_se_rechaza() -> None:
+    with pytest.raises(LoadError, match=r"fila 2, columna fecha_despacho:.*AAAA-MM-DD"):
+        parse_envios(_text("E1,Rapido,Santiago,Concepcion,2026-02-30,150,CLP,100,,"))
