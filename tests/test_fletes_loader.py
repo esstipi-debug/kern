@@ -153,3 +153,114 @@ def test_nombres_normalizados() -> None:
 def test_fecha_imposible_del_calendario_se_rechaza() -> None:
     with pytest.raises(LoadError, match=r"fila 2, columna fecha_despacho:.*AAAA-MM-DD"):
         parse_envios(_text("E1,Rapido,Santiago,Concepcion,2026-02-30,150,CLP,100,,"))
+
+
+SEMI_HEADER = HEADER.replace(",", ";")
+HEADER_8 = "envio_id,transportista,origen,destino,fecha_despacho,costo,moneda,kg"
+COMPUESTA = "Concepción"
+DESCOMPUESTA = "Concepción"
+
+
+def _fila_ok(n: int) -> str:
+    return f"E{n},Rapido,Santiago,Concepcion,2026-01-05,150,CLP,100,,"
+
+
+# --- C1: un punto de miles no puede leerse como decimal (45.000 => 45) ---------------------------
+
+
+def test_punto_de_miles_en_costo_se_rechaza_en_archivo_con_punto_y_coma() -> None:
+    row = "E1;Rapido;Santiago;Concepcion;2026-01-05;45.000;CLP;300;2026-01-07;2026-01-07"
+    with pytest.raises(LoadError, match=r"fila 2, columna costo:.*parece usar el punto como separador de miles"):
+        parse_envios(_text(row, header=SEMI_HEADER))
+
+
+def test_punto_de_miles_en_costo_se_rechaza_tambien_en_archivo_con_comas() -> None:
+    with pytest.raises(LoadError, match=r"fila 2, columna costo:.*parece usar el punto como separador de miles"):
+        parse_envios(_text("E1,Rapido,Santiago,Concepcion,2026-01-05,15.000,CLP,300,,"))
+
+
+def test_punto_de_miles_en_kg_se_rechaza_solo_en_archivo_con_punto_y_coma() -> None:
+    semi = "E1;Rapido;Santiago;Concepcion;2026-01-05;150;CLP;1.500;;"
+    with pytest.raises(LoadError, match=r"fila 2, columna kg:.*parece usar el punto como separador de miles"):
+        parse_envios(_text(semi, header=SEMI_HEADER))
+    # con comas el punto es decimal (convencion inglesa): 1.500 son 1,5 kg
+    (envio,) = parse_envios(_text("E1,Rapido,Santiago,Concepcion,2026-01-05,150,CLP,1.500,,"))
+    assert envio.kg == Decimal("1.500")
+
+
+def test_decimales_legitimos_no_se_confunden_con_miles() -> None:
+    (envio,) = parse_envios(_text("E1,Rapido,Santiago,Concepcion,2026-01-05,0.750,CLP,12.5,,"))
+    assert (envio.costo, envio.kg) == (Decimal("0.750"), Decimal("12.5"))
+    semi = "E1;Rapido;Santiago;Concepcion;2026-01-05;45.5;CLP;0.750;;"
+    (envio,) = parse_envios(_text(semi, header=SEMI_HEADER))
+    assert (envio.costo, envio.kg) == (Decimal("45.5"), Decimal("0.750"))
+
+
+@pytest.mark.parametrize("raw", ["1e999999999", "1E3", "2e5", "1_000", "0x10"])
+def test_formas_de_numero_que_decimal_acepta_pero_un_csv_no_se_rechazan(raw: str) -> None:
+    with pytest.raises(LoadError, match=r"fila 2, columna costo:.*notacion cientifica"):
+        parse_envios(_text(f"E1,Rapido,Santiago,Concepcion,2026-01-05,{raw},CLP,100,,"))
+
+
+# --- I1: una comilla sin cerrar no puede tragarse filas ni reventar con csv.Error ---------------
+
+
+def test_comilla_sin_cerrar_no_se_traga_filas_en_silencio() -> None:
+    rows = ['E0,"Rapido,Santiago,Concepcion,2026-01-05,150,CLP,100,,']
+    rows += [_fila_ok(n) for n in range(1, 9)]
+    rows += ['E9,"Lento SA",Santiago,Concepcion,2026-01-05,150,CLP,100,,']
+    with pytest.raises(LoadError, match=r"fila 2: .*mal formado"):
+        parse_envios(_text(*rows))
+
+
+def test_comilla_sin_cerrar_hasta_el_final_del_archivo() -> None:
+    with pytest.raises(LoadError, match=r"fila 3: .*mal formado"):
+        parse_envios(_text(_fila_ok(1), 'E2,"Rapido,Santiago,Concepcion,2026-01-05,150,CLP,100,,'))
+
+
+def test_comilla_sin_cerrar_en_archivo_grande_no_revienta_con_csv_error() -> None:
+    rows = ['E0,"Rapido,Santiago,Concepcion,2026-01-05,150,CLP,100,,'] + [_fila_ok(n) for n in range(1, 4000)]
+    with pytest.raises(LoadError, match=r"fila 2: .*mal formado"):
+        parse_envios(_text(*rows))
+
+
+def test_comillas_bien_cerradas_siguen_leyendose() -> None:
+    (envio,) = parse_envios(_text('E1,"Lento, SA",Santiago,Concepcion,2026-01-05,150,CLP,100,,'))
+    assert envio.transportista == "Lento, SA"
+
+
+# --- I2: una celda de mas (coma dentro de un numero sin comillas) no puede truncar el dato -------
+
+
+def test_celda_de_mas_por_una_coma_sin_comillas_se_rechaza() -> None:
+    with pytest.raises(LoadError, match=r"fila 2: tiene 9 celdas pero el encabezado tiene 8"):
+        parse_envios(_text("E1,Rapido,Santiago,Concepcion,2026-01-05,150,CLP,1,500", header=HEADER_8))
+
+
+def test_celda_de_mas_con_columnas_de_fecha_nombra_el_problema_real() -> None:
+    row = "E1,Rapido,Santiago,Concepcion,2026-01-05,150,CLP,1,500,2026-01-07,2026-01-07"
+    with pytest.raises(LoadError, match=r"fila 2: tiene 11 celdas pero el encabezado tiene 10"):
+        parse_envios(_text(row))
+
+
+def test_celdas_vacias_de_mas_al_final_se_aceptan() -> None:
+    (envio,) = parse_envios(_text("E1,Rapido,Santiago,Concepcion,2026-01-05,150,CLP,100,,,", header=HEADER_8))
+    assert envio.kg == Decimal("100")
+
+
+# --- I5: el mismo lugar con o sin acento, o en otra forma Unicode, es el mismo nombre -----------
+
+
+def test_nombres_se_comparan_sin_acentos_ni_forma_unicode() -> None:
+    assert name_key("CONCEPCIÓN") == name_key("Concepcion") == name_key(DESCOMPUESTA) == name_key(COMPUESTA)
+    assert name_key("Ñuñoa") == name_key("nunoa")
+
+
+def test_normalize_name_compone_la_forma_unicode_y_conserva_el_acento() -> None:
+    assert normalize_name(DESCOMPUESTA) == COMPUESTA
+    assert normalize_name("  " + DESCOMPUESTA + "  ") == COMPUESTA
+
+
+def test_el_loader_entrega_la_forma_compuesta() -> None:
+    (envio,) = parse_envios(_text(f"E1,Rapido,Santiago,{DESCOMPUESTA},2026-01-05,150,CLP,100,,"))
+    assert envio.destino == COMPUESTA
