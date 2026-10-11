@@ -179,3 +179,19 @@ exposición en MCP/webapp · tipo de cambio · tarifas de mercado · cotización
 | Recomendar con poca muestra | `min_envios` sobre envíos **fechados** |
 | Nombres de transportista inconsistentes ("Chilexpress" vs "CHILEXPRESS ") | normalización de mayúsculas/espacios; el resto (alias) queda para v2 y se nota en el informe |
 | Una ruta con períodos muy distintos entre transportistas | el ahorro usa el kg del actual en el período observado; anualización por ruta, no global |
+
+## 10. Enmiendas de la ejecución (2026-10-11)
+
+Decisiones tomadas al implementar y tras la revisión final de la rama. Donde contradicen el texto de arriba, mandan estas. Cada una tiene su test; el detalle está en el PR.
+
+| # | Sección | Cambio | Por qué |
+|---|---|---|---|
+| E1 | 4.4 | Solo hay recomendación si el mejor tiene un puntaje **estrictamente mayor** que el actual. Un empate no recomienda: `actual_ya_es_el_mejor` cubre también el empate. | Con un empate el desempate por nombre elegía un "mejor" que no mejora nada (ahorro 0, o peor OTD si `peso_servicio = 0`). |
+| E2 | 3 | Un número es solo dígitos con un punto decimal opcional. Se rechazan la notación científica, `nan`/`inf` y un punto de miles (`45.000`): en `costo` siempre, en `kg` cuando el archivo usa `;`. | Un Excel es-CL guarda 45.000 por cuarenta y cinco mil; leerlo como 45 achicaba el dato 1.000 veces sin avisar. |
+| E3 | 3 | Además de la coma se acepta `;` como separador, y el BOM de Excel. Un CSV mal formado (comilla sin cerrar) y una fila con más celdas que el encabezado se rechazan con su fila. "Fila N" es la línea donde empieza el registro. | Una comilla sin cerrar se tragaba filas en silencio; una coma dentro de un número truncaba el dato. |
+| E4 | 3, 4 | Transportista, origen y destino se agrupan sin distinguir mayúsculas, acentos ni forma Unicode; se muestra la primera grafía vista. | `Concepción` y `Concepcion` eran dos rutas y no se comparaba nada. |
+| E5 | 4.3 | Además del caso "costo 0 en todos los envíos", se cuenta cualquier envío con costo 0 (`envios_costo_cero` en la matriz) y se avisa por transportista. No se excluyen del costo/kg. | Un 0 suele ser un costo todavía sin cargar y baja el costo/kg en silencio. Excluirlos sería otro cambio de metodología. |
+| E6 | 4.4, 5 | `ahorro_anual_total` es `None` si ninguna recomendación se anualiza; el informe dice "sin anualizar" y, si la suma es parcial, "M de N recomendaciones". | Un total que no se midió no se muestra como 0. |
+| E7 | 5 | La matriz trae `primer_despacho` y `ultimo_despacho` por transportista. Si el mejor empieza después de que el actual dejó de despachar, el informe avisa "el volumen ya parece haberse movido". La definición de "actual" (4.4) no cambia. | Sin esto una recomendación podía presentar como ahorro algo que el cliente ya capturó. |
+
+**Pregunta abierta para el dueño de la spec:** E7 solo avisa. ¿Debe "actual" definirse sobre una ventana reciente en vez de todo el historial?
