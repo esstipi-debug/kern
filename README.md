@@ -17,7 +17,7 @@
 
 </div>
 
-![Kern: a brief and a CSV in, a validated inventory plan out](docs/assets/kern-hero.png)
+<img src="docs/assets/kern-hero.png" alt="Kern: a brief and a CSV in, a validated inventory plan out" width="880">
 
 <div align="center"><sub>Illustrative example. The live agent console (<code>webapp/static/prototype/</code>) talks to the real <code>POST /api/jobs</code>.</sub></div>
 
@@ -27,14 +27,22 @@
 
 Give it a brief; it **classifies → runs → validates (QA) → delivers**. If QA fails, nothing ships.
 
-<table>
-<tr>
-<td width="33%"><img src="docs/assets/kern-brief.png" alt="Write what you need in plain language; Kern turns it into parameters: service level, scope, inventory cap, lead time, warehouses"><br><sub><b>1 · Brief</b> — plain language in, parameters out.</sub></td>
-<td width="33%"><img src="docs/assets/kern-plan.png" alt="Validated plan table with safety stock, reorder point and order quantity per SKU, plus budget, service and warning checks"><br><sub><b>2 · Validation</b> — no number ships without passing the checks.</sub></td>
-<td width="33%"><img src="docs/assets/kern-sources.png" alt="A report sentence with numbered citations pointing to the spreadsheet cell, the CSV rows and the brief line each number came from"><br><sub><b>3 · Report</b> — every recommendation cites its source.</sub></td>
-</tr>
-</table>
-<div align="center"><sub>Illustrative figures (SKUs, budget) to show the flow, not a measured run.</sub></div>
+<details open>
+<summary><b>See the flow in 3 steps</b> (illustrative figures, not a measured run)</summary>
+
+**1 · Brief — plain language in, parameters out.**
+
+<img src="docs/assets/kern-brief.png" alt="Write what you need in plain language; Kern turns it into parameters: service level, scope, inventory cap, lead time, warehouses" width="880">
+
+**2 · Validation — no number ships without passing the checks.**
+
+<img src="docs/assets/kern-plan.png" alt="Validated plan table with safety stock, reorder point and order quantity per SKU, plus budget, service and warning checks" width="880">
+
+**3 · Report — every recommendation cites its source.**
+
+<img src="docs/assets/kern-sources.png" alt="A report sentence with numbered citations pointing to the spreadsheet cell, the CSV rows and the brief line each number came from" width="880">
+
+</details>
 
 ```mermaid
 flowchart LR
