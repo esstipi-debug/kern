@@ -17,15 +17,24 @@
 
 </div>
 
-![Kern console — a brief routed to the leadership_chain capability, returning a CHAIN profile with downloadable chart and report](docs/assets/scm-agent-console.png)
+![Kern: a brief and a CSV in, a validated inventory plan out](docs/assets/kern-hero.png)
 
-<div align="center"><sub>The live agent console (<code>webapp/static/prototype/</code>) talking to the real <code>POST /api/jobs</code>.</sub></div>
+<div align="center"><sub>Illustrative example. The live agent console (<code>webapp/static/prototype/</code>) talks to the real <code>POST /api/jobs</code>.</sub></div>
 
 ---
 
 ## ⚡ What it does
 
 Give it a brief; it **classifies → runs → validates (QA) → delivers**. If QA fails, nothing ships.
+
+<table>
+<tr>
+<td width="33%"><img src="docs/assets/kern-brief.png" alt="Write what you need in plain language; Kern turns it into parameters: service level, scope, inventory cap, lead time, warehouses"><br><sub><b>1 · Brief</b> — plain language in, parameters out.</sub></td>
+<td width="33%"><img src="docs/assets/kern-plan.png" alt="Validated plan table with safety stock, reorder point and order quantity per SKU, plus budget, service and warning checks"><br><sub><b>2 · Validation</b> — no number ships without passing the checks.</sub></td>
+<td width="33%"><img src="docs/assets/kern-sources.png" alt="A report sentence with numbered citations pointing to the spreadsheet cell, the CSV rows and the brief line each number came from"><br><sub><b>3 · Report</b> — every recommendation cites its source.</sub></td>
+</tr>
+</table>
+<div align="center"><sub>Illustrative figures (SKUs, budget) to show the flow, not a measured run.</sub></div>
 
 ```mermaid
 flowchart LR
