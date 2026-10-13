@@ -133,7 +133,8 @@ hand — no self-serve signup yet):
 
 ```bash
 python examples/issue_mcp_key.py issue "Acme Co"      # prints the plaintext key ONCE
-python examples/issue_mcp_key.py list                 # client name, issued/active/last-used - never the key itself
+python examples/issue_mcp_key.py issue "Acme Co" --expires-in-days 90 --quota 5000 --quota-window-days 30
+python examples/issue_mcp_key.py list                 # client, issued/active/last-used, expiry and quota use - never the key itself
 python examples/issue_mcp_key.py revoke lpk_xxxxxxxx   # one key
 python examples/issue_mcp_key.py revoke-client "Acme Co"  # every key that client holds
 ```
@@ -143,10 +144,39 @@ by default (override with `$LINCHPIN_MCP_KEYS_PATH`) — gitignored, never
 committed. The plaintext is shown exactly once, at issuance; there is no way to
 recover it from the store afterward, same as a GitHub/Stripe-style token.
 
+### Expiry and quota
+
+Both are **off by default**: a key issued without the flags is unlimited and
+never expires, exactly as every key issued before this existed. Add them per
+client when the plan calls for it:
+
+- `--expires-in-days N` — the key stops working after N days.
+- `--quota N` — at most N requests.
+- `--quota-window-days N` — the N requests renew every N days. Without it, the
+  quota is for the life of the key.
+
+Two different refusals reach the client, and the difference matters:
+
+| What happened | HTTP | What it tells the client |
+|---|---|---|
+| Unknown, revoked or **expired** key | `401` | the credential is dead; fix the key |
+| **Quota exhausted** (key is valid) | `429` | the key works; pay or wait out the window |
+
+A refused request **does not** consume quota, so a client hammering an exhausted
+key cannot advance their own window by doing so. This is the *plan* limit; the
+separate burst limit stays in `webapp/security.py::rate_limit` and is keyed per
+authenticated client, not per IP.
+
+> This closes what the go-to-market review flagged: a paid key used to be able to
+> hit the API forever, harvesting outputs and citations — which is to say, the
+> concept→source mapping of the knowledge graph.
+
 If you deploy with `--workers N` (see [DEPLOYMENT.md](DEPLOYMENT.md)), the key
 store is safe to share across those worker processes — SQLite serializes
 writers at the file level, the same guarantee `src/writeback_store.py`'s audit
-ledger already relies on.
+ledger already relies on. The quota check and the counter bump happen in one
+transaction under the store's lock, so two concurrent requests cannot both
+consume the last unit.
 
 ## What's NOT here yet
 
