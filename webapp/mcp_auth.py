@@ -28,7 +28,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from src.mcp_keys import McpKeyStore
+from src.mcp_keys import REASON_EXPIRED, REASON_QUOTA_EXCEEDED, McpKeyStore
 from webapp import security
 
 
@@ -49,7 +49,8 @@ class McpKeyAuthMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         presented = request.headers.get("x-api-key", "")
-        client_name = self._key_store_getter().validate(presented)
+        result = self._key_store_getter().check(presented)
+        client_name = result.client_name if result.allowed else None
         rate_limit_key = f"mcp:{client_name}" if client_name is not None else None
 
         try:
@@ -57,8 +58,25 @@ class McpKeyAuthMiddleware(BaseHTTPMiddleware):
         except HTTPException as exc:
             return JSONResponse({"error": exc.detail}, status_code=exc.status_code, headers=dict(exc.headers or {}))
 
-        if client_name is None:
-            return JSONResponse({"error": "invalid or missing API key"}, status_code=401)
+        if not result.allowed:
+            # Dos negativas distintas a proposito. Una credencial muerta (desconocida,
+            # revocada, vencida) es un problema de autenticacion: 401, y el cliente
+            # tiene que arreglar su key. Una cuota agotada es un problema de plan: la
+            # key es perfectamente valida y lo que falta es pagar o esperar la
+            # ventana. Contestar 401 en los dos casos manda al cliente a rotar una
+            # credencial que funciona, y borra la senal de cual de las dos cosas pasa.
+            if result.reason == REASON_QUOTA_EXCEEDED:
+                return JSONResponse(
+                    {
+                        "error": "API key quota exhausted",
+                        "reason": result.reason,
+                        "quota_requests": result.quota_requests,
+                        "requests_used": result.requests_used,
+                    },
+                    status_code=429,
+                )
+            detail = "API key expired" if result.reason == REASON_EXPIRED else "invalid or missing API key"
+            return JSONResponse({"error": detail, "reason": result.reason}, status_code=401)
 
         request.state.mcp_client_name = client_name
         return await call_next(request)

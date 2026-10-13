@@ -14,6 +14,7 @@
 [![python](https://img.shields.io/badge/python-3.11--3.13-3776AB?logo=python&logoColor=white)](pyproject.toml)
 [![tests](https://github.com/esstipi-debug/kern/actions/workflows/tests.yml/badge.svg)](https://github.com/esstipi-debug/kern/actions/workflows/tests.yml)
 [![coverage](https://img.shields.io/badge/coverage-93%25-3fb950)](#)
+[![license](https://img.shields.io/badge/license-proprietary-red)](#-license)
 
 </div>
 
@@ -385,3 +386,28 @@ power-bi/             CSV dataset + M queries + DAX + SETUP.md
 | [Security](SECURITY.md) | Threat model, enforced controls, hardening checklist |
 | [Deployment](docs/DEPLOYMENT.md) | Production hardening: env controls, reverse proxy, load notes |
 | [MCP Server](docs/MCP_SERVER.md) | Selling read-only analysis access to other AI agents: connecting, key issuance, what's exposed |
+
+---
+
+## 📄 License
+
+**Kern is proprietary software.** See [LICENSE](LICENSE). Possessing a copy of
+this repository grants no right to use, copy, modify, distribute or host it, in
+whole or in part; a licence requires a written agreement.
+
+- **Third-party components keep their own licences** — see
+  [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). That file is what keeps the
+  proprietary claim accurate instead of overreaching: the tree vendors
+  `marked.min.js` under MIT, and a blanket "all rights reserved" over it would be
+  wrong.
+- **The Odoo addon is licensed separately**: `odoo_addon/<version>/kern_dry_run/`
+  ships under the **Odoo Proprietary License v1.0 (OPL-1)**, because that is what
+  the Apps Store can carry. Its thin-client boundary — the module never imports
+  the engine — is enforced by `tests/test_odoo_addon_boundary.py`, not by
+  convention.
+- **The knowledge graph** (`knowledge/scm-books/`) is derived from 24 copyrighted
+  books and papers. It stays internal and is never distributed; what reaches a
+  client is the citation attached to a result, which is what
+  `scm_agent/knowledge.py`'s internal-source filter is for.
+
+Commercial, evaluation and OEM licences are available on request.

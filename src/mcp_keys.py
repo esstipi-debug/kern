@@ -4,8 +4,19 @@ Kern's MCP server sells access to individual paying clients, each needing
 their own revocable credential - unlike ``webapp/security.py``'s single shared
 ``LINCHPIN_API_KEY`` (fine for gating one operator's own dashboard, wrong for
 multiple distinct customers). Phase A billing is manual (Stripe Payment Link,
-then the operator issues a key by hand - see ``examples/issue_mcp_key.py``), so
-this store only needs issue/validate/revoke, not usage-based metering.
+then the operator issues a key by hand - see ``examples/issue_mcp_key.py``).
+
+Hasta el 2026-10-13 este store solo hacia issue/validate/revoke, sin medicion de
+uso ni vencimiento: una key paga podia golpear la API para siempre y cosechar
+salidas y citas (es decir, el mapeo concepto->fuente del grafo). Ahora una key
+puede nacer con **vencimiento** y con **cuota**, y el uso se cuenta.
+
+Las dos son opcionales y ilimitadas por omision (NULL): una key emitida antes de
+este cambio -o emitida hoy sin flags- se comporta exactamente como antes. La
+cuota se aplica a la ventana (``quota_window_seconds``, que rota) o de por vida
+si no hay ventana. El limite de *velocidad* sigue siendo otro: vive en
+``webapp/security.py::rate_limit``, es por cliente autenticado y es lo que evita
+que una key sature la instancia.
 
 Desde el webhook de pago (``webapp/stripe_webhook.py``) cada key emitida por
 una compra queda atada al email del comprador y a la referencia del pago, con
@@ -27,12 +38,40 @@ import secrets
 import sqlite3
 import threading
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 from src.data_paths import resolve_state_path
 
 DEFAULT_PATH = resolve_state_path("mcp_keys")
 KEY_PREFIX = "lpk_"  # legacy "Linchpin key" prefix, kept stable so issued keys keep working - recognizable in logs/support tickets without being guessable
+
+#: Why a presented key was accepted or refused. The middleware needs the
+#: difference: an expired or unknown credential is a 401, an exhausted quota is
+#: a 429 with a different thing to tell the client ("pay" vs "authenticate").
+REASON_OK = "ok"
+REASON_UNKNOWN = "unknown"
+REASON_REVOKED = "revoked"
+REASON_EXPIRED = "expired"
+REASON_QUOTA_EXCEEDED = "quota_exceeded"
+
+
+@dataclass(frozen=True)
+class KeyCheck:
+    """Outcome of presenting a key, richer than the ``str | None`` it replaces.
+
+    ``validate()`` still returns just the client name (or None) because that is
+    the contract its callers and tests already hold; this carries the *why*, so
+    the HTTP layer can answer 401 vs 429 without guessing.
+    """
+
+    allowed: bool
+    reason: str
+    client_name: str | None = None
+    expires_at: float | None = None
+    requests_used: int | None = None
+    quota_requests: int | None = None
+    remaining: int | None = None
 
 
 def _hash(key: str) -> str:
@@ -70,18 +109,31 @@ class McpKeyStore:
                 " last_used_at REAL"
                 ")"
             )
-            # Migracion aditiva de las dos columnas que atan una key a la compra
-            # que la pago. Un CREATE TABLE IF NOT EXISTS no toca una tabla que ya
-            # existe, asi que las bases ya emitidas necesitan el ALTER, guardado
-            # por PRAGMA porque sqlite no tiene ADD COLUMN IF NOT EXISTS. Hasta
-            # que existio el webhook, issue() ataba la key a un nombre libre y
-            # nada mas: sin email no hay a quien entregarsela, y sin referencia de
-            # pago no hay forma de saber cual compra la origino ni de resistir un
-            # reintento.
+            # Migraciones aditivas. Un CREATE TABLE IF NOT EXISTS no toca una tabla
+            # que ya existe, asi que las bases ya emitidas necesitan el ALTER,
+            # guardado por PRAGMA porque sqlite no tiene ADD COLUMN IF NOT EXISTS.
+            #
+            # email/payment_ref (cableado del webhook de pago): sin email no hay a
+            # quien entregarle la key, y sin referencia de pago no hay forma de saber
+            # cual compra la origino ni de resistir un reintento.
+            #
+            # expires_at / quota_* / requests_used (2026-10-13): una key paga podia
+            # golpear la API para siempre. Las cuatro son NULLABLE a proposito: una
+            # key ya emitida -o emitida hoy sin flags- sigue siendo ilimitada y sin
+            # vencimiento, asi que este cambio no altera ninguna credencial viva.
             columnas = {fila[1] for fila in self._conn.execute("PRAGMA table_info(keys)")}
-            for columna in ("email", "payment_ref"):
+            nuevas = {
+                "email": "TEXT",
+                "payment_ref": "TEXT",
+                "expires_at": "REAL",
+                "quota_requests": "INTEGER",
+                "quota_window_seconds": "REAL",
+                "window_started_at": "REAL",
+                "requests_used": "INTEGER NOT NULL DEFAULT 0",
+            }
+            for columna, tipo in nuevas.items():
                 if columna not in columnas:
-                    self._conn.execute(f"ALTER TABLE keys ADD COLUMN {columna} TEXT")
+                    self._conn.execute(f"ALTER TABLE keys ADD COLUMN {columna} {tipo}")
             # IDEMPOTENCIA POR ESQUEMA, no por memoria. Stripe reintenta un webhook
             # hasta recibir un 2xx, y un proceso que recuerda que ya lo atendio
             # olvida en cada deploy -- justo el modo de falla que L1 acaba de
@@ -102,6 +154,9 @@ class McpKeyStore:
         now: float | None = None,
         email: str | None = None,
         payment_ref: str | None = None,
+        expires_at: float | None = None,
+        quota_requests: int | None = None,
+        quota_window_seconds: float | None = None,
     ) -> str:
         """Mint a new key for ``client_name`` and return it in PLAINTEXT.
 
@@ -115,15 +170,35 @@ class McpKeyStore:
         pago la key no es trazable a la compra que la origino. Un ``payment_ref``
         repetido levanta ``sqlite3.IntegrityError`` por el indice unico parcial;
         usar :meth:`issue_for_payment` si eso es un reintento esperado.
+
+        ``expires_at`` y ``quota_requests`` son tambien opcionales, y NULL
+        significa "sin limite" en los dos casos: la emision de siempre no cambia
+        de comportamiento. Se validan aca, en el momento de acuñar, porque una
+        key que nace vencida o con cuota cero es un error de quien la emite y no
+        algo que deba descubrir el cliente al usarla.
         """
         if now is None:
             now = time.time()
+        if expires_at is not None and expires_at <= now:
+            raise ValueError("expires_at ya paso: una key no puede nacer vencida")
+        if quota_requests is not None and quota_requests < 1:
+            raise ValueError("quota_requests tiene que ser >= 1 (o None para ilimitada)")
+        if quota_window_seconds is not None:
+            if quota_requests is None:
+                raise ValueError("quota_window_seconds no significa nada sin quota_requests")
+            if quota_window_seconds <= 0:
+                raise ValueError("quota_window_seconds tiene que ser > 0")
         key = KEY_PREFIX + secrets.token_urlsafe(32)
         with self._lock:
             self._conn.execute(
-                "INSERT INTO keys (key_hash, client_name, issued_at, active, last_used_at, email, payment_ref)"
-                " VALUES (?, ?, ?, 1, NULL, ?, ?)",
-                (_hash(key), client_name, now, email, payment_ref),
+                "INSERT INTO keys (key_hash, client_name, issued_at, active, last_used_at,"
+                " email, payment_ref, expires_at, quota_requests, quota_window_seconds,"
+                " window_started_at, requests_used)"
+                " VALUES (?, ?, ?, 1, NULL, ?, ?, ?, ?, ?, NULL, 0)",
+                (
+                    _hash(key), client_name, now, email, payment_ref,
+                    expires_at, quota_requests, quota_window_seconds,
+                ),
             )
             self._conn.commit()
         return key
@@ -151,25 +226,78 @@ class McpKeyStore:
         except sqlite3.IntegrityError:
             return None
 
-    def validate(self, presented_key: str, *, now: float | None = None) -> str | None:
-        """Return the owning client_name if ``presented_key`` is a live, active key;
-        None otherwise (unknown key, revoked key, or empty input). Updates
-        ``last_used_at`` on success so an operator can see whether a client is
-        actually using what they paid for."""
+    def check(self, presented_key: str, *, now: float | None = None) -> KeyCheck:
+        """Decide whether ``presented_key`` may be used right now, and say why not.
+
+        One transaction under the lock: the read, the quota decision and the
+        counter bump have to be atomic, or two concurrent requests both see "one
+        request left" and both pass.
+
+        Counters move **only on an allowed request**. A refused one is not usage,
+        and a client hammering an exhausted quota must not be able to push their
+        own window forward by doing so.
+        """
         if not presented_key:
-            return None
+            return KeyCheck(allowed=False, reason=REASON_UNKNOWN)
         if now is None:
             now = time.time()
         key_hash = _hash(presented_key)
         with self._lock:
             row = self._conn.execute(
-                "SELECT client_name, active FROM keys WHERE key_hash = ?", (key_hash,)
+                "SELECT client_name, active, expires_at, quota_requests,"
+                " quota_window_seconds, window_started_at, requests_used"
+                " FROM keys WHERE key_hash = ?",
+                (key_hash,),
             ).fetchone()
-            if row is None or not row[1]:
-                return None
-            self._conn.execute("UPDATE keys SET last_used_at = ? WHERE key_hash = ?", (now, key_hash))
+            if row is None:
+                return KeyCheck(allowed=False, reason=REASON_UNKNOWN)
+            client, active, expires_at, quota, window, window_started, used = row
+            used = int(used or 0)
+            if not active:
+                return KeyCheck(allowed=False, reason=REASON_REVOKED, client_name=client)
+            if expires_at is not None and now >= expires_at:
+                return KeyCheck(
+                    allowed=False, reason=REASON_EXPIRED, client_name=client, expires_at=expires_at
+                )
+            if quota is not None:
+                # A rolling window that has elapsed resets the count. A lifetime
+                # quota has no window at all (``quota_window_seconds`` NULL).
+                if window is not None and (window_started is None or now - window_started >= window):
+                    used = 0
+                    window_started = now
+                if used >= quota:
+                    return KeyCheck(
+                        allowed=False, reason=REASON_QUOTA_EXCEEDED, client_name=client,
+                        expires_at=expires_at, requests_used=used, quota_requests=quota,
+                        remaining=0,
+                    )
+            used += 1
+            self._conn.execute(
+                "UPDATE keys SET last_used_at = ?, requests_used = ?, window_started_at = ?"
+                " WHERE key_hash = ?",
+                (now, used, window_started, key_hash),
+            )
             self._conn.commit()
-            return row[0]
+            return KeyCheck(
+                allowed=True, reason=REASON_OK, client_name=client, expires_at=expires_at,
+                requests_used=used, quota_requests=quota,
+                remaining=None if quota is None else quota - used,
+            )
+
+    def validate(self, presented_key: str, *, now: float | None = None) -> str | None:
+        """Return the owning client_name if ``presented_key`` may be used now; None
+        otherwise (empty input, unknown key, revoked key, expired key, or a key
+        that is over quota).
+
+        Deliberately still just the name: its callers and tests hold that
+        contract. Use :meth:`check` when the *reason* matters - the HTTP layer
+        needs it to answer 401 for a credential that is dead and 429 for one that
+        is merely exhausted, which are two different things to tell a client.
+
+        Updates ``last_used_at`` and the usage counter on success so an operator
+        can see whether a client is actually using what they paid for."""
+        result = self.check(presented_key, now=now)
+        return result.client_name if result.allowed else None
 
     def revoke(self, presented_key: str) -> bool:
         """Deactivate ``presented_key``. Returns whether an active key was found and
@@ -195,16 +323,24 @@ class McpKeyStore:
         """Operator-facing listing. Never includes the plaintext key or its hash."""
         with self._lock:
             rows = self._conn.execute(
-                "SELECT client_name, issued_at, active, last_used_at, email, payment_ref"
+                "SELECT client_name, issued_at, active, last_used_at, email, payment_ref,"
+                " expires_at, quota_requests, quota_window_seconds, requests_used"
                 " FROM keys ORDER BY issued_at"
             ).fetchall()
         # `email` es PII y aparece aca porque el operador la necesita para
         # entregar la key: mientras no exista envio de correo, ese ultimo tramo
         # es humano. No se expone por ninguna superficie de cliente.
+        #
+        # expires_at / quota_requests / requests_used estan aca porque sin ellos el
+        # operador no puede contestar la pregunta que su cliente le va a hacer
+        # ("me queda cuota?"). Siguen siendo superficie de operador, no de cliente:
+        # list_keys() lo lee solo examples/issue_mcp_key.py.
         return [
             {
                 "client_name": r[0], "issued_at": r[1], "active": bool(r[2]), "last_used_at": r[3],
-                "email": r[4], "payment_ref": r[5],
+                "email": r[4], "payment_ref": r[5], "expires_at": r[6],
+                "quota_requests": r[7], "quota_window_seconds": r[8],
+                "requests_used": int(r[9] or 0),
             }
             for r in rows
         ]

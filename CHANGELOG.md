@@ -3,6 +3,39 @@
 ## [Unreleased]
 
 ### Added
+- **`tests/test_odoo_addon_boundary.py`: "el motor no viaja" deja de ser un comentario.**
+  El addon es el unico artefacto que sale del repo y aterriza en el Odoo de un tercero, y
+  toda su historia de seguridad depende de que sea una *ventana*: lee unos campos, hace
+  POST a Kern con `X-API-Key` y renderiza. Eso era cierto y completamente no aplicado —
+  nada impedia un `from src.forecasting import ...` conveniente, que funcionaria local,
+  pasaria la CI, se enviaria al cliente y filtraria la parte defendible del producto;
+  ademas arrastraria codigo del motor a una distribucion OPL-1. El guard verifica por AST
+  (caza el import perezoso dentro de una funcion) que el modulo no importe el motor, no
+  agregue dependencias, no embeba credenciales, no crezca mas alla de su presupuesto de
+  lineas, y que las dos series (17.0/19.0) no diverjan en el contrato del Store. Se
+  verifico que muerde: los cuatro escenarios lo hacen fallar. El texto OPL-1 y los campos
+  del Store los sigue cubriendo `tests/test_odoo_addon_listing.py`.
+- **`THIRD_PARTY_NOTICES.md`, para que el reclamo propietario sea exacto.**
+  El arbol vendoriza `webapp/static/operator/vendor/marked.min.js` bajo MIT, asi que un
+  "all rights reserved" a secas sobre el encima habria invalidado el reclamo justo donde
+  importa. El archivo lleva el texto MIT completo de marked, la tabla de dependencias de
+  runtime, `python-stdnum` (LGPL) marcado como el caso a mirar antes de distribuir una
+  imagen, y la politica del grafo derivado de obras con copyright.
+- **Las keys MCP pueden vencerse y agotarse, y el cliente sabe cual de las dos pasa**
+  (`src/mcp_keys.py`, `webapp/mcp_auth.py`, `examples/issue_mcp_key.py`).
+  El store solo hacia issue/validate/revoke: una key paga podia golpear la API para
+  siempre y cosechar salidas y citas — es decir, el mapeo concepto→fuente del grafo.
+  `issue()` acepta ahora `expires_at`, `quota_requests` y `quota_window_seconds`; las tres
+  son NULLABLE y por omision ilimitadas, asi que ninguna key viva cambia de
+  comportamiento, y la migracion es aditiva sobre el esquema que ya existe.
+  `check()` devuelve el *porque* y `validate()` conserva su contrato (`str | None`), que
+  es lo que sus llamadores ya tenian. El middleware usa esa distincion para separar dos
+  negativas que antes eran la misma: credencial muerta → **401** (arregla tu key), cuota
+  agotada → **429** (la key sirve; paga o espera la ventana). Un request rechazado no
+  consume cuota, y el chequeo y el contador van en una sola transaccion bajo el lock.
+  `list_keys()` expone vencimiento y uso para que el operador pueda contestar "me queda
+  cuota?". 15 tests nuevos; el limite de *velocidad* no se toca (sigue en
+  `security.rate_limit`, por cliente autenticado): esto es el limite de PLAN.
 - **Unleashed as a second ERP, and the ERP slot that made it possible**
   (`src/connectors/unleashed.py`) — Unleashed is what an Australian SMB runs for inventory
   on top of Xero, and unlike Xero it holds `MinStockAlertLevel`: a reorder point its own
@@ -86,6 +119,17 @@
   history (every forecast zero, so nothing can ever be short).
 
 ### Changed
+- **El motor deja de ser MIT: la licencia de la raiz pasa a propietaria.**
+  `LICENSE` concedia literalmente *"use, copy, modify, merge, publish, distribute,
+  sublicense, and sell"* sobre el motor completo y sobre el grafo curado, asi que
+  cualquiera que recibiera una copia licitamente — un contractor, un revisor de
+  marketplace, una filtracion, o el dia que el repo se abra — tenia permiso legal de
+  copiarlo y venderlo. Ahora no se concede ningun derecho sin acuerdo escrito firmado, con
+  prohibicion explicita de ingenieria inversa, de usar el software o sus salidas para
+  entrenar modelos, y de redistribuir el grafo. Los componentes de terceros conservan sus
+  licencias (ver arriba) y el addon no cambia: ya declaraba `OPL-1` con su propio LICENSE y
+  COPYRIGHT, asi que las dos licencias quedan coherentes en vez de una MIT y otra
+  propietaria. `tests/test_odoo_addon_boundary.py` fija que no se pisen.
 - `jobs/channel_replenishment_job.py` is channel-pluggable (`params['channel']`, `CHANNELS`).
   The design note that landed with it said a generic multi-source abstraction should wait
   until a second channel existed, so that what actually repeats could be seen rather than

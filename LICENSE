@@ -1,45 +1,81 @@
-MIT License
+Kern — Proprietary License
+Copyright (C) 2026 Kern. All rights reserved.
 
-Copyright (c) 2026 Kern Contributors
+This software, together with its source code, its models, its curated knowledge
+graph, its documentation and any associated materials (the "Software"), is
+proprietary and confidential. It is licensed, not sold, and no license or right
+is granted to you by these terms, by possession of a copy, or by access to the
+repository.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+NO LICENSE GRANTED. Absent a separate written agreement signed by the copyright
+holder, you have no right to use the Software for any purpose.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+PROHIBITED. Without a prior written licence from the copyright holder, you must
+not, and must not permit anyone else to:
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+  a) use, run, host, deploy or operate the Software, in whole or in part, for
+     any commercial purpose, including as a service to third parties;
+  b) copy, reproduce, publish, distribute, disclose, make available, sublicense,
+     rent, lease, lend or sell the Software or any copy or derivative of it;
+  c) modify, adapt, translate or create derivative works based on the Software;
+  d) reverse engineer, decompile, disassemble, or otherwise attempt to derive
+     the source code, structure, algorithms or models of any part of the
+     Software supplied in compiled or hosted form;
+  e) remove, obscure or alter any copyright, licence, confidentiality or
+     attribution notice in the Software;
+  f) use the Software, or any output or derived artefact of it, to train,
+     fine-tune, evaluate or otherwise develop a machine-learning model;
+  g) extract, scrape, reconstruct or redistribute the curated knowledge graph,
+     its source-to-concept mapping, or its citation structure, whether from the
+     source tree, from the running service, or from any deliverable it produces.
+
+CONFIDENTIAL INFORMATION. The Software contains trade secrets of the copyright
+holder, including but not limited to the curated knowledge graph and its
+provenance, the citation contract, the QA gates and the deliverable pipeline.
+You must keep it confidential and use it only as expressly permitted in a
+written agreement.
+
+THIRD-PARTY COMPONENTS. The Software incorporates or depends on third-party
+components that are licensed by their own authors under their own terms, and
+nothing in this notice restricts any right granted to you under those terms.
+Those components are listed, with their licences, in THIRD_PARTY_NOTICES.md.
+Your use of a third-party component is governed by its own licence.
+
+ODOO ADDON. The Odoo module under `odoo_addon/` is distributed separately under
+the Odoo Proprietary License v1.0 (OPL-1); see
+`odoo_addon/<version>/kern_dry_run/LICENSE` and its `COPYRIGHT` file. That
+licence governs the module, not this one.
+
+NO WARRANTY. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE AND NON-INFRINGEMENT.
+THE COPYRIGHT HOLDER DOES NOT WARRANT THAT THE SOFTWARE IS ERROR-FREE OR THAT
+ANY RESULT OBTAINED FROM IT IS ACCURATE OR FIT FOR A PARTICULAR DECISION.
+
+LIMITATION OF LIABILITY. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR
+ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+OTHER DEALINGS IN THE SOFTWARE.
+
+LICENSING. Commercial, evaluation and OEM licences are available separately.
+Contact the copyright holder to request one; a licence is granted only in a
+written agreement signed by both parties.
 
 ---
 
-## What This Means
+In plain terms / En simple
 
-You CAN:
-✅ Use commercially
-✅ Modify the software
-✅ Distribute copies
-✅ Use privately
-✅ Sublicense
+  - Esto es software propietario. Tener una copia no te da ningún derecho.
+  - Sin un acuerdo escrito firmado, no podés usarlo, copiarlo, modificarlo,
+    publicarlo, venderlo ni ofrecerlo como servicio.
+  - No podés hacer ingeniería inversa ni usar el software (ni sus salidas) para
+    entrenar modelos.
+  - El grafo de conocimiento curado y su mapeo de citas son confidenciales y no
+    se distribuyen.
+  - Los componentes de terceros conservan SUS licencias (ver
+    THIRD_PARTY_NOTICES.md); esto no las limita.
+  - El addon de Odoo tiene su propia licencia: OPL-1.
 
-You CANNOT:
-❌ Hold authors liable
-❌ Use trademark
-❌ Revoke license
-
-You MUST:
-📋 Include license and copyright notice
-📋 State significant changes made
-
----
-
-For more info: https://opensource.org/licenses/MIT
+Para licenciar: ver el contacto en el README. Este texto no es asesoramiento
+legal; conviene que lo revise un abogado de tu jurisdicción antes de usarlo con
+un cliente que paga.

@@ -4,10 +4,12 @@ Covers only the auth boundary - the MCP protocol/tool behavior itself is
 covered by tests/test_mcp_server.py against the FastMCP object directly (the
 correct level for exercising tools/list, tools/call, and Pydantic validation).
 Here we only need: no key -> 401, wrong key -> 401, valid key -> past the gate
-(never a 401), and the existing rate limiter still applies underneath.
+(never a 401), an exhausted quota -> 429 (and NOT 401), and the existing rate
+limiter still applies underneath.
 """
 
 import json
+import time
 
 import pytest
 
@@ -93,6 +95,40 @@ def test_revoked_api_key_is_rejected(client, _isolated_key_store):
     r = client.post("/mcp/", json=_MCP_RPC_BODY, headers={**_MCP_HEADERS, "X-API-Key": key})
 
     assert r.status_code == 401
+
+
+def test_a_key_over_quota_is_rejected_as_429_not_401(client, _isolated_key_store):
+    """429, no 401: la key es valida y lo que se agoto es el plan.
+
+    Un 401 aca mandaria al cliente a rotar una credencial que funciona, y borraria
+    la unica senal de que lo que tiene que hacer es pagar o esperar la ventana.
+    """
+    key = _isolated_key_store.issue("Acme Co", quota_requests=1)
+
+    primera = client.post("/mcp/", json=_MCP_RPC_BODY, headers={**_MCP_HEADERS, "X-API-Key": key})
+    assert primera.status_code != 429  # la cuota todavia alcanzaba
+
+    segunda = client.post("/mcp/", json=_MCP_RPC_BODY, headers={**_MCP_HEADERS, "X-API-Key": key})
+
+    assert segunda.status_code == 429
+    cuerpo = segunda.json()
+    assert cuerpo["reason"] == "quota_exceeded"
+    assert cuerpo["quota_requests"] == 1
+    assert cuerpo["requests_used"] == 1
+
+
+def test_an_expired_key_is_rejected_as_401_and_says_expired(client, _isolated_key_store):
+    """401, no 429: la credencial esta muerta, no es un problema de plan."""
+    key = _isolated_key_store.issue("Acme Co", expires_at=time.time() + 3600)
+    # Se envejece la key en la base en vez de dormir el test.
+    _isolated_key_store._conn.execute("UPDATE keys SET expires_at = ?", (time.time() - 1,))
+    _isolated_key_store._conn.commit()
+
+    r = client.post("/mcp/", json=_MCP_RPC_BODY, headers={**_MCP_HEADERS, "X-API-Key": key})
+
+    assert r.status_code == 401
+    assert r.json()["reason"] == "expired"
+    assert "expired" in r.json()["error"]
 
 
 def test_valid_api_key_passes_the_auth_gate(client, _isolated_key_store):
