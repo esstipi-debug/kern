@@ -197,7 +197,7 @@ Other statuses return the same envelope with `status` one of
 
 Every job is **grounded**: the orchestrator queries a knowledge graph and attaches citations to each result (the **Fuentes** shown in the console). Two graphs, one read-only query surface — [`scm_agent/knowledge.py`](scm_agent/knowledge.py):
 
-- **Domain knowledge graph** ([`knowledge/scm-books/`](knowledge/scm-books/README.md)) — **27 curated external sources** (forecasting, pricing, revenue management, inventory, operations, logistics, sustainability, leadership, risk & resilience, AI in supply chains): ~3,040 concept nodes with source citations, 2,913 of them from external works. Committed.
+- **Domain knowledge graph** ([`knowledge/scm-books/`](knowledge/scm-books/README.md)) — **27 curated external sources** (forecasting, pricing, revenue management, inventory, operations, logistics, sustainability, leadership, risk & resilience, AI in supply chains) over 42 external source files: **3,104 nodes** with source citations, **2,973** of them from external works. Committed.
 - **Code graph** (`graphify-out/`) — the codebase itself, built with `/graphify`. Gitignored (regenerable).
 
 The **bridge** ties them together: for each cited concept it resolves the `src/` module that implements it, so a deliverable cites the concept **and** the function behind it.
