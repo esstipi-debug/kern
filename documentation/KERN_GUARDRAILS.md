@@ -189,12 +189,30 @@ pandas deprecations, not guard failures).
 What this covers: the 20 guard-test files named in this document. Those rows are
 **Exercised**.
 
-What it does **not** cover (rows watched only by these stay **Located**):
-`tests/test_guided*.py`, `tests/test_writeback*.py`,
-`tests/test_excel_writeback.py`, `tests/test_cross_impact*.py`,
-`tests/test_objection.py`, `tests/test_client_profile.py`,
-`tests/test_state_bridge_stock.py`, `tests/test_scm_agent.py`,
-`tests/test_connector_contract.py`, `tests/test_price_watch_tool.py`.
+Second run (the files the first run left out), same day:
+
+```
+PYTHONPATH=. pytest -q -p no:cacheprovider \
+  tests/test_guided.py tests/test_guided_bridge.py tests/test_guided_builders.py \
+  tests/test_writeback.py tests/test_writeback_store.py tests/test_excel_writeback.py \
+  tests/test_cross_impact.py tests/test_cross_impact_job.py tests/test_cross_impact_tool.py \
+  tests/test_objection.py tests/test_client_profile.py \
+  tests/test_state_bridge_stock.py tests/test_simworld_state_bridge.py \
+  tests/test_scm_agent.py tests/test_connector_contract.py tests/test_price_watch_tool.py \
+  tests/test_orchestrator_kb_warnings.py tests/test_orchestrator_lecturas.py \
+  tests/test_orchestrator_persona.py
+```
+
+Result: **442 passed, 0 failed, 158 warnings, 148 s**.
+
+Combined: **972 tests passed, 0 failed** across 39 test files. Every "Watched by"
+cell in this document names a file that was run, so every row is **Exercised**
+(the guard test passes today), not merely **Located**.
+
+Still true: "exercised" means the test passes, not that it asserts every clause of
+the rule in its row. I located each test file; I did not trace each assertion.
+Rows citing only a generic file (for example the writeback and profile rows)
+carry that caveat.
 
 A passing run shows each rule holds today. It does not show the rule set is
 complete: a guard only protects against the failure its test imagines.
@@ -212,8 +230,8 @@ complete: a guard only protects against the failure its test imagines.
 ## Not verified
 
 - Rows watched by the files named in §1, §2 and §4 (guided, writeback,
-  cross-impact, state-bridge, client-profile): the symbol and the test file are
-  located, but I did not trace each test to its exact assertion.
+  cross-impact, state-bridge, client-profile): the symbol is located and the
+  test file passes, but I did not trace each test to its exact assertion.
 - The Excel connector's specifics (drift check, atomic write, backup,
   cell-exact rollback) and Odoo unit-step rounding are described in
   `CLAUDE.md`; the files exist, the behaviors were not re-derived here.
