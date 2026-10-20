@@ -167,10 +167,37 @@ AST-only and needs no key.
 
 ## Verification run
 
-**Status: pending.** The 20 guard-test files named in this document were being
-run when this version was committed (`PYTHONPATH=. pytest <files> -q -x`).
-Until this section is updated with the pass/fail counts, treat every row as
-**Located**, not **Exercised**.
+Command, run from the repo root on 2026-10-20:
+
+```
+PYTHONPATH=. pytest -q -x -p no:cacheprovider \
+  tests/test_core_boundary.py tests/test_pack_boundary.py \
+  tests/test_odoo_addon_boundary.py tests/test_constitution_anchors.py \
+  tests/test_tool_data_contract.py tests/test_nan_swallower_guards.py \
+  tests/test_overrides_no_se_tiran.py tests/test_claves_de_idempotencia.py \
+  tests/test_negativa_no_es_cero.py tests/test_barrido_neteo.py \
+  tests/test_citation_gate.py tests/test_ci_lint_and_coverage_scope.py \
+  tests/test_coverage_gate.py tests/test_how_it_works_page.py \
+  tests/test_pricing_intel_boot_safety.py tests/test_connector_service_contract.py \
+  tests/test_price_watch_e2e.py tests/test_hats_valuation.py \
+  tests/test_titular_de_inversion.py tests/test_neteo_en_transito.py
+```
+
+Result: **530 passed, 0 failed, 125 warnings, 150 s** (the warnings are numpy /
+pandas deprecations, not guard failures).
+
+What this covers: the 20 guard-test files named in this document. Those rows are
+**Exercised**.
+
+What it does **not** cover (rows watched only by these stay **Located**):
+`tests/test_guided*.py`, `tests/test_writeback*.py`,
+`tests/test_excel_writeback.py`, `tests/test_cross_impact*.py`,
+`tests/test_objection.py`, `tests/test_client_profile.py`,
+`tests/test_state_bridge_stock.py`, `tests/test_scm_agent.py`,
+`tests/test_connector_contract.py`, `tests/test_price_watch_tool.py`.
+
+A passing run shows each rule holds today. It does not show the rule set is
+complete: a guard only protects against the failure its test imagines.
 
 ## Known inconsistencies found while verifying
 
