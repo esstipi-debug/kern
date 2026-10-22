@@ -90,6 +90,25 @@ instalar_graphify() {
   fi
 }
 
+# Cuando el refresco no corre, el grafo que queda NO es "sin grafo": knowledge.py
+# (bridge/explain/implements) y los tests que fijan el grafo real lo siguen
+# leyendo. El aviso anterior decia "citations stay theory-only", que es cierto
+# solo si graph.json no existe; con un grafo viejo, el 2026-09-23 escondio un
+# test rojo en #375 hasta que otra sesion lo regenero a mano.
+avisar_grafo_viejo() {
+  local motivo="$1" construido="at an unknown date" desde
+  if [ ! -f "$GRAPH_JSON" ]; then
+    echo "graphify: $motivo -- no code graph at all (graphify-out/graph.json missing), code citations unavailable"
+    return
+  fi
+  if desde="$(date -r "$GRAPH_JSON" +%s 2>/dev/null)"; then
+    construido="$(date -r "$GRAPH_JSON" '+%Y-%m-%d %H:%M'), $(( ($(date +%s) - desde) / 86400 )) days ago"
+  fi
+  echo "graphify: $motivo -- code graph is STALE, built $construido;" \
+    "bridge/explain/implements and tests/test_knowledge.py still read it." \
+    "Rebuild: PYTHONHASHSEED=0 graphify update ."
+}
+
 if ! graphify_arranca; then
   instalar_graphify
 fi
@@ -98,10 +117,26 @@ if graphify_arranca; then
   # GRAPHIFY_NO_BACKUP: con nombres de comunidad curados, graphify copia el grafo
   # previo a graphify-out/<fecha>/ en cada dia que cambia -- ~36 MB por dia, que
   # nadie borra, de un directorio que es regenerable por definicion.
-  if GRAPHIFY_NO_BACKUP=1 graphify update "$PROJECT_DIR" >/dev/null 2>&1; then
+  #
+  # PYTHONHASHSEED=0: desde 0.9.66, si la semilla no esta puesta, `update` se
+  # relanza a si mismo para fijarla (el clustering depende del orden de los sets).
+  # En Linux eso reemplaza el proceso y anda. En Windows `os.execvpe` NO reemplaza
+  # nada: arranca un proceso nuevo y el original termina en el acto. Medido el
+  # 2026-09-23 en esta maquina contra el repo entero:
+  #   - 0.9.66 (uv tool): el relanzamiento busca `~/.local/bin/graphify` sin .exe
+  #     y muere con "can't open file"; a veces con codigo de salida 0.
+  #   - 0.9.67 (arreglo de upstream, se relanza con `-m graphify`, #3779): vuelve
+  #     en 3 s con error y el grafo no aparece nunca (120 s mirando).
+  #   - `python -m graphify update` en 0.9.66: vuelve en 0 s con exito, y el
+  #     grafo aparece ~50 s DESPUES, escrito por un proceso suelto -- el hook
+  #     diria "refreshed" antes de tiempo y nunca veria una falla.
+  # Con la semilla ya puesta graphify no se relanza (respeta una semilla
+  # explicita), corre sincronico y su codigo de salida vuelve a decir la verdad.
+  # 0 es exactamente la que graphify fija, asi que el grafo sale identico.
+  if salida_update="$(GRAPHIFY_NO_BACKUP=1 PYTHONHASHSEED=0 graphify update "$PROJECT_DIR" 2>&1)"; then
     echo "graphify: code graph refreshed (graphify-out/)"
   else
-    echo "graphify: update skipped (non-fatal) — citations stay theory-only"
+    avisar_grafo_viejo "update FAILED ($(printf '%s\n' "$salida_update" | tail -n 1))"
   fi
   if ! graphify_mcp_contesta; then
     instalar_graphify
@@ -112,5 +147,5 @@ if graphify_arranca; then
     fi
   fi
 else
-  echo "graphify: unavailable — install/repair failed, L3 citations stay theory-only"
+  avisar_grafo_viejo "unavailable (install/repair failed)"
 fi

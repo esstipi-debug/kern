@@ -17,6 +17,8 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -480,3 +482,139 @@ def test_sin_la_lista_el_hook_no_lintea_nada(tmp_path):
     assert resultado.returncode == 0
     assert "no se lintea nada" in resultado.stderr
     assert objetivo.read_text(encoding="utf-8") == "import os\n", "linteo sin saber si podia"
+
+
+# --------------------------------------------------------------------------
+# session-start: el grafo de codigo se refresca, y si no, se dice que esta VIEJO
+# --------------------------------------------------------------------------
+#
+# Se corre el hook entero contra un `graphify` FALSO: el real tarda un minuto, y
+# el hook reinstala herramientas cuando algo no arranca -- en un test eso seria
+# tocar la instalacion de quien lo corre. HOME apunta a un directorio temporal
+# porque el hook antepone `$HOME/.local/bin` al PATH: ahi van los falsos, y
+# tapan tambien a `uv` para que ninguna rama de reparacion instale nada.
+
+SESSION_START = HOOKS / "session-start.sh"
+
+#: Emula graphifyy 0.9.66 instalado con `uv tool install` en Windows: sin
+#: PYTHONHASHSEED en el entorno, `update` se relanza a si mismo para fijarla y el
+#: relanzamiento no encuentra `argv[0]` (Graphify-Labs/graphify#3779).
+GRAPHIFY_FALSO = """\
+case "$1" in
+  --version) [ -n "${FALSO_NO_ARRANCA:-}" ] && exit 1; echo "graphify 0.0.0-falso" ;;
+  update)
+    echo "PYTHONHASHSEED=${PYTHONHASHSEED-ausente} GRAPHIFY_NO_BACKUP=${GRAPHIFY_NO_BACKUP-ausente}" >> "$FALSO_LOG"
+    if [ -z "${PYTHONHASHSEED+x}" ]; then
+      echo "python.exe: can't open file '.local/bin/graphify': [Errno 2]" >&2
+      exit 2
+    fi
+    if [ -n "${FALSO_UPDATE_FALLA:-}" ]; then
+      echo "Rebuild failed: disco lleno" >&2
+      exit 1
+    fi
+    ;;
+esac
+"""
+
+MCP_FALSO = """\
+cat >/dev/null
+echo '{"jsonrpc":"2.0","id":1,"result":{"serverInfo":{"name":"falso"}}}'
+"""
+
+#: Fecha fija para el grafo viejo: el mensaje tiene que poder citarla.
+CONSTRUIDO = datetime(2026, 9, 16, 7, 0)
+
+
+def _falso(ruta: Path, cuerpo: str) -> None:
+    ruta.write_text("#!/bin/bash\n" + cuerpo, encoding="utf-8", newline="\n")
+    ruta.chmod(0o755)
+
+
+@pytest.fixture
+def arranque(tmp_path):
+    """Un HOME con graphify/graphify-mcp/uv falsos y un proyecto con grafo viejo."""
+    bin_local = tmp_path / "home" / ".local" / "bin"
+    bin_local.mkdir(parents=True)
+    _falso(bin_local / "graphify", GRAPHIFY_FALSO)
+    _falso(bin_local / "graphify-mcp", MCP_FALSO)
+    _falso(bin_local / "uv", "exit 0\n")
+
+    proyecto = tmp_path / "proyecto"
+    grafo = proyecto / "graphify-out" / "graph.json"
+    grafo.parent.mkdir(parents=True)
+    grafo.write_text("{}", encoding="utf-8")
+    marca = time.mktime(CONSTRUIDO.timetuple())
+    os.utime(grafo, (marca, marca))
+
+    log = tmp_path / "graphify.log"
+
+    def correr(**extra: str) -> subprocess.CompletedProcess:
+        entorno = {
+            k: v
+            for k, v in os.environ.items()
+            if k not in {"PYTHONHASHSEED", "CLAUDE_CODE_REMOTE", "CLAUDE_ENV_FILE"}
+        }
+        entorno.update(
+            HOME=str(tmp_path / "home"),
+            CLAUDE_PROJECT_DIR=str(proyecto),
+            FALSO_LOG=str(log),
+            **extra,
+        )
+        return subprocess.run(
+            [BASH, str(SESSION_START)],
+            capture_output=True, text=True, cwd=str(proyecto), env=entorno, timeout=180,
+        )
+
+    correr.grafo = grafo
+    correr.log = log
+    return correr
+
+
+def test_el_update_fija_la_semilla_para_que_graphify_no_se_relance(arranque):
+    """Sin PYTHONHASHSEED, graphify 0.9.66+ se relanza a si mismo, y en Windows ese
+    relanzamiento falla (0.9.66) o se desprende y devuelve antes de escribir el
+    grafo (0.9.67). Con la semilla ya puesta, graphify no se relanza."""
+    resultado = arranque()
+    assert resultado.returncode == 0, resultado.stderr
+    assert "PYTHONHASHSEED=0" in arranque.log.read_text(encoding="utf-8")
+    assert "code graph refreshed" in resultado.stdout
+
+
+def test_el_update_sigue_sin_backups_diarios(arranque):
+    arranque()
+    assert "GRAPHIFY_NO_BACKUP=1" in arranque.log.read_text(encoding="utf-8")
+
+
+def test_si_el_update_falla_dice_que_el_grafo_esta_VIEJO_y_desde_cuando(arranque):
+    """El aviso viejo decia "citations stay theory-only", y era falso: el grafo
+    que quedo lo siguen leyendo bridge/explain/implements y los tests que fijan
+    el grafo real. Un grafo viejo que se hace pasar por "sin grafo" fue lo que
+    escondio un test rojo en #375."""
+    resultado = arranque(FALSO_UPDATE_FALLA="1")
+    assert resultado.returncode == 0, "el hook no puede frenar la sesion"
+    assert "STALE" in resultado.stdout
+    assert CONSTRUIDO.strftime("%Y-%m-%d %H:%M") in resultado.stdout
+    assert "theory-only" not in resultado.stdout
+    assert "refreshed" not in resultado.stdout
+
+
+def test_el_aviso_trae_el_error_de_graphify(arranque):
+    """Tirar la salida a /dev/null dejaba el aviso sin ninguna pista del porque."""
+    resultado = arranque(FALSO_UPDATE_FALLA="1")
+    assert "disco lleno" in resultado.stdout
+
+
+def test_sin_grafo_previo_no_inventa_una_fecha(arranque):
+    arranque.grafo.unlink()
+    resultado = arranque(FALSO_UPDATE_FALLA="1")
+    assert resultado.returncode == 0
+    assert "STALE" not in resultado.stdout
+    assert "no code graph" in resultado.stdout
+
+
+def test_si_graphify_no_arranca_tambien_avisa_que_el_grafo_esta_viejo(arranque):
+    resultado = arranque(FALSO_NO_ARRANCA="1")
+    assert resultado.returncode == 0
+    assert "unavailable" in resultado.stdout
+    assert "STALE" in resultado.stdout
+    assert "theory-only" not in resultado.stdout
