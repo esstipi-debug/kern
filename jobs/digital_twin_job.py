@@ -55,6 +55,7 @@ class TwinReport:
     inventory_rows: tuple[tuple[int, str, str, float], ...]
     order_rows: tuple[tuple[int, str, str, float], ...]
     summary: str
+    served_rows: tuple[tuple[int, str, str, float], ...] = ()   # periodo, producto, tienda, servido
 
 
 def _int_param(params: dict, key: str, default: int, lo: int, hi: int) -> int:
@@ -155,6 +156,9 @@ def run(payload: dict) -> TwinReport:
         name=n["name"], kind=n["kind"], supplier=n["supplier"],
         lead_time=int(n["lead_time"]), review_period=int(n["review_period"]),
         capacity=(float(n["capacity"]) if n.get("capacity") is not None else None),
+        initial_on_hand=(
+            float(n["initial_on_hand"]) if n.get("initial_on_hand") is not None else None
+        ),
     ) for n in payload["nodes"]]
     d = payload["demand"]
     disruptions = tuple(
@@ -167,6 +171,7 @@ def run(payload: dict) -> TwinReport:
     demand_rows: list[tuple[int, str, str, float]] = []
     inventory_rows: list[tuple[int, str, str, float]] = []
     order_rows: list[tuple[int, str, str, float]] = []
+    served_rows: list[tuple[int, str, str, float]] = []
     total_demand = total_served = 0.0
     store_totals: dict[str, list[float]] = {}
     node_agg: dict[str, list[float]] = {}
@@ -189,6 +194,9 @@ def run(payload: dict) -> TwinReport:
             served = result.served[store]
             demand_rows.extend(
                 (t, pid, store, round(float(trace[t]), 2)) for t in range(periods)
+            )
+            served_rows.extend(
+                (t, pid, store, round(float(served[t]), 2)) for t in range(periods)
             )
             agg = store_totals.setdefault(store, [0.0, 0.0])
             agg[0] += float(trace.sum())
@@ -246,6 +254,7 @@ def run(payload: dict) -> TwinReport:
         disruption=disruption_label, node_kpis=node_kpis,
         demand_rows=tuple(demand_rows), inventory_rows=tuple(inventory_rows),
         order_rows=tuple(order_rows), summary=summary,
+        served_rows=tuple(served_rows),
     )
 
 

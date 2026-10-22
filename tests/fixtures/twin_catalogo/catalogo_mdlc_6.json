@@ -1,0 +1,211 @@
+[
+ {
+  "id": 10549043298592,
+  "title": "Camarón 40-50 con Cáscara Crudo y Cabeza 1kg",
+  "handle": "camaron-40-50-con-cascara-crudo-y-cabeza-1kg",
+  "product_type": "Mariscos",
+  "vendor": "Mariscos De La Concha",
+  "created_at": "2026-08-18T13:57:55-04:00",
+  "updated_at": "2026-08-28T18:34:38-04:00",
+  "variants": [
+   {
+    "id": 52204278513952,
+    "product_id": 10549043298592,
+    "sku": null,
+    "title": "Default Title",
+    "price": "13550",
+    "available": true,
+    "grams": 0,
+    "created_at": "2026-08-18T13:57:56-04:00",
+    "updated_at": "2026-08-28T18:34:38-04:00"
+   }
+  ]
+ },
+ {
+  "id": 10469628805408,
+  "title": "Pinza de cocina de bambú 17,8cm",
+  "handle": "pinza-de-cocina-de-bambu",
+  "product_type": "Otros",
+  "vendor": "Mariscos De La Concha",
+  "created_at": "2026-07-13T12:59:45-04:00",
+  "updated_at": "2026-08-28T18:34:38-04:00",
+  "variants": [
+   {
+    "id": 51978962698528,
+    "product_id": 10469628805408,
+    "sku": "PINB",
+    "title": "Default Title",
+    "price": "4250",
+    "available": true,
+    "grams": 0,
+    "created_at": "2026-07-13T12:59:46-04:00",
+    "updated_at": "2026-08-28T18:34:38-04:00"
+   }
+  ]
+ },
+ {
+  "id": 10425744621856,
+  "title": "Salmón filete sin piel fresco",
+  "handle": "salmon-filete-sin-piel-fresco",
+  "product_type": "Pescados",
+  "vendor": "Mariscos De La Concha",
+  "created_at": "2026-06-24T15:21:06-04:00",
+  "updated_at": "2026-08-28T18:34:38-04:00",
+  "variants": [
+   {
+    "id": 51910435635488,
+    "product_id": 10425744621856,
+    "sku": null,
+    "title": "1.4kg",
+    "price": "26250",
+    "available": false,
+    "grams": 0,
+    "created_at": "2026-06-24T15:21:07-04:00",
+    "updated_at": "2026-08-28T18:34:38-04:00"
+   },
+   {
+    "id": 51910435799328,
+    "product_id": 10425744621856,
+    "sku": null,
+    "title": "1.5kg",
+    "price": "28125",
+    "available": false,
+    "grams": 0,
+    "created_at": "2026-06-24T15:21:07-04:00",
+    "updated_at": "2026-08-28T18:34:38-04:00"
+   },
+   {
+    "id": 51910435832096,
+    "product_id": 10425744621856,
+    "sku": null,
+    "title": "1.6kg",
+    "price": "30000",
+    "available": false,
+    "grams": 0,
+    "created_at": "2026-06-24T15:21:07-04:00",
+    "updated_at": "2026-08-28T18:34:38-04:00"
+   },
+   {
+    "id": 51910435864864,
+    "product_id": 10425744621856,
+    "sku": null,
+    "title": "1.8kg",
+    "price": "33750",
+    "available": false,
+    "grams": 0,
+    "created_at": "2026-06-24T15:21:07-04:00",
+    "updated_at": "2026-08-28T18:34:38-04:00"
+   }
+  ]
+ },
+ {
+  "id": 10355566477600,
+  "title": "Salmón Slice Ahumado al Frio 454g",
+  "handle": "salmon-slice-ahumado-al-frio-454g",
+  "product_type": "Pescados",
+  "vendor": "Mariscos De La Concha",
+  "created_at": "2026-06-02T15:10:28-04:00",
+  "updated_at": "2026-08-28T18:34:38-04:00",
+  "variants": [
+   {
+    "id": 51773500784928,
+    "product_id": 10355566477600,
+    "sku": "SAS454",
+    "title": "Default Title",
+    "price": "13590",
+    "available": true,
+    "grams": 0,
+    "created_at": "2026-06-02T15:10:28-04:00",
+    "updated_at": "2026-08-28T18:34:38-04:00"
+   }
+  ]
+ },
+ {
+  "id": 10168153604384,
+  "title": "Cerdo Chuleta Centro 1kg",
+  "handle": "cerdo-chuleta-centro-1kg",
+  "product_type": "Cerdo",
+  "vendor": "Mariscos De La Concha",
+  "created_at": "2026-01-20T11:44:23-03:00",
+  "updated_at": "2026-08-28T18:34:38-04:00",
+  "variants": [
+   {
+    "id": 51140854350112,
+    "product_id": 10168153604384,
+    "sku": "ZCCC",
+    "title": "Default Title",
+    "price": "6550",
+    "available": true,
+    "grams": 0,
+    "created_at": "2026-01-20T11:44:23-03:00",
+    "updated_at": "2026-08-28T18:34:38-04:00"
+   }
+  ]
+ },
+ {
+  "id": 8586271621408,
+  "title": "Merluza Austral Filete",
+  "handle": "merluza-austral-filete-1kg",
+  "product_type": "Pescados",
+  "vendor": "Mariscos De La Concha",
+  "created_at": "2023-08-23T14:48:04-04:00",
+  "updated_at": "2026-08-28T18:34:38-04:00",
+  "variants": [
+   {
+    "id": 50967838097696,
+    "product_id": 8586271621408,
+    "sku": null,
+    "title": "0.4kg",
+    "price": "5780",
+    "available": false,
+    "grams": 0,
+    "created_at": "2025-11-25T12:19:35-03:00",
+    "updated_at": "2026-08-28T18:34:38-04:00"
+   },
+   {
+    "id": 47628018876704,
+    "product_id": 8586271621408,
+    "sku": "MAFI",
+    "title": "0.5kg",
+    "price": "7225",
+    "available": false,
+    "grams": 0,
+    "created_at": "2024-02-21T18:47:45-03:00",
+    "updated_at": "2026-08-28T18:34:38-04:00"
+   },
+   {
+    "id": 50967838130464,
+    "product_id": 8586271621408,
+    "sku": null,
+    "title": "0.6kg",
+    "price": "8670",
+    "available": false,
+    "grams": 0,
+    "created_at": "2025-11-25T12:19:35-03:00",
+    "updated_at": "2026-08-28T18:34:38-04:00"
+   },
+   {
+    "id": 51456690848032,
+    "product_id": 8586271621408,
+    "sku": null,
+    "title": "0.7kg",
+    "price": "10115",
+    "available": true,
+    "grams": 0,
+    "created_at": "2026-04-08T11:28:00-04:00",
+    "updated_at": "2026-08-28T18:34:38-04:00"
+   },
+   {
+    "id": 47628018909472,
+    "product_id": 8586271621408,
+    "sku": "MAFI",
+    "title": "1kg",
+    "price": "14450",
+    "available": true,
+    "grams": 0,
+    "created_at": "2024-02-21T18:47:45-03:00",
+    "updated_at": "2026-08-28T18:34:38-04:00"
+   }
+  ]
+ }
+]
