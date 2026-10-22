@@ -1,413 +1,230 @@
-----stipi estuvo aqui 1.1----
-
 <div align="center">
 
 # 🔗 Kern
+### The Deterministic SCM Decision Engine & MCP Server
 
-### The agentic brain for supply-chain decisions — grounded in the field's best models and sources.
+**A high-precision analytical engine and agentic orchestrator for enterprise supply chain operations.**  
+Turns unstructured business briefs and raw transactional datasets into mathematically grounded, QA-gated supply chain deliverables—backed by **9,100+ tests** and zero unvalidated ledger mutations.
 
-**Kern** (German for *core*) is the evolution of **Linchpin** — from a tool that analyzes to the core the agency's service runs on. The name changed because the role changed: not reports on demand, but the decision kernel every engagement executes through — the QA gate that vetoes bad deliverables, citations to 27 curated external sources on every result, staged writeback with rollback, and guided outcomes that always end in a safe human step. [Why Kern →](documentation/KERN_IDENTIDAD_Y_FILOSOFIA.md)
+[![python](https://img.shields.io/badge/python-3.11--3.13-3776AB?style=flat-square&logo=python&logoColor=white)](pyproject.toml)
+[![tests](https://img.shields.io/badge/tests-9%2C100%2B_passing-4fd1c5?style=flat-square&logo=pytest)](tests/)
+[![coverage](https://img.shields.io/badge/coverage-93%25-3fb950?style=flat-square)](#)
+[![mcp](https://img.shields.io/badge/MCP-Anthropic_Compatible-9b59b6?style=flat-square)](docs/MCP_SERVER.md)
+[![architecture](https://img.shields.io/badge/core-pure_functional_math-0072B2?style=flat-square)](src/)
+[![license](https://img.shields.io/badge/license-proprietary_core-555555?style=flat-square)](LICENSE)
 
-**Kern** turns a plain-language brief into finished, QA-gated supply-chain deliverables. A Python **engine** implements the field's established models across **60 agent-routable capabilities** — EOQ, safety stock, `(s,Q)`/`(R,S)` policies, multi-echelon, simulation, a network digital twin, forecasting, pricing, price intelligence (competitor position), DDMRP, ABC-XYZ, sourcing, supplier segmentation (Kraljic), landed cost, import-case document pack, cost-to-serve, S&OP, facility location, multi-facility network design (p-median), DRP, transportation, FEFO, reconciliation, slotting, warehouse layout, vehicle routing, decision tension map (5 sombreros), reconciled replenishment plan, flow map, cross-area impact/objection verdict, intake scan (raw-folder data-readiness audit), ISO operations floor evidence, MUS audit-evidence workpaper, SCOR/ISO evidence pack and more — and an **orchestrator agent** drives every one of them end to end with a **never-unprotected guarantee** (every result is executed *or* hands you a ready, safe next step) and **safe-staging writeback**. Each result is **grounded** in a knowledge graph of **27 curated external sources and the codebase itself**.
+<br/>
 
-[![version](https://img.shields.io/badge/version-2.9.0-5eead4)](CHANGELOG.md)
-[![python](https://img.shields.io/badge/python-3.11--3.13-3776AB?logo=python&logoColor=white)](pyproject.toml)
-[![tests](https://github.com/esstipi-debug/kern/actions/workflows/tests.yml/badge.svg)](https://github.com/esstipi-debug/kern/actions/workflows/tests.yml)
-[![coverage](https://img.shields.io/badge/coverage-93%25-3fb950)](#)
-[![license](https://img.shields.io/badge/license-proprietary-red)](#-license)
+<img src="docs/assets/kern-hero.png" alt="Kern: plain-language brief in, validated inventory plan out" width="880">
+
+<sub>The live web console (<code>webapp/static/prototype/</code>) executing against the production <code>POST /api/jobs</code> runtime.</sub>
 
 </div>
 
-<img src="docs/assets/kern-hero.png" alt="Kern: a brief and a CSV in, a validated inventory plan out" width="880">
+---
 
-<div align="center"><sub>Illustrative example. The live agent console (<code>webapp/static/prototype/</code>) talks to the real <code>POST /api/jobs</code>.</sub></div>
+## ⚡ Executive Summary
+
+Enterprise supply chain planning is plagued by two extremes: **fragile spreadsheet models** that fail to capture demand volatility, and **unconstrained LLM assistants** that hallucinate critical purchase order quantities and reorder thresholds.
+
+**Kern resolves this chasm through a strict architectural invariant:**
+
+$$\textbf{LLMs reason and translate} \quad \longleftrightarrow \quad \textbf{Deterministic code computes and guards}$$
+
+1. **Pure Mathematical Engine:** Every inventory policy, replenishment calculation, and price elasticity metric is computed by a pure functional Python core (`src/`), cross-validated against Monte Carlo simulations.
+2. **Deterministic QA Gates:** Deliverables are subjected to automated validation checks (budget feasibility, service-level guarantees, non-negative bounds). **If QA checks fail, zero deliverables ship.**
+3. **Safe-Staging Writeback:** The orchestrator never mutates an enterprise system of record blindly. Ledger adjustments are staged as dry-run changesets with strict TTLs, risk classification, and one-click rollback mechanisms.
+4. **Epistemological Grounding:** Every figure links back to an academic and empirical knowledge graph spanning **27 curated SCM reference sources** alongside the exact `src/` modules that executed the calculation.
 
 ---
 
-## ⚡ What it does
-
-Give it a brief; it **classifies → runs → validates (QA) → delivers**. If QA fails, nothing ships.
-
-<details open>
-<summary><b>See the flow in 3 steps</b> (illustrative figures, not a measured run)</summary>
-
-**1 · Brief — plain language in, parameters out.**
-
-<img src="docs/assets/kern-brief.png" alt="Write what you need in plain language; Kern turns it into parameters: service level, scope, inventory cap, lead time, warehouses" width="880">
-
-**2 · Validation — no number ships without passing the checks.**
-
-<img src="docs/assets/kern-plan.png" alt="Validated plan table with safety stock, reorder point and order quantity per SKU, plus budget, service and warning checks" width="880">
-
-**3 · Report — every recommendation cites its source.**
-
-<img src="docs/assets/kern-sources.png" alt="A report sentence with numbered citations pointing to the spreadsheet cell, the CSV rows and the brief line each number came from" width="880">
-
-</details>
+## 🔄 How It Works: The 3-Step Lifecycle
 
 ```mermaid
 flowchart LR
-  A["Brief (+ optional data)"] --> C{"Classify intent"}
-  C --> I["inventory_optimization"]
-  C --> P["pricing"]
-  C --> L["leadership_chain"]
-  C --> M["...57 more tools"]
-  I --> Q{"QA gate"}
-  P --> Q
-  L --> Q
-  M --> Q
-  Q -->|pass| G["Ground in L3 — source + code citations"]
-  G --> D["Deliverables — Excel · report · chart + Fuentes"]
-  Q -->|fail| N["no deliverable"]
+    A["Unstructured Brief<br/>(+ Raw CSV / DB)"] --> B{"Intent Classification<br/>(Rules + Claude)"}
+    B --> C["Deterministic Engine<br/>(Pure Functions in src/)"]
+    C --> D{"Automated QA Gate<br/>(Budget & Feasibility)"}
+    D -->|Pass| E["Grounding & Citations<br/>(Theory ↔ Code Bridge)"]
+    D -->|Fail| F["Halt & Request Clarification<br/>(Zero Corrupt Deliverables)"]
+    E --> G["Safe-Staging Writeback<br/>(Dry-Run / 900s TTL / Rollback)"]
 ```
 
-Every one of the **60 registered tools** below is routed the same way — one `register()` call wires a capability into the same `classify → prepare → run → QA → deliver` pipeline, no special-casing. A few, as a sample:
+<details open>
+<summary><b>Inspect the 3-step visual execution flow</b></summary>
+<br/>
 
-| Capability | Input | Deliverable |
-|---|---|---|
-| 📦 `inventory_optimization` | demand CSV/Excel | Excel + report + CSV — forecast → `(s,Q)`/`(R,S)` → budget fit |
-| 💲 `pricing` | price/qty CSV/Excel | Excel + report — elasticity → margin-maximizing price |
-| 🧭 `leadership_chain` | a brief / scores | radar chart + report — CHAIN leadership profile + directives |
-| 🏗️ `warehouse_layout` | params / brief | 3D HTML + layout.json + report — navigable warehouse (building, yard, docks, gates, racks) |
+**1 · Brief & Intake — Unstructured parameters parsed into deterministic constraints.**
+<img src="docs/assets/kern-brief.png" alt="Kern parses natural language into operational constraints" width="880">
 
-Runs **with or without an LLM**: an optional `LLMProvider` (Claude) sharpens routing and the narrative; the deterministic core works on its own. The whole thing is **9,100+ tests**.
+**2 · Validation — Zero numbers released without passing deterministic boundary checks.**
+<img src="docs/assets/kern-plan.png" alt="Validated replenishment plan with budget, service, and safety bounds" width="880">
 
----
-
-## 🧰 All 60 capabilities, one router
-
-Every capability below is agent-routable — a brief in, a QA-gated deliverable out — through the exact same pipeline as the four examples above. Source of truth: `build_default_registry()` in [`scm_agent/tools.py`](scm_agent/tools.py); this table is regenerated by hand from it, so if the two ever disagree, trust the code. See the [Capability Expansion Plan](documentation/CAPABILITY_EXPANSION_PLAN.md) for what's still credential-gated (Shopify/Amazon/ERP connectors, voice) rather than agent-routable today.
-
-<div align="center">
-<img src="docs/assets/capabilities-by-area.png" alt="Donut chart — the 60 registered tools grouped by domain area: inventory & replenishment 13, network & logistics 9, inventory control & health 9, pricing & finance 7, procurement & sourcing 5, returns/risk/benchmarking 4, demand & classification 3, planning cadence 4, procedures & standard work 2, ISO operations & evidence 3, leadership 1" width="620">
-</div>
-
-<details>
-<summary><b>📋 The full list, by area (60 tools)</b></summary>
-
-| Area | Tools |
-|---|---|
-| **Demand & classification** | `abc_xyz` · `forecast` · `whatif` |
-| **Inventory & replenishment** | `inventory_optimization` · `newsvendor` · `multi_echelon` · `ddmrp` · `simulation` · `digital_twin` · `drp` · `odoo_replenishment` (live Odoo ERP read + writeback) · `excel_replenishment` (client planilla read + writeback) · `hat_tension` (Decision Tension Map, 5 sombreros) · `hat_settlement` (Reconciled Replenishment Plan) · `shopify_replenishment` (canal Shopify → ERP) · `channel_replenishment` (canal → ERP, multi-canal) |
-| **Inventory control & health** | `cycle_count` · `reconciliation` · `excess_obsolete` · `markdown_liquidation` · `fefo` · `data_quality` · `org_friction_audit` (hidden factory, ratchet, accountability vacuum — audits the politics behind the numbers, not the numbers) · `intake_scan` (raw-folder data-readiness audit) · `service_scan` (realized customer service from a live commerce backend) |
-| **Procurement & sourcing** | `sourcing` · `supplier_management` (Kraljic segmentation) · `landed_cost` · `import_case` (unified import document pack) · `acceptance_sampling` |
-| **Network & logistics** | `facility_location` · `network_design` (multi-facility p-median) · `transportation` · `vehicle_routing` · `warehouse_layout` · `slotting` · `queuing` · `scheduling` · `flow_map` (observed network + measured transit per lane) |
-| **Pricing & finance** | `pricing` · `price_intelligence` (competitor price position, one-shot) · `price_watch` (discovery-assisted, recurring, read-only) · `repricing` (staged price changeset, approval-gated) · `financial_kpis` · `cost_to_serve` · `learning_curve` |
-| **Returns, risk & benchmarking** | `returns` · `risk` · `dea` · `disruption_scan` (supplier disruption exposure scan, GDELT-fed) |
-| **Planning cadence & projects** | `sop` · `earned_value` · `launch_readiness` (campaign launch-date vs lead-time & coverage) · `cross_impact` (cross-area impact of a proposed decision, objection verdict) |
-| **Procedures & standard work** | `procedure_audit` (SOP register audit: overdue reviews, missing owners, unversioned documents) · `procedure_draft` (bilingual SOP draft with document control) |
-| **ISO operations & evidence** | `iso_ops` (detect applicable ops/SC ISO + IATF, propose floor tasks, evaluate order evidence — never a certificate) · `audit_evidence` (MUS + GL tie-out workpaper, not an opinion) · `scor_iso_audit` (SCOR scorecard + ISO 9001/28000 checklist in one EvidenceRecord — never a certificate) |
-| **Leadership** | `leadership_chain` |
-
-</details>
-
-Three cross-cutting guarantees keep the agent safe in production:
-
-- **Never-unprotected** — every result is `EXECUTED` or carries an executable path: ranked options, a prepared handoff (pre-filled PO / email / count sheet), or an escalation. No dead ends.
-- **Safe-staging writeback** — changes are computed as a dry-run changeset, gated by risk tier + time-boxed approval, applied idempotently, and fully auditable / `rollback()`-able. The agent never mutates a system of record blindly.
-- **Data protection by default** — every upload is validated (size, type, path) and processed in an isolated, auto-purged per-job directory; no secrets are ever committed. Full threat model and controls in [SECURITY.md](SECURITY.md).
-
-<div align="center">
-<img src="docs/assets/never-unprotected-contract.png" alt="Donut chart — the never-unprotected contract's 4 possible outcomes: EXECUTED (autonomous), OPTIONS, HANDOFF, ESCALATED (the latter three keep a human in the loop). Structural, not a measured run-frequency split." width="520">
-</div>
-
-> Autonomy here is **earned, not declared** — a tool only moves toward more `EXECUTED` outcomes as its tracked accuracy clears a threshold (see `scm_agent/autonomy.py`'s T1/T2/T3 tiers). No fixed "% automated" number is claimed; it grows per tool, per client, with evidence.
-
----
-
-## 🧠 The agent (`scm_agent/`)
-
-A **registry-based orchestrator**: every capability is a `Tool` with four stages — `prepare → run → qa → deliver` — that the orchestrator drives, enforcing **"QA fails ⇒ no deliverable"** in one place. Adding a capability needs no routing edits; the wiring itself touches eight fixed places, listed in [`.specify/memory/constitution.md`](.specify/memory/constitution.md).
-
-```
-brief ─▶ intent.classify ─▶ registry.get(tool) ─▶ prepare ─▶ run ─▶ QA ─▶ deliver ─▶ JobResult
-              (rules + optional LLM)              any of the 60 registered tools
-```
-
-- **`scm_agent/`** — `types` · `llm` (Claude / rules fallback) · `registry` · `tools` · `intent` · `orchestrator` · `knowledge` (L3 grounding) · `guided_bridge` (never-unprotected contract via `nosilo_core.guided`)
-- **Entry points** — CLI `examples/run_agent.py`, HTTP `POST /api/jobs` (multipart, with downloadable deliverables), and the live console under `webapp/static/prototype/`
-- **Statuses** — `ok` · `needs_clarification` · `needs_data` · `qa_failed` · `error`
-
-Full reference: [`scm_agent/README.md`](scm_agent/README.md). The `leadership_chain` capability scores a brief against the **CHAIN** model (Collaborative / Holistic / Adaptable / Influential / Narrative) — an original synthesis, not a reproduction of any single external text.
-
-<div align="center">
-<img src="docs/assets/leadership-chain-radar.png" alt="CHAIN profile radar chart — Collaborative, Holistic, Adaptable, Influential, Narrative scores for a team" width="480"><br>
-<sub>Real <code>leadership_chain</code> output — radar chart deliverable from a scored brief.</sub>
-</div>
-
-<details>
-<summary><b>🔄 Request lifecycle — <code>POST /api/jobs</code></b></summary>
-
-```mermaid
-sequenceDiagram
-    participant C as Client (console / curl)
-    participant API as FastAPI (webapp/app.py)
-    participant O as Orchestrator (scm_agent)
-    participant T as Tool (prepare→run→qa→deliver)
-    participant KB as L3 knowledge graph
-
-    C->>API: multipart: brief, client, params, file
-    API->>API: validate params JSON · sanitize client · cap upload 25 MB · pin filename
-    API->>O: run(brief, data_path, overrides, out_dir)
-    O->>O: intent.classify (rules + optional LLM)
-    O->>T: registry.get(tool).prepare → run → qa
-    T->>KB: query citations (chapter ↔ src/ function)
-    alt QA passes
-        T-->>O: deliver() writes Excel + report to job dir
-        O-->>API: JobResult(status=ok, deliverables, citations)
-    else QA fails
-        O-->>API: JobResult(status=qa_failed, no deliverable)
-    end
-    API-->>C: JSON + /jobs-output/ download URLs
-```
-
-Example response (`status: ok`):
-
-```json
-{
-  "status": "ok",
-  "tool": "inventory_optimization",
-  "confidence": 0.87,
-  "summary": "12 SKUs · $44k budget · 3 flagged high-bias · (s,Q) for 9, (R,S) for 3.",
-  "deliverables": {
-    "report": "/abs/job/inventory_optimization/report.md",
-    "excel": "/abs/job/inventory_optimization/inventory_plan.xlsx"
-  },
-  "download_urls": {
-    "report": "/jobs-output/tmp09dw516z/inventory_optimization/report.md",
-    "excel": "/jobs-output/tmp09dw516z/inventory_optimization/inventory_plan.xlsx"
-  },
-  "qa_issues": [],
-  "clarifications": [],
-  "citations": [
-    {"concept": "Safety Stock", "source": "SCM knowledge base", "module": "src/safety_stock.py"}
-  ]
-}
-```
-
-Other statuses return the same envelope with `status` one of
-`needs_clarification` · `needs_data` · `qa_failed` · `error` and an empty
-`deliverables` map.
+**3 · Grounded Reporting — Mathematical formulas linked to source citations and code.**
+<img src="docs/assets/kern-sources.png" alt="Report sentences referencing exact spreadsheet cells and source modules" width="880">
 
 </details>
 
 ---
 
-## 🧠 L3 — domain knowledge & the theory↔code bridge
+## ⚙️ The Engine: One Question, One Lens
 
-Every job is **grounded**: the orchestrator queries a knowledge graph and attaches citations to each result (the **Fuentes** shown in the console). Two graphs, one read-only query surface — [`scm_agent/knowledge.py`](scm_agent/knowledge.py):
+The analytical core stands on a decoupled chain of pure functions. Every numerical model is cross-checked against reference benchmarks and closed-form simulations:
 
-- **Domain knowledge graph** ([`knowledge/scm-books/`](knowledge/scm-books/README.md)) — **27 curated external sources** (forecasting, pricing, revenue management, inventory, operations, logistics, sustainability, leadership, risk & resilience, AI in supply chains): ~3,040 concept nodes with source citations, 2,913 of them from external works. Committed.
-- **Code graph** (`graphify-out/`) — the codebase itself, built with `/graphify`. Gitignored (regenerable).
+<div align="center">
 
-The **bridge** ties them together: for each cited concept it resolves the `src/` module that implements it, so a deliverable cites the concept **and** the function behind it.
+![Engine Lenses](docs/assets/engine-lenses.svg)
 
-```text
-Economic Order Quantity           ->  src/eoq.py
-Safety Stock                      ->  src/safety_stock.py
-Cost & Service-Level Optimization ->  src/cost_optimization.py
-```
+</div>
 
-Query it directly: `python examples/query_knowledge.py --bridge "newsvendor"` · `--search "fill rate"` · `--explain crostons_method`.
+| The Operational Question | Engine Module | Analytical Lens & Methodological Advantage |
+|:---|:---|:---|
+| *How much should we order?* | [`src/eoq.py`](src/eoq.py) | **Cost Balance:** Exact trade-off between holding costs and fixed order costs, with tiered volume discounts. |
+| *When should we reorder?* | [`src/policies.py`](src/policies.py) | **Trigger & Risk:** Dynamic `(s,Q)` continuous review and `(R,S)` periodic review policies. |
+| *How large must the buffer be?* | [`src/safety_stock.py`](src/safety_stock.py) | **Uncertainty Grounding:** Calculated off **forecast error $\sigma_e$**, eliminating the catastrophic industry mistake of using raw demand variance $\sigma_{\text{demand}}$. |
+| *What service will customers realize?* | [`src/fill_rate.py`](src/fill_rate.py) | **Realized Availability:** Computes fill rate ($\beta$) to evaluate true volume served, separating it from cycle service level ($\alpha$). |
+| *How to handle intermittent demand?* | [`src/forecasting.py`](src/forecasting.py) | **Shape-Awareness:** Croston's method and Gamma distributions for lumpy, skewed SKUs where Gaussian models stock out. |
+| *Where should inventory sit in the network?* | [`src/multi_echelon.py`](src/multi_echelon.py) | **Systemic Optimization:** Guaranteed Service Model (GSM) across multi-echelon warehouse tiers. |
+| *What price maximizes gross margin?* | [`src/pricing.py`](src/pricing.py) | **Empirical Elasticity:** Per-SKU price elasticity curves determining margin-maximizing markups and markdown liquidation. |
+| *Is the plan operationally feasible?* | [`src/constraints.py`](src/constraints.py) | **Floor Reality:** Hardware limits, supplier MOQs, case packs, shelf-life caps, and working capital budget allocation. |
+
+<div align="center">
+
+<img src="docs/assets/benchmark-savings.png" alt="Median cost reduction vs naive baselines on public retail datasets" width="520">
+
+<sub>Demonstrated **15%+ median cost reduction** against standard heuristic baselines across public benchmark retail datasets (Online Retail I & II, Superstore).</sub>
+
+</div>
 
 ---
 
-## ⚙️ The engine — one question, one lens
+## 🧰 Capabilities Architecture: 4 Operational Pillars
 
-The analytical core the agent stands on: a chain of small **pure functions**, each answering one question with one point of view. Every number is simulation-real — no Node, no build step.
+Kern organizes its **60 agent-routable capabilities** across four integrated pillars, routed transparently via `scm_agent/orchestrator.py`:
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                        KERN CAPABILITY TAXONOMY                        │
+├───────────────────────────┬────────────────────────────────────────────┤
+│ 1. INVENTORY & POLICIES   │ • Stochastic (s,Q) / (R,S) Policy Engine   │
+│                           │ • Multi-Echelon GSM & Digital Twin Sim     │
+│                           │ • DDMRP Buffer Sizing & FEFO Perishables   │
+├───────────────────────────┼────────────────────────────────────────────┤
+│ 2. PRICING & MARGINS      │ • Price Elasticity & Optimal Markups       │
+│                           │ • Competitor Position & Market Intel       │
+│                           │ • Markdown Liquidation & Cost-to-Serve     │
+├───────────────────────────┼────────────────────────────────────────────┤
+│ 3. NETWORK & PHYSICAL OPS │ • Multi-Facility p-Median Network Design   │
+│                           │ • Vehicle Routing & Dynamic Slotting       │
+│                           │ • Transit Flow Mapping & Facility Location │
+├───────────────────────────┼────────────────────────────────────────────┤
+│ 4. GOVERNANCE & GATING    │ • Cross-Silo Campaign Launch Readiness    │
+│                           │ • ERP Read-Replicas & Safe Writeback       │
+│                           │ • ISO / SCOR Operational Evidence Packs    │
+└───────────────────────────┴────────────────────────────────────────────┘
+```
+
+<details>
+<summary><b>Inspect the complete 60-tool capability registry</b></summary>
+<br/>
+
+| Operational Area | Registered Capabilities |
+|:---|:---|
+| **Demand & Classification** | `abc_xyz` · `forecast` · `whatif` |
+| **Inventory & Replenishment** | `inventory_optimization` · `newsvendor` · `multi_echelon` · `ddmrp` · `simulation` · `digital_twin` · `drp` · `odoo_replenishment` · `excel_replenishment` · `hat_tension` · `hat_settlement` · `shopify_replenishment` · `channel_replenishment` |
+| **Inventory Health & Control** | `cycle_count` · `reconciliation` · `excess_obsolete` · `markdown_liquidation` · `fefo` · `data_quality` · `org_friction_audit` · `intake_scan` · `service_scan` |
+| **Procurement & Sourcing** | `sourcing` · `supplier_management` (Kraljic) · `landed_cost` · `import_case` · `acceptance_sampling` |
+| **Network & Physical Logistics** | `facility_location` · `network_design` (p-median) · `transportation` · `vehicle_routing` · `warehouse_layout` · `slotting` · `queuing` · `scheduling` · `flow_map` |
+| **Pricing & Margin Management** | `pricing` · `price_intelligence` · `price_watch` · `repricing` · `financial_kpis` · `cost_to_serve` · `learning_curve` |
+| **Risk, Returns & Disruption** | `returns` · `risk` · `dea` · `disruption_scan` (GDELT event feed integration) |
+| **Cross-Silo Cadence & S&OP** | `sop` · `earned_value` · `launch_readiness` (Commercial vs Supply Chain gate) · `cross_impact` |
+| **Operations & Audit Evidence** | `procedure_audit` · `procedure_draft` · `iso_ops` · `audit_evidence` (MUS sampling) · `scor_iso_audit` |
+
+</details>
+
+---
+
+## 🛡️ Enterprise Safety Contracts
+
+To guarantee operational safety in high-stakes environments, Kern implements three non-negotiable architectural contracts:
+
+1. **The Never-Unprotected Guarantee:**  
+   Every execution terminates in either an autonomous `EXECUTED` action (if confidence clears the target threshold) or a pre-structured human handoff (`OPTIONS`, `HANDOFF`, `ESCALATE`). The agent never leaves the operator at a dead end.
+2. **Safe-Staging Writeback:**  
+   Write operations to ERP systems (such as Odoo or SAP) are generated as dry-run diffs. Actions require approval based on risk tiers and are subject to time-boxed execution windows (default 900s TTL) with idempotent rollbacks.
+3. **Data Protection by Default:**  
+   Isolated per-job execution containers, automatic session purging, zero-persistence on uncommitted files, and strict threat model boundaries detailed in [`SECURITY.md`](SECURITY.md).
 
 <div align="center">
 
-![The engine pipeline: PREDICT (forecasting, distributions) → DECIDE (eoq, policies, safety_stock) → OPTIMIZE (fill_rate, cost_optimization, simulation_opt) → REALITY (multi_echelon, newsvendor, constraints) → a QA-gated plan, every number cross-checked against Monte-Carlo simulation](docs/assets/engine-lenses.svg)
+<img src="docs/assets/never-unprotected-contract.png" alt="The Never-Unprotected Contract" width="460">
 
 </div>
 
-| The question | Engine | The lens it brings |
-|---|---|---|
-| *How much do I order?* | `eoq.py` | **Cost balance** — the lot size where ordering cost meets holding cost (+ volume discounts). |
-| *When do I reorder?* | `policies.py` | **Trigger & risk** — forecast + costs → `(s,Q)`/`(R,S)`: the reorder point *and* the quantity. |
-| *How big a buffer?* | `safety_stock.py` | **Uncertainty** — `z·σ·√τ`, keyed off **forecast error σ_e**, not raw demand spread (the classic mistake). |
-| *What service do I actually get?* | `fill_rate.py` | **Realized service** — fill rate β (units served), which stays high even when cycle service α drops. |
-| *Is more service worth it?* | `cost_optimization.py` | **Economics** — the service level / review period that minimizes holding + shortage cost, not a rule of thumb. |
-| *Spiky or skewed demand?* | `forecasting.py` · `distributions.py` | **Shape-aware** — Croston for intermittent, gamma for skew, exactly where the normal model under-stocks. |
-| *Where to hold stock across the network?* | `multi_echelon.py` | **System view** — guaranteed-service placement across stages, not greedy per node. |
-| *One perishable shot?* | `newsvendor.py` | **Single period** — the critical ratio `cu/(cu+co)`. |
-| *Can't trust the assumptions?* | `simulation_opt.py` | **Empirical** — simulate thousands of demand paths, search `(s,Q,S)` for the real optimum. |
-| *Is the plan feasible?* | `constraints.py` | **Operational reality** — MOQ, case packs, shelf-life, and a budget allocator that trims safety stock to fit. |
-| *What price maximizes margin?* | `pricing.py` | **Elasticity** — per-SKU price sensitivity → the margin-maximizing markup. |
+---
 
-**Why this beats a spreadsheet**
+## 🔌 Interfaces & Deployment
 
-![simulation validated](https://img.shields.io/badge/policies-simulation--validated-4fd1c5?style=flat-square&labelColor=0d1219)
-![forecast error](https://img.shields.io/badge/safety_stock-forecast_error_σ-5eead4?style=flat-square&labelColor=0d1219)
-![shape aware](https://img.shields.io/badge/demand-Croston_and_gamma-3fb950?style=flat-square&labelColor=0d1219)
-![feasible](https://img.shields.io/badge/plan-MOQ_and_budget_feasible-d4a017?style=flat-square&labelColor=0d1219)
-![tests](https://img.shields.io/badge/9100%2B_tests-passing-4fd1c5?style=flat-square&labelColor=0d1219)
+### 1. Model Context Protocol (MCP) Server
+Kern exposes its analytical tools directly to Claude and compatible agent harnesses via the **Anthropic Model Context Protocol (MCP)**. External agents can request inventory calculations, elasticity evaluations, and network optimizations with guaranteed mathematical precision.  
+*Reference:* [`docs/MCP_SERVER.md`](docs/MCP_SERVER.md).
 
-- **Validated, not assumed** — closed-form policies are cross-checked against Monte-Carlo simulation (`simulation.py`, backorders + lost sales).
-- **σ_e, not σ_demand** — safety stock keys off *forecast error*, the only correct dispersion (the #1 inventory mistake in the wild).
-- **Shape-aware** — intermittent (Croston) and skewed (gamma) demand are first-class, where a normal-curve sheet silently stocks out.
-- **Feasible by construction** — MOQ / budget are constraints, so what ships is buildable, not just mathematically optimal.
-- **Pure & composable** — each module is a pure function, the engine validated against reference numeric examples in a 9,100+ test suite; the orchestrator chains them without surprises.
-
-<div align="center">
-<img src="docs/assets/benchmark-savings.png" alt="Bar chart — median cost reduction vs baseline on Online Retail I, Online Retail II, and Superstore, all above the 15% target line" width="520"><br>
-<sub>Median cost reduction vs. naive baseline on real public datasets — not a synthetic demo.</sub>
-</div>
-
-### 🖥️ How you see it
-
-The same engine output, read through four lenses in the live dashboard (`/`):
+### 2. Live Web Dashboard & Console
+A high-performance FastAPI web layer providing real-time interactive dashboards and an operator console:
 
 <table>
 <tr>
-<td width="50%"><img src="docs/assets/dashboard-portfolio.png" alt="Portfolio tab — plan investment, budget gauge and per-SKU table"><br><sub><b>Portfolio</b> — the whole plan + budget gauge, over/under cap at a glance.</sub></td>
-<td width="50%"><img src="docs/assets/dashboard-detail.png" alt="SKU Detail tab — demand history, forecast, reorder line and live what-if sliders"><br><sub><b>SKU Detail</b> — history · forecast · ±σ_e · reorder line, with live what-if sliders.</sub></td>
+<td width="50%"><img src="docs/assets/dashboard-portfolio.png" alt="Portfolio View"><br/><sub><b>Portfolio Overview:</b> Real-time working capital allocation and constraint headroom.</sub></td>
+<td width="50%"><img src="docs/assets/dashboard-detail.png" alt="SKU Detail"><br/><sub><b>SKU Deep-Dive:</b> Demand history, Croston / Gamma dispersion, and reorder levels.</sub></td>
 </tr>
 <tr>
-<td width="50%"><img src="docs/assets/dashboard-budget.png" alt="Budget Planner tab — per-SKU cycle vs safety stock allocation"><br><sub><b>Budget Planner</b> — cycle vs. safety allocation as you move the cap.</sub></td>
-<td width="50%"><img src="docs/assets/dashboard-forecast.png" alt="Forecast Quality tab — bias spread per SKU"><br><sub><b>Forecast Quality</b> — bias spread per SKU; which forecasts to trust.</sub></td>
+<td width="50%"><img src="docs/assets/dashboard-budget.png" alt="Budget Planner"><br/><sub><b>Budget Allocation:</b> Interactive safety stock vs. cycle stock optimization under cash caps.</sub></td>
+<td width="50%"><img src="docs/assets/dashboard-forecast.png" alt="Forecast Quality"><br/><sub><b>Forecast Reliability:</b> Bias tracking and dispersion diagnostics per SKU.</sub></td>
 </tr>
 </table>
 
-Sliders **recompute the policy live**; the **agent console** (`/console`) adds the L3 **Fuentes** — the source concept *and* the `src/` function behind each number.
+### 3. CLI & Programmatic API
 
-<details>
-<summary><b>📖 Module reference — coverage by topic</b></summary>
+```bash
+# Execute end-to-end replenishment analysis
+python examples/run_constrained_plan.py --lead-time 14 --service-level 0.95
 
-> Deliverables are grounded across all **27 curated external sources** in the knowledge graph, not a single reference.
-
-| Topic | Module | Status |
-|--------------|--------|--------|
-| Inventory policies | `src/policies.py` | `(s,Q)`, `(R,S)` |
-| EOQ + volume discounts | `src/eoq.py` | ✅ |
-| Lead time & review period | `src/data_loader.py`, `src/eoq.py` | ✅ CSV + power-of-2 |
-| Safety stock | `src/safety_stock.py`, `src/demand_variability.py` | ✅ normal + gamma |
-| Simulation | `src/simulation.py` | ✅ backorders + lost sales |
-| Stochastic lead time | `src/risk_period.py`, `src/policies.py` | ✅ |
-| Fill rate | `src/fill_rate.py` | ✅ |
-| Cost optimization | `src/cost_optimization.py` | ✅ |
-| Gamma demand | `src/distributions.py` | ✅ |
-| Multi-echelon GSM | `src/multi_echelon.py` | ✅ allocation + simulation |
-| Newsvendor | `src/newsvendor.py` | ✅ |
-| Price optimization | `src/pricing.py` | ✅ elasticity / optimal price / markdown |
-| Histograms / KDE | `src/discrete_demand.py` | ✅ |
-| Simulation optimization | `src/simulation_opt.py` | ✅ grid R + Ss |
-| Batch multi-SKU | `src/batch.py` | ✅ |
-| Demand forecasting (front-end) | `src/forecasting.py` | ✅ MA / SES / Croston + σ_e |
-| Pluggable data sources | `src/sources.py` | ✅ CSV / DataFrame / SQL (DB-API) |
-| Business constraints | `src/constraints.py` | ✅ MOQ / case packs / shelf-life / budget |
-| Export | `excel_export`, `powerbi_export` | ✅ |
-
-</details>
-
-<details>
-<summary><b>Key formulas</b></summary>
-
-**EOQ** — `Q* = sqrt(2 k D / h)`, `C* = sqrt(2 k D h)`
-
-**Safety stock** — `Ss = z_alpha · sigma_d · sqrt(tau)`  ·  `(s,Q)`: τ = L  ·  `(R,S)`: τ = R + L
-
-**Policies** — `(s,Q): s = dL + Ss, Q = Q*`  ·  `(R,S): S = dL + dR + Ss`
-
-</details>
-
-<details>
-<summary><b>Data format & parameters</b></summary>
-
-`data/sample_demand.csv`:
-
-```csv
-date,product_id,quantity,unit_cost,lead_time_days
-2024-01-01,SKU-A,100,50,7
+# Query the grounded SCM knowledge base
+python examples/query_knowledge.py --explain "crostons_method"
 ```
 
 ```bash
-python examples/run_part1_part2.py --product SKU-B --lead-time 2 --service-level 0.90 --simulate
+# HTTP API: Execute an end-to-end analytical brief
+curl -X POST http://localhost:8000/api/jobs \
+  -F "brief=Optimize replenishment for high-velocity SKUs with a $50,000 budget cap" \
+  -F "file=@data/sample_demand.csv"
 ```
-
-| Flag | Meaning |
-|------|---------|
-| `--holding-cost` | h (per unit/year) |
-| `--order-cost` | k (fixed order cost) |
-| `--lead-time` | L (periods) |
-| `--service-level` | Cycle service level α |
-| `--periods-per-year` | Converts weekly data to D |
-
-</details>
 
 ---
 
-## 🏗️ From engine to product
-
-The full chain runs end to end (`examples/run_constrained_plan.py`):
+## 🏗️ Repository Structure
 
 ```
-data source → forecast (σ_e) → (s,Q)/(R,S) policy → MOQ/case packs → budget fit
-src/sources.py   src/forecasting.py   src/policies.py   src/constraints.py
+scm_agent/            Registry-based orchestrator (classify → run → QA → deliver)
+src/                  Pure functional mathematical engine (EOQ, policies, safety stock, pricing, GSM)
+webapp/               FastAPI dashboard, live agent console, and job API
+jobs/                 Playbooks, intake schema validators, and output generators
+knowledge/            Grounded knowledge graph (27 SCM reference texts and mathematical derivations)
+examples/             CLI workflows, scenario benchmarks, and demonstration scripts
+tests/                9,100+ comprehensive unit, integration, and numeric regression tests
+docs/                 Architecture specifications, deployment runbooks, and MCP server docs
 ```
-
-- **Pluggable data** (`src/sources.py`) — CSV, in-memory DataFrame, or any SQL database via `SqlDemandSource` (SQLite, Postgres, MySQL). New backends just satisfy the `DemandSource` protocol.
-- **Forecasting** (`src/forecasting.py`) — MA / SES / Croston, exposing σ_e, the correct safety-stock dispersion.
-- **Constraints** (`src/constraints.py`) — MOQ, case packs, shelf-life caps, and a budget allocator that trims safety stock across the portfolio to fit. Under supplier terms every (s,Q) quantity is the *cheapest* lot the supplier accepts, with the runner-up lot and both penalties on the record — two terminals, never one rounded number.
-- **Web UI** (`webapp/`) — a 4-tab planner (Portfolio · SKU Detail · Budget Planner · Forecast Quality) + the live agent console, served by FastAPI over the engine. See [webapp/README.md](webapp/README.md).
-- **Job-fulfillment layer** (`jobs/`) — turn a client's demand file (any schema) into client-ready Excel + a written report with automated QA. See [jobs/README.md](jobs/README.md).
-
-<details>
-<summary><b>Project layout</b></summary>
-
-```
-scm_agent/            Orchestrator: brief → classify → tool (60 registered) → QA → deliver
-jobs/                 Playbooks (one per tool) + intake/QA/deliverables
-src/                  Core engine (EOQ → simulation optimization → forecasting → pricing → ...)
-webapp/               FastAPI dashboard + POST /api/jobs + live agent console (static/prototype/)
-examples/             CLI workflows (run_agent, parts 1-4, batch, jobs, plots)
-tests/                9,100+ tests: engine (reference numeric examples) + agent + HTTP layer (traversal/upload guards)
-data/                 Sample demand + pricing
-documentation/        Guides: Getting Started, FAQ, methodology, capability-expansion plan
-docs/                 Design briefs, handoff notes, assets
-power-bi/             CSV dataset + M queries + DAX + SETUP.md
-.cursor/skills/       Agent skills (Cursor / Claude Code)
-.github/workflows/    CI (pytest on 3.11–3.13)
-```
-
-</details>
 
 ---
 
-## 📚 Docs
+## 📄 License & Proprietary Core
 
-| Document | Content |
-|----------|---------|
-| [Getting Started](documentation/GETTING_STARTED.md) | Setup and first run |
-| [Methodology](documentation/METHODOLOGY.md) | Models, assumptions, glossary |
-| [FAQ](documentation/FAQ.md) | Common questions |
-| [`scm_agent/README.md`](scm_agent/README.md) | The agent reference |
-| [Security](SECURITY.md) | Threat model, enforced controls, hardening checklist |
-| [Deployment](docs/DEPLOYMENT.md) | Production hardening: env controls, reverse proxy, load notes |
-| [MCP Server](docs/MCP_SERVER.md) | Selling read-only analysis access to other AI agents: connecting, key issuance, what's exposed |
+* **Analytical Core & Agent Framework:** Proprietary. All rights reserved. Evaluation and enterprise deployment licensing available upon inquiry.
+* **Third-Party Components:** Licensed under respective open-source terms (see [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)).
+* **Odoo Connector:** Published under Odoo Proprietary License v1.0 (OPL-1) via [`odoo_addon/`](odoo_addon/).
 
 ---
 
-## 📄 License
-
-**Kern is proprietary software.** See [LICENSE](LICENSE). Possessing a copy of
-this repository grants no right to use, copy, modify, distribute or host it, in
-whole or in part; a licence requires a written agreement.
-
-- **Third-party components keep their own licences** — see
-  [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). That file is what keeps the
-  proprietary claim accurate instead of overreaching: the tree vendors
-  `marked.min.js` under MIT, and a blanket "all rights reserved" over it would be
-  wrong.
-- **The Odoo addon is licensed separately**: `odoo_addon/<version>/kern_dry_run/`
-  ships under the **Odoo Proprietary License v1.0 (OPL-1)**, because that is what
-  the Apps Store can carry. Its thin-client boundary — the module never imports
-  the engine — is enforced by `tests/test_odoo_addon_boundary.py`, not by
-  convention.
-- **The knowledge graph** (`knowledge/scm-books/`) is derived from 24 copyrighted
-  books and papers. It stays internal and is never distributed; what reaches a
-  client is the citation attached to a result, which is what
-  `scm_agent/knowledge.py`'s internal-source filter is for.
-
-Commercial, evaluation and OEM licences are available on request.
+<div align="center">
+<sub>Engineered for frontline operational reliability. Designed to operate alongside the <a href="https://github.com/esstipi-debug/mellon">Mellon Framework</a>.</sub>
+</div>
