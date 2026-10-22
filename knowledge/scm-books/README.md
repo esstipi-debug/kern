@@ -1,13 +1,24 @@
 # SCM Books Knowledge Graph (L3 domain knowledge)
 
-A graphify knowledge graph built from **24 supply-chain books** (forecasting,
-pricing, revenue management, supply chain management, inventory optimization,
-manufacturing planning & control, operations management, logistics & operations
-strategy, sustainable logistics, **and supply-chain leadership**) plus a
-**25th source, AI applied to supply chains**, a **26th source, Kern's own
-capability↔role atlas**, and a **27th source, supply chain risk & resilience**
-(see below). This is the **domain knowledge** layer for the agent — distinct
-from the repo's `graphify-out/`, which graphs the *code*.
+A graphify knowledge graph of **27 curated external works over 42 external
+source files** — forecasting, pricing, revenue management, supply chain
+management, inventory optimization, manufacturing planning & control, operations
+management, logistics & operations strategy, sustainable logistics, supply-chain
+leadership, risk & resilience, and AI applied to supply chains — plus **3
+internal Kern documents** that are searchable but never citable. This is the
+**domain knowledge** layer for the agent — distinct from the repo's
+`graphify-out/`, which graphs the *code*.
+
+**Three numbers describe one artifact and they are not interchangeable.**
+*Obras curadas* (27) counts whole works a person would cite. *Archivos* (42)
+counts distinct `source_file` values: 9 of them are single chapters of one edited
+volume (Cohen & Dai) and 7 are secondary artifacts (6 web pages plus a
+body-of-knowledge map), so neither "42 works" nor "27 files" is true. The
+per-source narratives below use a third numbering, **#N de ingesta**, which counts
+ingestion events in order — it includes the internal docs and the web artifacts,
+which is why it reaches #30 while the works stand at 27. Counting a chapter or an
+internal doc as a curated work is the overclaim `tests/test_how_it_works_page.py`
+and `tests/test_l3_source_inventory.py` exist to stop.
 
 A **28th source, Kern's own capacity gaps**
 (`documentation/KERN_BRECHAS_DE_CAPACIDAD.md`), was added the same way as #26: eight
@@ -41,7 +52,19 @@ re-verification. Ingest it with `python scripts/merge_sop_document_control.py` (
 first; six guards, all `return 1`). Measured effect, both directions checked across pools
 16/8/6: `procedure_draft` 0 → 3, `procedure_audit` 2 → 3, **and no other tool moved at all**.
 
-- `graph.json` — 3044 nodes · 6198 links · 205 communities (GraphRAG-ready).
+**Vandeput, *Data Science for Supply Chain Forecasting* (2021, 2nd ed.)** is curated work
+**#27** — the 27th *obra*, ingested 2026-09-15 by `scripts/merge_vandeput_forecasting.py`
+(+60 nodes, +223 links; purely additive: 0 ids lost, and 38 pre-existing canonical nodes
+gained an edge from this book). The graph already cited Vandeput through *Inventory
+Optimization* (2020); this is a different book, and it is the L3 source behind the
+forecasting corrections that shipped separately (seasonal naive, the double MASE/RMSSE
+gate, outliers over the error). It took a **fresh community (205)** instead of re-running
+Louvain — the same criterion source #30 used: a re-cluster reassigns thousands of nodes
+and invalidates every citation measurement recorded before it.
+`tests/test_sop_document_control_graph.py::test_la_comunidad_es_propia` and
+`tests/test_l3_source_inventory.py` hold that line.
+
+- `graph.json` — 3104 nodes · 6421 links · 206 communities (GraphRAG-ready).
   `GRAPH_REPORT.md` says 3043 nodes / 6170 edges / 205 communities: graphify builds
   a simple undirected graph, which drops one malformed pre-existing node (a
   `reminder::` node with no `source_file`) and collapses 28 links that share
