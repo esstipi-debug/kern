@@ -98,6 +98,91 @@ def test_explain_resolves_bare_id_across_source_namespacing(kb: KnowledgeBase) -
     assert prefixed.concept.id == detail.concept.id
 
 
+@pytest.mark.parametrize("name", [
+    "Sales and Operations Planning",
+    "sales and operations planning",
+    "Sales & Operations Planning",
+])
+def test_explain_answers_a_concept_name_with_that_concept(tmp_path: Path, name: str) -> None:
+    """Naming a concept returns it, whatever code prose ranks higher.
+
+    The words of a concept's name weigh little in the books graph, where many
+    nodes repeat them, and more in the code graph, where few do. So a src/
+    docstring that says the same words outranked the concept named in full:
+    measured 2026-09-23 on main, 332 of the 2,881 books labels with a space
+    answered with code, "reorder point" with a docstring of src/connectors/odoo.py.
+    """
+    kb = _explain_graphs(tmp_path, [
+        _code_node("src_sop_engine_rationale_1", "Sales and operations planning engine",
+                   "src/sop_engine/__init__.py"),
+    ])
+
+    detail = kb.explain(name)
+
+    assert detail is not None, detail
+    assert detail.concept.id == "vollmann_sales_and_operations_planning", detail.concept
+
+
+def _named_books(tmp_path: Path, nodes: list[tuple[str, str, str]]) -> KnowledgeBase:
+    """A books graph of (id, label, source_file) concepts, and no code graph."""
+    books = _write_graph(tmp_path / "b.json", [
+        {"id": nid, "label": label, "norm_label": label.lower(), "rationale": "",
+         "source_file": source}
+        for nid, label, source in nodes
+    ])
+    return KnowledgeBase(books_path=books, code_path=tmp_path / "none.json")
+
+
+def test_explain_picks_among_concepts_that_share_a_name(tmp_path: Path) -> None:
+    """Among concepts that share a name, a citable one wins, then a full match.
+
+    Kern's own atlas repeats book concepts under their bare names, so its node
+    is the only exact match for "learning curve" - and answered it, over Jacobs
+    & Chase's "Learning Curve (Yx = K x^n)". Among real book concepts, the one
+    whose label is the query as typed wins.
+    """
+    kb = _named_books(tmp_path, [
+        ("christopher::sop_c", "Sales and Operations Planning (S&OP)", "christopher.txt"),
+        ("atlas::sop_atlas", "Sales and Operations Planning", "KERN_ATLAS_SOMBREROS_SCM.md"),
+        ("vollmann::sop_v", "Sales and Operations Planning", "vollmann.txt"),
+    ])
+
+    assert kb.explain("Sales and Operations Planning").concept.id == "sop_v"
+    assert kb.explain("sales and operations planning (s&op)").concept.id == "sop_c"
+
+
+def test_explain_prefers_the_curated_concept_among_equal_names(tmp_path: Path) -> None:
+    """``knowledge::`` wins over a full match of the typed label, as it wins
+    for a bare id in ``_resolve_node``."""
+    kb = _named_books(tmp_path, [
+        ("vollmann::lc_v", "Learning Curve", "vollmann.txt"),
+        ("knowledge::lc_k", "Learning Curve (Yx = K x^n)", "jacobs-chase.pdf"),
+    ])
+
+    assert kb.explain("Learning Curve").concept.id == "lc_k"
+
+
+@pytest.mark.skipif(not CODE.exists(), reason="code graph is gitignored")
+@pytest.mark.parametrize("name, concept_id", [
+    ("reorder point", "reorder_point"),
+    ("safety stock", "safety_stock"),
+    ("cost to serve", "cost_to_serve"),
+    ("Croston's Method", "crostons_method"),
+    ("learning curve", "learning_curve_model"),
+])
+def test_explain_answers_a_concept_name_on_the_real_graphs(
+    kb: KnowledgeBase, name: str, concept_id: str
+) -> None:
+    """Measured 2026-09-23 on main: the first four answered with a code docstring
+    (src/connectors/odoo, src/safety_stock, src/cost_to_serve, src/forecasting);
+    "learning curve", in a first cut of the name lookup, with the node Kern's own
+    atlas carries under that bare name."""
+    detail = kb.explain(name)
+
+    assert detail is not None and (detail.concept.graph, detail.concept.id) == (
+        "books", concept_id), detail
+
+
 def test_bridge_returns_theory_side(kb: KnowledgeBase) -> None:
     b = kb.bridge("newsvendor")
     assert isinstance(b, Bridge)
