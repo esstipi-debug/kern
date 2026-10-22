@@ -122,3 +122,12 @@ landing/shots/
 
 # Credenciales generadas para el Odoo de integracion local (docker-compose.odoo.yml).
 .env.odoo
+
+# Higgsfield companion skills, installed out-of-band by `npx skills add
+# higgsfield-ai/skills` (vendored third-party content, ~1.4MB, regenerable by
+# re-running that command). The `!.claude/skills/` un-ignore above exists for
+# spec-kit's own commands, so without these three lines a blanket `git add -A`
+# sweeps the vendor tree and its symlinks into the repo.
+.agents/
+skills-lock.json
+.claude/skills/higgsfield-*
