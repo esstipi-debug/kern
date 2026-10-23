@@ -48,3 +48,27 @@ def _suite_sin_indice_de_lectura():
     yield
     if previo is not None:
         os.environ[ENV_LECTURA] = previo
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _suite_con_aprobaciones_sin_firma():
+    """La suite corre con el opt-in de desarrollo de las aprobaciones sin firma.
+
+    Sin ``LINCHPIN_APPROVAL_SECRET``, ``nosilo_core.writeback.apply()`` rechaza todo
+    cambio que necesita aprobacion. Los tests que hacen ``approve()`` + ``apply()``
+    prueban la escritura, no la configuracion del deploy, asi que corren con
+    ``LINCHPIN_ALLOW_UNSIGNED_APPROVALS=1``: el mismo interruptor que usa quien
+    desarrolla en local. El secreto de la maquina se saca por la misma razon que el
+    indice de lectura de arriba.
+
+    No deja el rechazo sin cubrir: ``tests/test_writeback.py`` borra las dos
+    variables con ``monkeypatch`` para probar lo que corre un deploy que no las seteo.
+    """
+    nombres = ("LINCHPIN_APPROVAL_SECRET", "LINCHPIN_ALLOW_UNSIGNED_APPROVALS")
+    previos = {nombre: os.environ.pop(nombre, None) for nombre in nombres}
+    os.environ["LINCHPIN_ALLOW_UNSIGNED_APPROVALS"] = "1"
+    yield
+    for nombre, valor in previos.items():
+        os.environ.pop(nombre, None)
+        if valor is not None:
+            os.environ[nombre] = valor
