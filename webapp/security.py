@@ -26,6 +26,7 @@ from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from nosilo_core.access import PolicyEngine, PolicySet
+from nosilo_core.writeback import UNSIGNED_APPROVALS_ENV, unsigned_approvals_allowed
 from webapp import principal
 
 
@@ -76,8 +77,12 @@ CORS_ORIGINS = [o.strip() for o in os.environ.get("LINCHPIN_CORS_ORIGINS", "").s
 ENV = os.environ.get("LINCHPIN_ENV", "development").strip().lower()  # "production" tightens checks
 REQUIRE_SECURE = os.environ.get("LINCHPIN_REQUIRE_SECURE", "").strip().lower() in ("1", "true", "yes")
 # Signs writeback Approvals (nosilo_core/writeback.py) so they can't be forged by
-# constructing the dataclass directly. Empty disables signing, same convention.
+# constructing the dataclass directly. NOT the "empty disables" convention above:
+# empty means every approval-gated write is refused (fail closed).
 APPROVAL_SECRET = os.environ.get("LINCHPIN_APPROVAL_SECRET", "").strip()
+# The development opt-in that lets apply() take unsigned approvals while no secret
+# is set. Read through nosilo_core so what counts as "on" lives in one place.
+ALLOW_UNSIGNED_APPROVALS = unsigned_approvals_allowed()
 
 
 #: The deployment's access policy. ``None`` means ungoverned: every principal is
@@ -129,8 +134,14 @@ def production_warnings() -> list[str]:
         out.append("LINCHPIN_RATE_LIMIT is 0 - POST /api/jobs is not rate limited")
     if not APPROVAL_SECRET:
         out.append(
-            "LINCHPIN_APPROVAL_SECRET is not set - writeback Approvals are unsigned "
-            "and can be forged by any code with access to nosilo_core.writeback"
+            "LINCHPIN_APPROVAL_SECRET is not set - nosilo_core.writeback refuses every "
+            "approval-gated write (Odoo, Shopify, Excel, autonomy promotions) until it is"
+        )
+    if ALLOW_UNSIGNED_APPROVALS:
+        out.append(
+            f"{UNSIGNED_APPROVALS_ENV} is on - a development and test switch: while "
+            "LINCHPIN_APPROVAL_SECRET is unset, any code with access to "
+            "nosilo_core.writeback can sign an approval by hand and apply() takes it"
         )
     return out
 
@@ -197,6 +208,50 @@ def emitir_banner_de_arranque() -> None:
     nivel = logging.WARNING if estado_api_key() == "sin_configurar" else logging.INFO
     for linea in lineas:
         log.log(nivel, "%s", linea)
+
+
+def aviso_de_escrituras() -> list[str]:
+    """Lo que se dice al arrancar sobre las escrituras que necesitan aprobacion.
+
+    ``nosilo_core.writeback.apply()`` falla cerrado: sin ``LINCHPIN_APPROVAL_SECRET``
+    rechaza toda escritura que necesita aprobacion, porque una aprobacion firmada con
+    clave vacia la puede reproducir cualquiera. La app igual arranca y sirve
+    lecturas; esto dice por que la primera aprobacion va a rebotar, antes de que
+    rebote.
+
+    Canal aparte del banner de la API key, a proposito: la precondicion 4 de la spec
+    de empaquetado es sobre la key, y `banner_de_arranque()` no cambia. Devuelve []
+    con secreto (ahi el opt-in de desarrollo es inerte). Nunca levanta.
+    """
+    if APPROVAL_SECRET:
+        return []
+    if ALLOW_UNSIGNED_APPROVALS:
+        return [
+            f"{UNSIGNED_APPROVALS_ENV} esta activo y no hay LINCHPIN_APPROVAL_SECRET: las "
+            "aprobaciones no se firman, y cualquier codigo con acceso a "
+            "nosilo_core.writeback puede fabricar una. Solo para desarrollo y tests.",
+        ]
+    return [
+        "Sin LINCHPIN_APPROVAL_SECRET: Kern lee y calcula, pero rechaza toda escritura "
+        "que necesita aprobacion (Odoo, Shopify, Excel, promociones de autonomia) hasta "
+        "que la configures.",
+    ]
+
+
+def emitir_aviso_de_escrituras() -> None:
+    """Manda el aviso al log, en WARNING. Lo llama `webapp/app.py` al importar.
+
+    WARNING en los dos estados, tambien en el seguro, por el criterio de
+    `emitir_banner_de_arranque`: un secreto que falta es un olvido posible, y quien
+    quiere escribir se tiene que enterar aca y no en el primer rechazo. Ademas es lo
+    unico que se ve: `observability.configure_logging()` solo configura
+    `linchpin.access`, asi que este logger cae en el handler de ultimo recurso de
+    Python, que imprime de WARNING para arriba. Medido arrancando la app con
+    LINCHPIN_LOG_LEVEL=INFO: una linea INFO aca no sale.
+    """
+    log = logging.getLogger("linchpin.security")
+    for linea in aviso_de_escrituras():
+        log.warning("%s", linea)
 
 
 # ---- rate-limiter state -------------------------------------------------------

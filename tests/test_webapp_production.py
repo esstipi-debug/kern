@@ -78,5 +78,26 @@ def test_secured_production_has_no_warnings(monkeypatch):
     monkeypatch.setattr(security, "API_KEY", "a-real-key")
     monkeypatch.setattr(security, "RATE_LIMIT", 120)
     monkeypatch.setattr(security, "APPROVAL_SECRET", "a-real-secret")
+    monkeypatch.setattr(security, "ALLOW_UNSIGNED_APPROVALS", False)
     monkeypatch.setattr(security, "POLICY", PolicySet(version="2026-08-01"))
+    assert security.production_warnings() == []
+
+
+def test_production_with_the_unsigned_approvals_opt_in_warns(monkeypatch):
+    """The development switch left on in production is what LINCHPIN_REQUIRE_SECURE
+    exists to refuse: without a secret, any code that can reach
+    nosilo_core.writeback can sign an approval by hand and apply() takes it."""
+    monkeypatch.setattr(security, "ENV", "production")
+    monkeypatch.setattr(security, "APPROVAL_SECRET", "")
+    monkeypatch.setattr(security, "ALLOW_UNSIGNED_APPROVALS", True)
+    warns = security.production_warnings()
+    assert any("LINCHPIN_ALLOW_UNSIGNED_APPROVALS" in w for w in warns)
+
+
+def test_the_unsigned_approvals_opt_in_is_not_a_development_warning(monkeypatch):
+    """Development is where the switch belongs. A non-empty list here would make
+    LINCHPIN_REQUIRE_SECURE refuse to boot a developer's machine."""
+    monkeypatch.setattr(security, "ENV", "development")
+    monkeypatch.setattr(security, "APPROVAL_SECRET", "")
+    monkeypatch.setattr(security, "ALLOW_UNSIGNED_APPROVALS", True)
     assert security.production_warnings() == []
