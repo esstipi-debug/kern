@@ -113,11 +113,21 @@ cuando esa lista trae algo, y volverla no vacia en development habria roto el
 arranque de cualquiera que la tuviera puesta. El banner es un canal nuevo, no un
 reemplazo.
 
+**Las escrituras tienen su propia linea, aparte del banner.** Sin
+`LINCHPIN_APPROVAL_SECRET`, `nosilo_core.writeback` rechaza toda escritura que
+necesita aprobacion (Odoo, Shopify, Excel, promociones de autonomia) y
+`POST /api/promotions/{id}/approve` responde 503 con el motivo; lecturas y analisis
+siguen igual. El arranque lo dice en un WARNING, y otro distinto si
+`LINCHPIN_ALLOW_UNSIGNED_APPROVALS` (solo desarrollo y tests) esta prendido sin
+secreto. WARNING y no INFO porque `configure_logging()` solo configura
+`linchpin.access`: una linea INFO de `linchpin.security` no se ve.
+
 ## 1. Production checklist
 
 ```bash
 export LINCHPIN_ENV=production         # turns on the boot-time hardening check
 export LINCHPIN_API_KEY=$(openssl rand -hex 24)   # require X-API-Key on POST /api/jobs
+export LINCHPIN_APPROVAL_SECRET=$(openssl rand -hex 24)   # signs approvals; unset = approval-gated writes refused
 export LINCHPIN_RATE_LIMIT=60          # requests/window/IP (0 = off)
 export LINCHPIN_RATE_WINDOW=60         # seconds
 export LINCHPIN_CORS_ORIGINS=https://app.example.com   # omit for same-origin only
@@ -137,7 +147,8 @@ how this shipped broken once already (caught 2026-07-03, see
 scheme — e.g. `linchpin.fly.dev`, not `https://linchpin.fly.dev:443`.
 
 With `LINCHPIN_ENV=production`, the app logs a loud warning at startup for any
-missing control (no API key, no rate limit). With `LINCHPIN_REQUIRE_SECURE=1` it
+missing control (no API key, no rate limit, no approval secret, or the
+unsigned-approvals development switch left on). With `LINCHPIN_REQUIRE_SECURE=1` it
 **refuses to boot** instead — so an unsecured public deploy fails fast, not silent.
 
 ## 2. Run it
