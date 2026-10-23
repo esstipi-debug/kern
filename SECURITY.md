@@ -75,7 +75,9 @@ and its own API-key/rate-limit gating).
   `LINCHPIN_APPROVAL_SECRET` are secrets. See [`.env.example`](.env.example).
 - `.env` and `.env.local` are git-ignored. The engine, web app, and tests all run
   with **zero** secrets configured; missing keys degrade gracefully to the
-  rules-based path, they do not crash.
+  rules-based path, they do not crash. The one thing that stops is writing back:
+  without `LINCHPIN_APPROVAL_SECRET`, every write that needs approval is refused
+  (reads and analysis are unaffected).
 
 ## Hardening for a public deploy
 
@@ -90,11 +92,12 @@ environment variables before exposing the app publicly:
 | `LINCHPIN_RATE_LIMIT` | Max requests per window per client IP (`0` disables) | `0` → off |
 | `LINCHPIN_RATE_WINDOW` | Rate-limit window, seconds | `60` |
 | `LINCHPIN_CORS_ORIGINS` | Comma-separated CORS allowlist | unset → same-origin only |
-| `LINCHPIN_APPROVAL_SECRET` | Signs writeback `Approval`s (`src/writeback.py`) so one can't be forged by constructing it directly | unset → unsigned |
+| `LINCHPIN_APPROVAL_SECRET` | Signs writeback `Approval`s (`nosilo_core/writeback.py`) so one can't be forged by constructing it directly. Without it, `apply()` refuses every change that needs approval: an approval signed with an empty key is one anybody can reproduce | unset → approval-gated writes refused |
+| `LINCHPIN_ALLOW_UNSIGNED_APPROVALS` | Local development and tests only: `1`/`true`/`yes` applies approvals while no secret is set (any code with access to the module could then forge one). Never weakens a configured secret; flagged by the production hardening check | unset → off |
 | `LINCHPIN_SCHEDULED_MIN_INTERVAL_SECONDS` | Minimum interval `POST /api/jobs/run-scheduled` enforces between the start of two real runs (429 + `Retry-After` below it) — in-process, independent of the external cron's own cadence | `300` |
 | `LINCHPIN_SCHEDULED_JOB_TIMEOUT_SECONDS` | Wall-clock bound the caller waits for a `POST /api/jobs/run-scheduled` run before getting a `504` (the run itself keeps going in the background — see that endpoint's own docstring) | `900` |
 | `LINCHPIN_ENV` | `production` enables the boot-time hardening check | `development` |
-| `LINCHPIN_REQUIRE_SECURE` | Refuse to boot if production is missing API key / rate limit / approval secret | unset → warn only |
+| `LINCHPIN_REQUIRE_SECURE` | Refuse to boot if production is missing API key / rate limit / approval secret, or has `LINCHPIN_ALLOW_UNSIGNED_APPROVALS` on | unset → warn only |
 | `LINCHPIN_LOG_JSON` / `LINCHPIN_LOG_LEVEL` | Structured (JSON) access logs / level | plain / `INFO` |
 
 **Fail-loud, not fail-silent.** With `LINCHPIN_ENV=production` the app logs a loud

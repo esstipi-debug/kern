@@ -48,6 +48,7 @@ from jobs.intake import load_table  # noqa: E402
 from jobs.notify import notify  # noqa: E402
 from jobs.price_monitor import accept_observation  # noqa: E402
 from jobs.scheduled_jobs import PRODUCTION_JOB_IDS, production_registry  # noqa: E402
+from nosilo_core.writeback import ApprovalSecretNotConfigured  # noqa: E402
 from scm_agent import Orchestrator, metrics  # noqa: E402
 from scm_agent.autonomy import DEFAULT_PATH as AUTONOMY_DEFAULT_PATH  # noqa: E402
 from scm_agent.autonomy import (  # noqa: E402
@@ -352,6 +353,10 @@ security.POLICY = access_policy.build_policy()
 # no dice nada justo en el caso que importa. Precondicion 4 de la spec de
 # empaquetado: "arranque sin API key = banner explicito, no silencio ni crash".
 security.emitir_banner_de_arranque()
+# Sin LINCHPIN_APPROVAL_SECRET las escrituras que necesitan aprobacion se rechazan
+# (nosilo_core.writeback falla cerrado). La app arranca igual; esto lo dice antes de
+# que rebote la primera aprobacion.
+security.emitir_aviso_de_escrituras()
 
 _PROD_WARNINGS = security.production_warnings()
 for _w in _PROD_WARNINGS:
@@ -2564,7 +2569,9 @@ def api_approve_promotion(
     An unknown id is a 404; an id that is not currently pending, OR whose
     proposal's expected from_tier no longer matches the file's current tier
     (config moved since the proposal was created), is a 409 -- all loud,
-    actionable failures, never a silent no-op.
+    actionable failures, never a silent no-op. A deployment with no
+    LINCHPIN_APPROVAL_SECRET is a 503 naming the variable: nosilo_core.writeback
+    refuses an approval it cannot sign, and the promotion stays pending.
     """
     clean_by = _APPROVED_BY_RE.sub("", approved_by)[:_APPROVED_BY_MAX_LEN].strip() or "operator"
     ledger = _get_promotion_ledger()
@@ -2575,6 +2582,8 @@ def api_approve_promotion(
             raise HTTPException(status_code=404, detail=f"unknown promotion id: {promotion_id}") from exc
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ApprovalSecretNotConfigured as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         record = ledger.get(promotion_id)
     finally:
         ledger.close()

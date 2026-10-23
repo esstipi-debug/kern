@@ -267,6 +267,141 @@ def test_approval_is_unforgeable_once_a_server_secret_is_configured(monkeypatch)
         apply(store2, cs2, approval=forged, now=1.0)
 
 
+# -- fail closed: without a server secret, nothing approval-gated is applied --
+
+_SECRET_ENV = "LINCHPIN_APPROVAL_SECRET"
+_UNSIGNED_OPT_IN_ENV = "LINCHPIN_ALLOW_UNSIGNED_APPROVALS"
+
+
+def _production_defaults(monkeypatch):
+    """No secret and no development opt-in: what a deployment that never set
+    either variable runs with."""
+    monkeypatch.delenv(_SECRET_ENV, raising=False)
+    monkeypatch.delenv(_UNSIGNED_OPT_IN_ENV, raising=False)
+
+
+def _forge(cs, key: bytes):
+    """An Approval signed by hand with ``key`` - no call to approve(), just the
+    payload format any code that can read this module already knows."""
+    import hashlib
+    import hmac as hmac_module
+
+    from nosilo_core.writeback import Approval
+
+    payload = f"{cs.idempotency_key}:{cs.content_hash}:nobody:20.0".encode()
+    signature = hmac_module.new(key, payload, hashlib.sha256).hexdigest()
+    return Approval(cs.idempotency_key, cs.content_hash, "nobody", 20.0, signature=signature)
+
+
+def _irreversible_changeset(store):
+    return stage(store, "erp", {"SKU-A": {"reorder_point": 120}},
+                 risk_tier=TIER_IRREVERSIBLE, idempotency_key="cs1")
+
+
+def test_forged_approval_is_refused_when_no_secret_is_configured(monkeypatch):
+    """The hole this guards: with LINCHPIN_APPROVAL_SECRET unset the signing key
+    is the empty string, so an Approval signed by hand with b"" matched and
+    apply() wrote it - no approve(), no human."""
+    _production_defaults(monkeypatch)
+    store = _store()
+    cs = _irreversible_changeset(store)
+
+    with pytest.raises(WritebackRefused) as refused:
+        apply(store, cs, approval=_forge(cs, b""), now=1.0)
+
+    from nosilo_core.writeback import ApprovalSecretNotConfigured
+
+    assert isinstance(refused.value, ApprovalSecretNotConfigured)
+    assert store.read("SKU-A")["reorder_point"] == 100
+    assert store.applied_keys() == set()
+
+
+@pytest.mark.parametrize("secret", ["", "   "])
+def test_without_a_secret_even_a_genuine_approval_is_refused_until_one_is_set(monkeypatch, secret):
+    """Fail closed, not just forgery-proof: approve() signs with the same empty key
+    a forger uses, so its approval cannot be told apart and is refused too. A
+    whitespace-only secret is no secret. The refusal leaves nothing behind - once
+    a secret is configured, the very same change goes through."""
+    from nosilo_core.writeback import ApprovalSecretNotConfigured
+
+    _production_defaults(monkeypatch)
+    monkeypatch.setenv(_SECRET_ENV, secret)
+    store = _store()
+    cs = _irreversible_changeset(store)
+
+    with pytest.raises(ApprovalSecretNotConfigured) as refused:
+        apply(store, cs, approval=approve(cs, "stipi", now=0.0), now=1.0)
+    message = str(refused.value)
+    assert _SECRET_ENV in message and _UNSIGNED_OPT_IN_ENV in message
+
+    monkeypatch.setenv(_SECRET_ENV, "configured-later")
+    assert apply(store, cs, approval=approve(cs, "stipi", now=0.0), now=1.0).applied
+    assert store.read("SKU-A")["reorder_point"] == 120
+
+
+@pytest.mark.parametrize("value", ["1", "true", " YES "])
+def test_dev_opt_in_applies_an_unsigned_approval(monkeypatch, value):
+    """Local development and tests keep working, with one explicit switch."""
+    _production_defaults(monkeypatch)
+    monkeypatch.setenv(_UNSIGNED_OPT_IN_ENV, value)
+    store = _store()
+    cs = _irreversible_changeset(store)
+
+    assert apply(store, cs, approval=approve(cs, "stipi", now=0.0), now=1.0).applied
+    assert store.read("SKU-A")["reorder_point"] == 120
+
+
+@pytest.mark.parametrize("value", ["0", "false", ""])
+def test_opt_in_values_that_read_as_off_keep_writes_closed(monkeypatch, value):
+    """Whoever writes LINCHPIN_ALLOW_UNSIGNED_APPROVALS=0 means "off"."""
+    from nosilo_core.writeback import ApprovalSecretNotConfigured
+
+    _production_defaults(monkeypatch)
+    monkeypatch.setenv(_UNSIGNED_OPT_IN_ENV, value)
+    store = _store()
+    cs = _irreversible_changeset(store)
+
+    with pytest.raises(ApprovalSecretNotConfigured):
+        apply(store, cs, approval=approve(cs, "stipi", now=0.0), now=1.0)
+    assert store.applied_keys() == set()
+
+
+def test_opt_in_never_weakens_a_configured_secret(monkeypatch):
+    """With a real secret the development switch changes nothing: a hand-signed
+    approval is still a forgery, refused for its signature rather than for a
+    missing secret, and a genuine one still applies."""
+    from nosilo_core.writeback import ApprovalSecretNotConfigured
+
+    monkeypatch.setenv(_SECRET_ENV, "top-secret-value")
+    monkeypatch.setenv(_UNSIGNED_OPT_IN_ENV, "1")
+    store = _store()
+    cs = _irreversible_changeset(store)
+
+    with pytest.raises(WritebackRefused) as refused:
+        apply(store, cs, approval=_forge(cs, b""), now=1.0)
+    assert not isinstance(refused.value, ApprovalSecretNotConfigured)
+    assert store.applied_keys() == set()
+
+    assert apply(store, cs, approval=approve(cs, "stipi", now=0.0), now=1.0).applied
+
+
+def test_writes_that_need_no_approval_do_not_need_a_secret(monkeypatch):
+    """The gate sits behind requires_approval(): a read, or a reversible change
+    under an auto-apply policy (e.g. the T1->T2 autonomy degradation), never
+    carried an approval and keeps working on a deployment with no secret."""
+    _production_defaults(monkeypatch)
+    store = _store()
+
+    read = stage(store, "erp", {"SKU-A": {"reorder_point": 100}},
+                 risk_tier=TIER_READ, idempotency_key="r1")
+    assert apply(store, read, approval=None, now=1.0).applied
+
+    reversible = stage(store, "erp", {"SKU-A": {"safety_stock": 45}},
+                       risk_tier=TIER_REVERSIBLE, idempotency_key="v1")
+    assert apply(store, reversible, approval=None, now=1.0, auto_apply_reversible=True).applied
+    assert store.read("SKU-A")["safety_stock"] == 45
+
+
 # -- concurrency: check-then-act must not allow a double-commit ---------------
 
 

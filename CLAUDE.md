@@ -99,6 +99,12 @@ explicit approval. Real connectors implementing the store surface: Odoo
 backup, cell-exact rollback; `.xlsm` macros preserved via `keep_vba`, never
 executed).
 
+Approvals are HMAC-signed with `LINCHPIN_APPROVAL_SECRET`, and **without it
+`apply()` refuses every approval-gated change** (fail closed,
+`ApprovalSecretNotConfigured`). `LINCHPIN_ALLOW_UNSIGNED_APPROVALS=1` opts in for
+local dev, and `tests/conftest.py` sets it for the whole suite: a test meant to
+prove the production default must `delenv` it.
+
 ### Service coverage (`src/connectors/__init__.py`, read side)
 The mirror of writeback safety, on the way in. `src/order_fulfillment.py` measures
 fill rate, outbound OTIF (SCOR RL.1.1) and lost sales from three OPTIONAL fields on

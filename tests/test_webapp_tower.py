@@ -455,6 +455,37 @@ def test_approve_promotion_requires_api_key_when_configured(isolated_ledgers, mo
     assert ok.status_code == 200
 
 
+def test_approve_promotion_without_approval_secret_is_a_clear_503_and_stays_pending(
+    isolated_ledgers, monkeypatch
+):
+    """With no LINCHPIN_APPROVAL_SECRET the approval this endpoint mints cannot be
+    told apart from a forged one, so nosilo_core.writeback refuses it. The caller
+    gets the reason - not a bare 500 - and nothing moves: the promotion stays
+    pending and the routing file is untouched. Once the secret is configured the
+    very same promotion goes through."""
+    _, autonomy_path, routing_path = isolated_ledgers
+    promotion_id = _record_pending_promotion(autonomy_path)
+    monkeypatch.delenv("LINCHPIN_APPROVAL_SECRET", raising=False)
+    monkeypatch.delenv("LINCHPIN_ALLOW_UNSIGNED_APPROVALS", raising=False)
+    before = routing_path.read_text(encoding="utf-8")
+
+    r = client.post(f"/api/promotions/{promotion_id}/approve")
+
+    assert r.status_code == 503
+    assert "LINCHPIN_APPROVAL_SECRET" in r.json()["detail"]
+    assert routing_path.read_text(encoding="utf-8") == before
+    ledger = PromotionLedger(autonomy_path)
+    try:
+        assert ledger.get(promotion_id).status == PROMOTION_STATUS_PENDING
+    finally:
+        ledger.close()
+
+    monkeypatch.setenv("LINCHPIN_APPROVAL_SECRET", "configured-later")
+    ok = client.post(f"/api/promotions/{promotion_id}/approve")
+    assert ok.status_code == 200
+    assert load_routing(routing_path)["stock_below_rop"].autonomy_tier == "T1"
+
+
 def test_reject_promotion_marks_rejected_and_never_touches_the_routing_file(isolated_ledgers):
     _, autonomy_path, routing_path = isolated_ledgers
     before = routing_path.read_text(encoding="utf-8")
