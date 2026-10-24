@@ -1,0 +1,12 @@
+{"brief": "how much of each product should I keep on the shelf so we never run dry before the truck comes", "expected": "inventory_optimization"}
+{"brief": "which of our vendors deserves next year's contract", "expected": "sourcing"}
+{"brief": "we're launching a new flavor in march, will we have enough stock by then", "expected": "launch_readiness"}
+{"brief": "what happens to our margins if the dollar goes up ten percent", "expected": "whatif"}
+{"brief": "how many cashiers do we need at peak hour so lines stay short", "expected": "queuing"}
+{"brief": "our warehouse counts never match the system, how often should we count each aisle", "expected": "cycle_count"}
+{"brief": "where should we open our next distribution center to be close to customers", "expected": "facility_location"}
+{"brief": "plan the delivery runs for tomorrow's trucks", "expected": "vehicle_routing"}
+{"brief": "how much does it really cost us to land a container from shenzhen", "expected": "landed_cost"}
+{"brief": "predict next quarter's sales by product", "expected": "forecast"}
+{"brief": "which items are dead weight and which ones carry the business", "expected": "abc_xyz"}
+{"brief": "what should we charge for the new line", "expected": "pricing"}

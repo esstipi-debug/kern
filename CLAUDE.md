@@ -147,6 +147,25 @@ el significado de la fecha de la prosa de `SERVICE_COVERAGE`: el llamador lo pas
 conteos del piso (el mismo dia gana el conteo). **Todavia ningun job lo lee**: eso
 queda para otro PR.
 
+### Ruteo tipado de briefs ambiguos (`nosilo_core.llm.DecisionProvider`, Jev)
+`intent.classify` rutea por palabra clave y, solo cuando las reglas empatan o no
+encuentran nada, consulta a un **decisor tipado** antes que al LLM: `JevDecider`
+(TypeSafe AI, `POST /v1/systemone`, cliente solo stdlib) devuelve una opcion con una
+probabilidad por opcion. Se enciende con `TYPESAFE_API_KEY`, igual que el LLM con la
+suya, y eso MANDA el brief a un tercero. Con confianza >= `MIN_DECISION_CONFIDENCE`
+rutea con ESA confianza (el LLM sigue saliendo con el 0,6 fijo); debajo devuelve
+`needs_clarification` con el top 3 del decisor. Si falla, cae al camino de siempre.
+`tests/conftest.py` borra la clave en la suite.
+
+Dos cosas que NO estan resueltas. **El umbral no esta calibrado**: 0,6 es un punto de
+partida, y `scripts/eval_intent_decider.py` mide cobertura y acierto por umbral, Brier y
+ECE sobre un JSONL de briefs reales. Y **el decisor no ve los errores seguros de las
+reglas**: sobre los 12 briefs en lenguaje llano de `examples/intent_briefs_sample.jsonl`
+las reglas resuelven 2 y los dos MAL, con confianza 1.0 ("que pasa con los margenes si
+sube el dolar" -> `pricing`, "cada cuanto contar cada pasillo" -> `warehouse_layout`).
+Esos briefs nunca le llegan al decisor. Medirlo sobre briefs reales decide si vale
+consultarlo tambien sobre los resueltos.
+
 ### Discovery-assisted price watch (`jobs/price_watch.py`, read-only)
 Auto-onboard a never-seen competitor site, homologate its product pages against
 your catalog, then re-acquire and monitor the confirmed pairs on a recurring

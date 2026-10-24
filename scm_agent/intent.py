@@ -1,11 +1,11 @@
-"""Intent classification — rules first, LLM only when rules are ambiguous."""
+"""Intent classification — rules first; a typed decider or an LLM only when rules are ambiguous."""
 
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
 
-from nosilo_core.llm import LLMProvider
+from nosilo_core.llm import Decision, DecisionProvider, LLMProvider
 from nosilo_core.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
@@ -15,6 +15,18 @@ _INTENT_SCHEMA = {
     "properties": {"job_type": {"type": "string"}},
     "required": ["job_type"],
 }
+
+
+#: Below this, the decider's pick is not taken: the brief goes back to the human
+#: with the decider's top three as candidates. NOT calibrated on Kern briefs yet -
+#: ``scripts/eval_intent_decider.py`` measures accuracy and calibration per
+#: threshold, and this number should move to whatever that measurement supports.
+MIN_DECISION_CONFIDENCE = 0.6
+
+_DECISION_INSTRUCTIONS = (
+    "Pick the single capability that should handle this supply-chain request. "
+    "Each option is a capability key; its description says what it produces."
+)
 
 
 @dataclass(frozen=True)
@@ -37,12 +49,18 @@ def _llm_classify(provider: LLMProvider, brief: str, registry: ToolRegistry) -> 
     return guess if guess in keys else None
 
 
+def _decide(decider: DecisionProvider, brief: str, registry: ToolRegistry) -> Decision:
+    options = {t.key: t.description for t in registry.list()}
+    return decider.choose(brief, _DECISION_INSTRUCTIONS, options)
+
+
 def classify(
     brief: str,
     registry: ToolRegistry,
     provider: LLMProvider,
     *,
     job_type_override: str | None = None,
+    decider: DecisionProvider | None = None,
 ) -> IntentResult:
     if job_type_override:
         keys = [t.key for t in registry.list()]
@@ -59,6 +77,22 @@ def classify(
     if top_tool is not None and top_score >= 1 and top_score > second_score:
         confidence = top_score / total if total else 0.0
         return IntentResult(job_type=top_tool.key, confidence=confidence)
+
+    if decider is not None and decider.available():
+        try:
+            decision = _decide(decider, brief, registry)
+        except Exception:
+            # Same rule as the LLM below: a failing decider degrades to the
+            # keyword-candidate clarification, never to an opaque error.
+            logger.warning("decider intent classification failed; falling back", exc_info=True)
+            decision = None
+        if decision is not None:
+            if decision.confidence >= MIN_DECISION_CONFIDENCE:
+                return IntentResult(job_type=decision.choice, confidence=decision.confidence)
+            # An unsure decider is an answer, not a failure: it goes to the human
+            # with its own ranking, instead of asking a second model that would
+            # come back with the hardcoded 0.6 below.
+            return IntentResult(job_type=None, confidence=decision.confidence, candidates=decision.ranked()[:3])
 
     if provider.available():
         try:

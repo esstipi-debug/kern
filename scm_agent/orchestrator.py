@@ -8,7 +8,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from jobs import intake
-from nosilo_core.llm import LLMProvider, get_provider, narrative_rewrite
+from nosilo_core.llm import DecisionProvider, LLMProvider, get_decider, get_provider, narrative_rewrite
 from nosilo_core.registry import Tool, ToolRegistry
 from nosilo_core.types import (
     STATUS_ERROR,
@@ -80,9 +80,13 @@ class Orchestrator:
         persona: str = "",
         clients_root: Path | str | None = client_profile.DEFAULT_CLIENTS_ROOT,
         lang: str | None = None,
+        decider: DecisionProvider | None = None,
     ) -> None:
         self.registry = registry if registry is not None else build_default_registry()
         self.provider = provider if provider is not None else get_provider()
+        # Typed router for ambiguous briefs (Jev). Like the provider: on when its key
+        # is in the environment, off otherwise, and never on the deterministic path.
+        self.decider = decider if decider is not None else get_decider()
         # L3 domain knowledge. Loads the books graph (committed) + code graph
         # (gitignored). Absent graphs degrade gracefully to no citations.
         self.knowledge = knowledge if knowledge is not None else KnowledgeBase()
@@ -134,7 +138,10 @@ class Orchestrator:
         return replace(result, guided=result.guided or to_guided_outcome(result))
 
     def _run(self, request: JobRequest, out_dir: Path) -> JobResult:
-        intent = classify(request.brief, self.registry, self.provider, job_type_override=request.job_type)
+        intent = classify(
+            request.brief, self.registry, self.provider,
+            job_type_override=request.job_type, decider=self.decider,
+        )
         if intent.job_type is None:
             return JobResult(
                 status=STATUS_NEEDS_CLARIFICATION, tool=None, confidence=intent.confidence,
