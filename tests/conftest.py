@@ -48,3 +48,18 @@ def _suite_sin_indice_de_lectura():
     yield
     if previo is not None:
         os.environ[ENV_LECTURA] = previo
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _suite_sin_jev():
+    """La suite no le manda briefs a Jev, aunque la maquina tenga la clave.
+
+    ``Orchestrator()`` arma su decisor con ``nosilo_core.llm.get_decider()``, que
+    se enciende con ``TYPESAFE_API_KEY``. Con la clave puesta, cada test que
+    construye un orquestador mandaria su brief a un tercero y dependeria de la red.
+    ``tests/test_jev_decider.py`` cubre el camino vivo con un transporte falso.
+    """
+    previo = os.environ.pop("TYPESAFE_API_KEY", None)
+    yield
+    if previo is not None:
+        os.environ["TYPESAFE_API_KEY"] = previo

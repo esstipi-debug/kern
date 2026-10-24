@@ -126,6 +126,46 @@ ERP in the channel can see. `arrivals.ArrivalSource` is the separate Protocol fo
 carriers (Starshipit), which know when a shipment landed and nothing else: an ERP and
 a carrier together can measure arrival OTIF, and neither can alone.
 
+### El modelo canonico de datos (`src/cdm.py`, VENDORIZADO en mytra-fde)
+El formato en que Kern y fdekit (`esstipi-debug/mytra-fde`) se pasan hechos: un sobre
+`{"cdm", "kind", "data", "provenance"}` sobre seis tipos (`inventory_snapshot`,
+`order_line`, `scheduled_receipt`, `cycle_count`, `scrap_disposal`, `gate_arrival`).
+**Es una copia, no una dependencia**: el archivo se copia byte a byte a
+`mytra-fde/src/fdekit/cdm.py` y los dos `tests/test_cdm.py` fijan el MISMO sha256,
+asi que editar una sola copia pone ese repo en rojo. Por eso usa solo stdlib y la
+gramatica de Python 3.10 (lo exige el kit, que corre en notebooks prestados), y no
+importa nada de Kern: `nosilo_core` ya probo que empaquetar aparte no rinde. Para
+cambiarlo: editar aca, subir `CDM_VERSION`, copiar y actualizar el hash en los dos lados.
+
+El tipo hace cumplir tres reglas que antes cada productor cumplia (o no) a su manera:
+la ausencia viaja como `null` y una CLAVE que falta se rechaza; una `delivered_date`
+sin `delivered_date_means` (`departure`/`arrival`) se rechaza, porque es el campo que
+llevaba sentidos opuestos segun el backend (los 6,2 puntos de OTIF de arriba); y un
+instante sin zona horaria se rechaza. El mapeo vive en `src/cdm_bridge.py` y NO deduce
+el significado de la fecha de la prosa de `SERVICE_COVERAGE`: el llamador lo pasa.
+`on_hand_from_cdm` es el consumidor: el estante por SKU desde fotos del sistema y
+conteos del piso (el mismo dia gana el conteo). **Todavia ningun job lo lee**: eso
+queda para otro PR.
+
+### Ruteo tipado de briefs ambiguos (`nosilo_core.llm.DecisionProvider`, Jev)
+`intent.classify` rutea por palabra clave y, solo cuando las reglas empatan o no
+encuentran nada, consulta a un **decisor tipado** antes que al LLM: `JevDecider`
+(TypeSafe AI, `POST /v1/systemone`, cliente solo stdlib) devuelve una opcion con una
+probabilidad por opcion. Se enciende con `TYPESAFE_API_KEY`, igual que el LLM con la
+suya, y eso MANDA el brief a un tercero. Con confianza >= `MIN_DECISION_CONFIDENCE`
+rutea con ESA confianza (el LLM sigue saliendo con el 0,6 fijo); debajo devuelve
+`needs_clarification` con el top 3 del decisor. Si falla, cae al camino de siempre.
+`tests/conftest.py` borra la clave en la suite.
+
+Dos cosas que NO estan resueltas. **El umbral no esta calibrado**: 0,6 es un punto de
+partida, y `scripts/eval_intent_decider.py` mide cobertura y acierto por umbral, Brier y
+ECE sobre un JSONL de briefs reales. Y **el decisor no ve los errores seguros de las
+reglas**: sobre los 12 briefs en lenguaje llano de `examples/intent_briefs_sample.jsonl`
+las reglas resuelven 2 y los dos MAL, con confianza 1.0 ("que pasa con los margenes si
+sube el dolar" -> `pricing`, "cada cuanto contar cada pasillo" -> `warehouse_layout`).
+Esos briefs nunca le llegan al decisor. Medirlo sobre briefs reales decide si vale
+consultarlo tambien sobre los resueltos.
+
 ### Discovery-assisted price watch (`jobs/price_watch.py`, read-only)
 Auto-onboard a never-seen competitor site, homologate its product pages against
 your catalog, then re-acquire and monitor the confirmed pairs on a recurring
