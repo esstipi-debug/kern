@@ -28,7 +28,7 @@ $$\textbf{LLMs reason, interpret, and translate} \quad \longleftrightarrow \quad
 * **Pure Functional Mathematics (`src/`):** All numerical calculations (reorder thresholds, safety buffers, elasticity markups, multi-echelon allocations) are executed by pure functions in Python, cross-validated against Monte Carlo simulations.
 * **Deterministic QA Gating:** Computed plans are verified against physical constraints (supplier MOQs, case pack increments, non-negative bounds, cash limits). **If QA validation fails, zero deliverables ship.**
 * **Safe-Staging Writeback:** The orchestrator never mutates an enterprise system of record directly. ERP mutations are prepared as dry-run changesets with 900s TTLs, cryptographic checksums, and one-click rollback mechanisms.
-* **Epistemological Grounding:** Every figure links back to an academic and empirical knowledge base spanning **27 curated SCM reference texts** alongside the exact `src/` modules that executed the calculation.
+* **Epistemological Grounding:** Every figure links back to an academic and empirical knowledge base spanning **27 curated external sources** alongside the exact `src/` modules that executed the calculation.
 
 ---
 
@@ -138,7 +138,7 @@ Kern's **60 agent-routable capabilities** are classified across four functional 
 ```
 
 <details>
-<summary><b>Inspect the complete 60-tool capability catalog</b></summary>
+<summary><b>The full list, by area (60 tools)</b></summary>
 <br/>
 
 | Domain | Registered Capabilities |
@@ -152,6 +152,7 @@ Kern's **60 agent-routable capabilities** are classified across four functional 
 | **Risk, Returns & Disruption** | `returns` · `risk` · `dea` · `disruption_scan` (GDELT event feeds) |
 | **Cross-Silo Cadence & S&OP** | `sop` · `earned_value` · `launch_readiness` (Campaign vs Inventory gate) · `cross_impact` |
 | **Operations & Audit Evidence** | `procedure_audit` · `procedure_draft` · `iso_ops` · `audit_evidence` (MUS sampling) · `scor_iso_audit` |
+| **Leadership** | `leadership_chain` |
 
 </details>
 
