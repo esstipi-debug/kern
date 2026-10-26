@@ -1,7 +1,19 @@
 # Spec — Liu, *Supply Chain Analytics* (2022) al grafo L3: **ingesta parcial**
 
-**Fecha:** 2026-08-06 · **Estado:** spec, sin implementar · **Decisión del operador:** opción 2
-(parcial — solo lo que el motor puede citar), sobre ingesta completa y sobre no ingerirlo.
+**Fecha:** 2026-08-06 · **Estado:** **IMPLEMENTADO el 2026-10-26** por
+`scripts/merge_liu_supply_chain_analytics.py` (obra curada #28: +7 nodos, +28 aristas, comunidad
+206) · **Decisión del operador:** opción 2 (parcial — solo lo que el motor puede citar), sobre
+ingesta completa y sobre no ingerirlo.
+
+**Desvío respecto de esta spec, y por qué.** La pieza 1 pedía *enriquecer* el nodo
+`knowledge::tracking_signal` que ya existía (Gilliland). Un nodo que se enriquece conserva su
+`source_file`, así que el umbral ±6 habría quedado en la prosa de un nodo cuya cita sigue
+diciendo Gilliland — y una cita no renderiza la prosa. Se agregó en su lugar
+`tracking_signal_band` ("Tracking Signal Band (+-6)", p.312), con la arista de autoridad
+`cites → book_chopra_meindl` y la de concepto `→ tracking_signal`: el número es citable, y la
+atribución no se le regala a Liu. Las otras cuatro piezas entraron como estaban especificadas.
+La restricción de orden ("no arranca hasta que #233 esté en main") se cumplió: #233 entró como
+`1a10e6c` (obra #27) el 2026-09-15, y por eso esto se pudo hacer recién ahora.
 
 ## Contexto
 

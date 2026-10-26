@@ -14,11 +14,11 @@ merge futuro lo pone rojo hasta que la prosa se mueva con el grafo -- que es la 
 que `CLAUDE.md` ya declara ("when something here is stale, fix it in the same PR").
 
 Tres definiciones, que NO son intercambiables (el README del grafo las explica):
-  - ARCHIVOS: valores distintos de `source_file`, sin los `KERN_*` internos. 42 hoy.
+  - ARCHIVOS: valores distintos de `source_file`, sin los `KERN_*` internos. 43 hoy.
   - OBRAS CURADAS: obras enteras que una persona citaria. Los 9 `ch*.pdf` son UN
     volumen editado (Cohen & Dai) y `asq-cssgb-body-of-knowledge-2022-map.pdf` es un
-    mapa de body-of-knowledge colgado de la fuente #30, no un libro: 42 archivos ->
-    27 obras. Es una decision humana por archivo, no aritmetica -- por eso los dos
+    mapa de body-of-knowledge colgado de la fuente #30, no un libro: 43 archivos ->
+    28 obras. Es una decision humana por archivo, no aritmetica -- por eso los dos
     conjuntos son constantes nombradas aca y no un cociente.
   - NODOS: lo que el artefacto declara, sin recortes.
 
@@ -49,12 +49,12 @@ _CHAPTERS_ARE_ONE_WORK = True
 
 #: Numeros declarados hoy. Cambian solo con un merge, y con el merge cambian los
 #: documentos: eso es exactamente lo que este archivo vigila.
-_EXPECTED_EXTERNAL_FILES = 42
-_EXPECTED_WORKS = 27
-_EXPECTED_NODES = 3104
-_EXPECTED_LINKS = 6421
-_EXPECTED_COMMUNITIES = 206
-_EXPECTED_NODES_FROM_EXTERNAL = 2973
+_EXPECTED_EXTERNAL_FILES = 43
+_EXPECTED_WORKS = 28
+_EXPECTED_NODES = 3111
+_EXPECTED_LINKS = 6449
+_EXPECTED_COMMUNITIES = 207
+_EXPECTED_NODES_FROM_EXTERNAL = 2980
 
 
 def _flat(path: Path) -> str:
@@ -119,7 +119,7 @@ def test_cada_archivo_externo_esta_clasificado_en_obra_capitulo_o_artefacto() ->
     assert _NOT_A_WORK <= inv["files"], "el BoK de la fuente #30 desaparecio del grafo"
 
 
-def test_el_artefacto_tiene_27_obras_sobre_42_archivos() -> None:
+def test_el_artefacto_tiene_28_obras_sobre_43_archivos() -> None:
     inv = _inventory()
     assert len(inv["external"]) == _EXPECTED_EXTERNAL_FILES, sorted(inv["external"])
     assert inv["works"] == _EXPECTED_WORKS

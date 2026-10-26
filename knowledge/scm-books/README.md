@@ -1,6 +1,6 @@
 # SCM Books Knowledge Graph (L3 domain knowledge)
 
-A graphify knowledge graph of **27 curated external works over 42 external
+A graphify knowledge graph of **28 curated external works over 43 external
 source files** — forecasting, pricing, revenue management, supply chain
 management, inventory optimization, manufacturing planning & control, operations
 management, logistics & operations strategy, sustainable logistics, supply-chain
@@ -64,15 +64,41 @@ and invalidates every citation measurement recorded before it.
 `tests/test_sop_document_control_graph.py::test_la_comunidad_es_propia` and
 `tests/test_l3_source_inventory.py` hold that line.
 
-- `graph.json` — 3104 nodes · 6421 links · 206 communities (GraphRAG-ready).
-  `GRAPH_REPORT.md` says 3043 nodes / 6170 edges / 205 communities: graphify builds
-  a simple undirected graph, which drops one malformed pre-existing node (a
-  `reminder::` node with no `source_file`) and collapses 28 links that share
-  endpoints but carry a different `relation`. Both numbers are correct for what
-  they describe. The community counts happen to agree right now — they are still
-  two independently derived figures, so do not assume a future merge keeps them equal.
+**Liu, *Supply Chain Analytics* (2022)** is curated work **#28**, ingested 2026-10-26 by
+`scripts/merge_liu_supply_chain_analytics.py` (+7 nodes, +28 links; purely additive: 0 ids
+lost, 17 pre-existing canonical nodes gained an edge). This is a **partial** ingestion by
+decision, not by omission: the book was read in full on 2026-08-05/06 and most of it does not
+qualify under the rule that this graph backs what the *engine* asserts — ~40% is
+pandas/matplotlib/sklearn tutorial, its four inventory methods (EOQ, safety stock, ROP,
+periodic review) duplicate better-sourced concepts, and its warehouse LP ignores demand by
+decree. What entered is the five things the engine asserts or could assert and could not cite:
+the analytics maturity levels (the **diagnostic** level the graph lacked), the OR-vs-SCA
+boundary, the SMART goals with their adoption rule, the conditions under which a small firm
+does *not* need this software (an objection turned into a qualification criterion), and the
+**tracking signal band of ±6** — whose authority edge goes to Chopra & Meindl, because Liu
+reports it from there and never claims it.
+`src/forecast_metrics.py` implements that band; the graph node is what lets the engine cite it.
+
+**The book's three verified errata are `known_errata` on the source node, never concept
+nodes**: a citation node that says something false cannot exist in a graph whose purpose is
+backing citations. One of them (p.246, where a 1.28 z-score is offered as "90% of demand",
+i.e. cycle service level confused with fill rate) is also documented evidence that the
+standard teaching mixes the two — a distinction this repo's `src/safety_stock.py` already
+keeps apart.
+
+It took **fresh community 206**, same criterion as #27 and #30, and the script aborts if that
+id is already taken.
+
+- `graph.json` — 3111 nodes · 6449 links · 207 communities (GraphRAG-ready).
+  `GRAPH_REPORT.md` (regenerated 2026-10-26) says 3110 nodes / 6421 edges / 207 communities:
+  graphify builds a simple undirected graph, which drops one malformed pre-existing node (a
+  `reminder::` node with no `source_file`) and collapses the 28 links that share endpoints but
+  carry a different `relation`. Both numbers are correct for what they describe. The community
+  counts agree — they are still two independently derived figures, so do not assume a future
+  merge keeps them equal. `scripts/regen_books_report.py` re-renders the report from the
+  committed communities and **never re-clusters**, which is why it is safe to run after a merge.
 - `graph.html` — interactive visual (open in a browser). **Stale since 2026-07-20**, i.e.
-  it predates sources #28, #29 and #30. Left that way on purpose: the only way to rebuild it
+  it predates sources #27, #28, #29 and #30. Left that way on purpose: the only way to rebuild it
   is `graphify cluster-only`, which re-runs Louvain and would reassign thousands of nodes to
   different communities — invalidating every citation measurement recorded against this
   graph. A stale picture is cheaper than a graph nobody can compare to yesterday's.

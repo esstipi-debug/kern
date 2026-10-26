@@ -46950,6 +46950,135 @@
       "repo": "knowledge",
       "local_id": "human_machine_team",
       "community": 205
+    },
+    {
+      "label": "Liu: Supply Chain Analytics (2022)",
+      "file_type": "paper",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": "Kurt Y. Liu",
+      "contributor": null,
+      "rationale": "2022 Palgrave Macmillan text on supply chain analytics: the analytics maturity levels, the boundary between operations research and analytics, SMART goals for an analytics programme, forecasting and demand management, and inventory methods the repo already implements from better sources. Read in full on 2026-08-05/06; ingested PARTIALLY - only what the engine asserts or could assert and cannot cite.",
+      "norm_label": "liu: supply chain analytics (2022)",
+      "repo": "knowledge",
+      "local_id": "book_liu_supply_chain_analytics",
+      "known_errata": [
+        {
+          "location": "p.246",
+          "text": "'to potentially satisfy 90% of the demand, you will need a Z-score about 1.28' - 1.28 is the 90% CYCLE SERVICE LEVEL, not a 90% fill rate.",
+          "repo_note": "src/safety_stock.py keeps both quantities apart; the engine is more correct than the book here."
+        },
+        {
+          "location": "p.311 (ec. 8.13)",
+          "text": "RMSE printed as sqrt(1/n * sum|E_t/A_t|), which is the body of MAPE under a root; the correct formula squares E_t.",
+          "repo_note": "src/forecast_metrics.py::rmse uses the squared errors."
+        },
+        {
+          "location": "p.265",
+          "text": "'solely relying on accuracy score is sufficient, especially when the dataset is extremely imbalanced' - says the opposite of its own section (a missing 'not').",
+          "repo_note": "not ingested; no concept depends on it."
+        }
+      ],
+      "id": "knowledge::book_liu_supply_chain_analytics",
+      "source_file": "liu-supply-chain-analytics.pdf",
+      "community": 206
+    },
+    {
+      "id": "knowledge::supply_chain_analytics",
+      "label": "Supply Chain Analytics",
+      "file_type": "concept",
+      "source_file": "liu-supply-chain-analytics.pdf",
+      "source_location": "p.27",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Application of machine learning and data analytics techniques to supply chain data; the book's own definition, and the umbrella the other four concepts hang from.",
+      "norm_label": "supply chain analytics",
+      "repo": "knowledge",
+      "local_id": "supply_chain_analytics",
+      "community": 206
+    },
+    {
+      "id": "knowledge::analytics_maturity_levels",
+      "label": "Descriptive, Diagnostic, Predictive and Prescriptive Analytics",
+      "file_type": "concept",
+      "source_file": "liu-supply-chain-analytics.pdf",
+      "source_location": "p.25-26 (Fig. 1.6)",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Four levels: what happened, why it happened, what will happen, what to do about it. The diagnostic level - the one that answers WHY - is the one this graph lacked; the book's definition of prescriptive names safety-stock and inventory-level recommendations, i.e. the engine's own output.",
+      "norm_label": "descriptive, diagnostic, predictive and prescriptive analytics",
+      "repo": "knowledge",
+      "local_id": "analytics_maturity_levels",
+      "community": 206
+    },
+    {
+      "id": "knowledge::operations_research_vs_supply_chain_analytics",
+      "label": "Operations Research vs Supply Chain Analytics",
+      "file_type": "concept",
+      "source_file": "liu-supply-chain-analytics.pdf",
+      "source_location": "p.30 (preface p.6)",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Boundary drawn on purpose: OR emphasises mathematical modelling and optimisation, SCA explores and learns from data, and the book states it includes no further OR topics. Measured with that ruler EOQ, safety stock, (s,Q)/(R,S), p-median, VRP and DRP are OR, not analytics.",
+      "norm_label": "operations research vs supply chain analytics",
+      "repo": "knowledge",
+      "local_id": "operations_research_vs_supply_chain_analytics",
+      "community": 206
+    },
+    {
+      "id": "knowledge::smart_analytics_goals",
+      "label": "SMART Goals for Supply Chain Analytics",
+      "file_type": "concept",
+      "source_file": "liu-supply-chain-analytics.pdf",
+      "source_location": "p.28-30 (Fig. 1.7)",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Simple, Meaningful, Actionable, Reliable, Timely. What is citable: the adoption rule (the simpler and more understandable a solution, the likelier it is to be adopted - the Coca-Cola quote this book reports is 'models must be simple and transparent, yet effective'), the failure mode (without deep process knowledge the output is 'nothing more than fun and interesting facts'), and timely meaning PROACTIVE, not on demand.",
+      "norm_label": "smart goals for supply chain analytics",
+      "repo": "knowledge",
+      "local_id": "smart_analytics_goals",
+      "community": 206
+    },
+    {
+      "id": "knowledge::small_firm_analytics_conditions",
+      "label": "When a Small Firm Does Need Analytics Software",
+      "file_type": "concept",
+      "source_file": "liu-supply-chain-analytics.pdf",
+      "source_location": "p.240-284",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "The book says four times that a small company can manage inventory by hand - and all four carry a condition: demand stable and predictable, SKUs not complex, suppliers able to replenish ad hoc and fast. So it does not say the small firm never needs this; it says under which conditions it does not, which turns an objection into a qualification criterion.",
+      "norm_label": "when a small firm does need analytics software",
+      "repo": "knowledge",
+      "local_id": "small_firm_analytics_conditions",
+      "community": 206
+    },
+    {
+      "id": "knowledge::tracking_signal_band",
+      "label": "Tracking Signal Band (+-6)",
+      "file_type": "concept",
+      "source_file": "liu-supply-chain-analytics.pdf",
+      "source_location": "p.312 (ec. 8.16)",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Operational threshold for TS = cumulative forecast error / MAD: outside +-6 the forecast is biased, and the reading is binary and actionable ('either the model is flawed, or the underlying demand pattern has shifted'). The threshold is NOT Liu's: the book attributes it to Chopra & Meindl (2016), which is where the authority edge goes. This repo implements it in src/forecast_metrics.py.",
+      "norm_label": "tracking signal band (+-6)",
+      "repo": "knowledge",
+      "local_id": "tracking_signal_band",
+      "community": 206
     }
   ],
   "links": [
@@ -111162,6 +111291,286 @@
       "weight": 1.0,
       "source": "knowledge::smoothing_rate_tradeoff",
       "target": "knowledge::bullwhip_effect"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "liu-supply-chain-analytics.pdf",
+      "source_location": "p.27",
+      "weight": 1.0,
+      "source": "knowledge::book_liu_supply_chain_analytics",
+      "target": "knowledge::supply_chain_analytics"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "liu-supply-chain-analytics.pdf",
+      "source_location": "p.25-26 (Fig. 1.6)",
+      "weight": 1.0,
+      "source": "knowledge::book_liu_supply_chain_analytics",
+      "target": "knowledge::analytics_maturity_levels"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "liu-supply-chain-analytics.pdf",
+      "source_location": "p.30 (preface p.6)",
+      "weight": 1.0,
+      "source": "knowledge::book_liu_supply_chain_analytics",
+      "target": "knowledge::operations_research_vs_supply_chain_analytics"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "liu-supply-chain-analytics.pdf",
+      "source_location": "p.28-30 (Fig. 1.7)",
+      "weight": 1.0,
+      "source": "knowledge::book_liu_supply_chain_analytics",
+      "target": "knowledge::smart_analytics_goals"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "liu-supply-chain-analytics.pdf",
+      "source_location": "p.240-284",
+      "weight": 1.0,
+      "source": "knowledge::book_liu_supply_chain_analytics",
+      "target": "knowledge::small_firm_analytics_conditions"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "liu-supply-chain-analytics.pdf",
+      "source_location": "p.312 (ec. 8.16)",
+      "weight": 1.0,
+      "source": "knowledge::book_liu_supply_chain_analytics",
+      "target": "knowledge::tracking_signal_band"
+    },
+    {
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "liu-supply-chain-analytics.pdf",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "knowledge::supply_chain_analytics",
+      "target": "knowledge::demand_forecasting"
+    },
+    {
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "liu-supply-chain-analytics.pdf",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "knowledge::supply_chain_analytics",
+      "target": "knowledge::predictive_analytics"
+    },
+    {
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "liu-supply-chain-analytics.pdf",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "knowledge::supply_chain_analytics",
+      "target": "knowledge::machine_learning_demand"
+    },
+    {
+      "relation": "part_of",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "liu-supply-chain-analytics.pdf",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "knowledge::analytics_maturity_levels",
+      "target": "knowledge::supply_chain_analytics"
+    },
+    {
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "liu-supply-chain-analytics.pdf",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "knowledge::analytics_maturity_levels",
+      "target": "knowledge::maturity_model_descriptive_purpose"
+    },
+    {
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "liu-supply-chain-analytics.pdf",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "knowledge::analytics_maturity_levels",
+      "target": "knowledge::maturity_model_prescriptive_purpose"
+    },
+    {
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "liu-supply-chain-analytics.pdf",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "knowledge::analytics_maturity_levels",
+      "target": "knowledge::predictive_analytics"
+    },
+    {
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "liu-supply-chain-analytics.pdf",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "knowledge::operations_research_vs_supply_chain_analytics",
+      "target": "knowledge::supply_chain_analytics"
+    },
+    {
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "liu-supply-chain-analytics.pdf",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "knowledge::operations_research_vs_supply_chain_analytics",
+      "target": "knowledge::service_level_optimization"
+    },
+    {
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.75,
+      "source_file": "liu-supply-chain-analytics.pdf",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "knowledge::operations_research_vs_supply_chain_analytics",
+      "target": "knowledge::ai_ml_forecasting"
+    },
+    {
+      "relation": "part_of",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "liu-supply-chain-analytics.pdf",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "knowledge::smart_analytics_goals",
+      "target": "knowledge::supply_chain_analytics"
+    },
+    {
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "liu-supply-chain-analytics.pdf",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "knowledge::smart_analytics_goals",
+      "target": "knowledge::key_performance_indicators"
+    },
+    {
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "liu-supply-chain-analytics.pdf",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "knowledge::smart_analytics_goals",
+      "target": "knowledge::forecast_value_added"
+    },
+    {
+      "relation": "part_of",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "liu-supply-chain-analytics.pdf",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "knowledge::small_firm_analytics_conditions",
+      "target": "knowledge::supply_chain_analytics"
+    },
+    {
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "liu-supply-chain-analytics.pdf",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "knowledge::small_firm_analytics_conditions",
+      "target": "knowledge::demand_classification"
+    },
+    {
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "liu-supply-chain-analytics.pdf",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "knowledge::small_firm_analytics_conditions",
+      "target": "knowledge::intermittent_demand"
+    },
+    {
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "liu-supply-chain-analytics.pdf",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "knowledge::small_firm_analytics_conditions",
+      "target": "knowledge::safety_stock"
+    },
+    {
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "liu-supply-chain-analytics.pdf",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "knowledge::tracking_signal_band",
+      "target": "knowledge::tracking_signal"
+    },
+    {
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "liu-supply-chain-analytics.pdf",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "knowledge::tracking_signal_band",
+      "target": "knowledge::forecast_error"
+    },
+    {
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "liu-supply-chain-analytics.pdf",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "knowledge::tracking_signal_band",
+      "target": "knowledge::mean_error_bias"
+    },
+    {
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "liu-supply-chain-analytics.pdf",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "knowledge::tracking_signal_band",
+      "target": "knowledge::mean_absolute_error"
+    },
+    {
+      "relation": "cites",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "liu-supply-chain-analytics.pdf",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "knowledge::tracking_signal_band",
+      "target": "knowledge::book_chopra_meindl"
     }
   ]
 }

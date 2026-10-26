@@ -3,6 +3,47 @@
 ## [Unreleased]
 
 ### Added
+- **Tracking signal: el pronostico sesgado deja de leerse como si fuera ruido**
+  (`src/forecast_metrics.py`, `jobs/forecast_job.py`). `bias` publicaba un promedio con
+  signo y nada mas: un SKU con +3 de sesgo sobre MAD 1 (el nivel esta mal) y otro con +3
+  sobre MAD 40 (ruido que se compensa) salian con el mismo numero y la misma recomendacion.
+  `tracking_signal` / `tracking_signal_series` implementan `TS = CFE/MAD` (Liu 2022 p.312,
+  ec. 8.16) y `bias_verdict` traduce contra la banda **+-6** — que Liu reporta de Chopra &
+  Meindl y a la que la arista de autoridad del grafo va a `book_chopra_meindl`, no a Liu.
+  Tres reglas que no son cosmeticas: **el signo es `f - a`** (positivo = el metodo corre
+  alto), el mismo de `forecast_metrics.bias` y `verify.backtest`, no el `E = A - F` del
+  libro, para que dos superficies no digan "+" en sentidos contrarios; **MAD cero da `NaN`,
+  no 0** (un pronostico exacto no tiene cociente que publicar); y **con `n <= 6` errores la
+  banda es inalcanzable** (`|TS| <= n`), asi que el veredicto es `undefined` en vez de un
+  `in_band` que solo diria "no habia como detectarlo". Por eso el job lo calcula sobre los
+  residuos one-step de la historia completa -- la MISMA serie de `bias` -- y **no** sobre el
+  holdout: con el 25% de una serie de 12 periodos hay 3 errores y ningun veredicto posible.
+  Demanda intermitente no publica veredicto: los residuos por periodo de Croston/TSB son
+  estructuralmente de un signo y el cociente mediria la intermitencia. Se suma como campo
+  por SKU (CSV `tracking_signal` / `bias_verdict` / `tracking_signal_periods`), como KPI,
+  como finding del deck -- *"re-fitting the method, not a bigger buffer"* -- y como residual
+  del `GuidedOutcome`, porque es un resultado incomodo y no un hueco de datos (la confianza
+  no se toca). `verify()` exige que veredicto y numero se sostengan entre si.
+- **Liu, *Supply Chain Analytics* (2022) como obra curada #28, ingesta PARCIAL**
+  (`scripts/merge_liu_supply_chain_analytics.py`, +7 nodos, +28 aristas, comunidad nueva 206).
+  El libro se leyo entero el 2026-08-05/06 y la spec del 2026-08-06 decidio que solo entra lo
+  que el motor afirma o podria afirmar y hoy no puede citar: los niveles de analitica (el
+  **diagnostico** que faltaba), la frontera OR vs SCA, las metas SMART con su regla de
+  adopcion, las condiciones bajo las cuales una PyME NO necesita el software, y la banda +-6
+  del tracking signal. Quedan afuera el tutorial de pandas/sklearn (~40%), los cuatro metodos
+  de inventario que ya estan mejor cubiertos, el LP de almacen que ignora la demanda por
+  decreto, y el clasificador de stockout / XGBoost sobre Rossmann, que piden features que
+  ningun ERP PyME tiene. Los **tres errata verificados van como `known_errata` del nodo de la
+  fuente**, nunca como concepto: un nodo citable no puede afirmar algo falso. Conteos que se
+  mueven con el merge y se actualizaron en el mismo commit: 28 obras sobre 43 archivos,
+  3.111 nodos, 6.449 aristas, 207 comunidades -- `tests/test_l3_source_inventory.py` deriva
+  los tres y exige que la prosa los diga. **`GRAPH_REPORT.md` se regeneró en el mismo cambio**
+  (`scripts/regen_books_report.py`, con `graphify` instalado): 3110 nodos / 6421 aristas en el
+  reporte contra 3.111 / 6.449 en el artefacto, diferencia que siempre existió — graphify arma un
+  grafo simple y no dirigido, así que descarta el nodo `reminder::` sin `source_file` y colapsa
+  las 28 aristas paralelas. Re-renderizar NO re-clusteriza: las comunidades quedan como están y
+  ninguna medición de citas se invalida.
+
 - **`tests/test_odoo_addon_boundary.py`: "el motor no viaja" deja de ser un comentario.**
   El addon es el unico artefacto que sale del repo y aterriza en el Odoo de un tercero, y
   toda su historia de seguridad depende de que sea una *ventana*: lee unos campos, hace
@@ -260,6 +301,20 @@
   siempre las mismas.
 
 ### Fixed
+- **El signo de `ForecastResult.bias` estaba invertido, y lo documentado era lo contrario.**
+  `_error_stats` y `_error_stats_from_fitted` calculaban `actual - fitted` mientras
+  `forecast_metrics.bias`, `verify.backtest` (que ademas guarda `errors = predicted - actual`)
+  y `outliers.py` documentaban y probaban `fitted - actual`; `jobs/forecast_job.py` etiquetaba
+  el campo como *"positive = the method runs HIGH"*, que era falso. Un sesgo publicado con el
+  signo al reves manda al planner a recortar compras en el SKU que en realidad se queda corto.
+  Ahora las cuatro superficies usan `f - a`, y `ForecastResult.errors` expone la serie para que
+  el tracking signal se lea de ahi. `_status` de `inventory_optimization` usa `abs(bias)`, asi
+  que no cambia de veredicto. **Aviso para la memoria de ciclo**: `forecast_cycle` congela
+  `bias` por SKU, asi que la primera comparacion contra un ciclo congelado antes de este cambio
+  muestra un salto de 2x el sesgo. **Lo que NO se hizo**: verificar contra el libro cual de los
+  dos signos usa Vandeput (2021, sec 2.2) — la copia indexada tiene el mapeo de glifos roto y
+  no se pudo leer la formula. La cita del campo queda porque el CONCEPTO viene de ahi; el signo
+  es el del repo y ahora esta escrito en el tipo.
 - **Un SKU vacio se colaba como el SKU literal `"nan"`.** Aparecio al escribir los
   tests de `repricing_job`: pandas lee la celda en blanco como NaN y `str(nan)` es
   `"nan"`, que es no-vacio y pasa un `if not sku`. Habria quedado una fila de

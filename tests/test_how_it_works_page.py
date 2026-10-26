@@ -130,9 +130,9 @@ def test_page_reports_the_real_tool_count_and_26_sources() -> None:
     tool_count = str(len(TOOLS))
     assert f"Kern's {tool_count} supply-chain capabilities" in html
     assert f"{tool_count} capabilities behind one pipeline" in html
-    assert "27 curated external sources" in html
+    assert "28 curated external sources" in html
     # Todo conteo de fuentes superado que esta pagina llevo o estuvo tentada de llevar.
-    for stale in ("33 curated", "25 curated", "35 curated", "26 curated", "41 curated"):
+    for stale in ("33 curated", "25 curated", "35 curated", "26 curated", "27 curated", "41 curated"):
         assert stale not in html, stale
 
 
@@ -161,12 +161,14 @@ def test_source_count_claim_still_matches_the_books_graph() -> None:
     documentation/SOP_DOCUMENT_CONTROL_SOURCES.md, which records the evidence tier
     of each and the three concepts CUT because their provenance did not hold up.
 
-    So of the 42 external files, 35 are book/chapter PDFs and 7 are secondary web
+    So of the 43 external files, 35 are book/chapter PDFs and 8 are secondary web
     artifacts. El #42 es Vandeput, *Data Science for Supply Chain Forecasting*
     (2021, 2ed), agregado el 2026-09-15: SI es una obra curada -- se leyo el libro
     entero, no una ficha de producto -- asi que a diferencia de los 7 artefactos
-    web del 2026-09-04, este SI movio el conteo de obras de 26 a 27. If you are here because this assert failed: the number below tracks
-    FILES. Moving "26 curated external sources" is a separate, deliberate decision
+    web del 2026-09-04, este SI movio el conteo de obras de 26 a 27. El #43 es Liu,
+    *Supply Chain Analytics* (2022), agregado el 2026-10-26: tambien obra curada
+    (388 paginas leidas), y movio el conteo de 27 a 28. If you are here because this assert failed: the number below tracks
+    FILES. Moving "28 curated external sources" is a separate, deliberate decision
     that requires the new source to actually be a curated work.
     """
     import json
@@ -182,7 +184,7 @@ def test_source_count_claim_still_matches_the_books_graph() -> None:
     }
     external = {f for f in files if not f.startswith("KERN_")}
 
-    assert len(external) == 42, sorted(external)
+    assert len(external) == 43, sorted(external)
     assert "KERN_ATLAS_SOMBREROS_SCM.md" in files  # the internal doc is in the graph...
     assert "KERN_ATLAS_SOMBREROS_SCM.md" not in external  # ...and excluded from the claim
 
@@ -306,6 +308,10 @@ _SUPERSEDED_SOURCE_CLAIMS = (
     # lista el mismo dia: era el numero al que NO habia que saltar mientras las 7
     # fuentes del 2026-09-04 eran artefactos web, y ahora es el numero correcto.
     "26 curated",
+    # "27 curated" quedo superado el 2026-10-26 al entrar Liu, *Supply Chain
+    # Analytics* (2022) como obra #28. Misma regla que la vez anterior: sale de esta
+    # lista el dia que el numero deja de ser el correcto, no antes.
+    "27 curated",
     "33 curated",
     "35 curated",
     "41 curated",
@@ -326,6 +332,6 @@ def test_the_source_count_claim_is_the_same_everywhere_it_is_made() -> None:
     """
     for name in _SOURCE_COUNT_DOCS:
         text = (_REPO_ROOT / name).read_text(encoding="utf-8")
-        assert "27 curated external" in text, name
+        assert "28 curated external" in text, name
         for stale in _SUPERSEDED_SOURCE_CLAIMS:
             assert stale not in text, f"{name} carries a superseded claim: {stale}"
