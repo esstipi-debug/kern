@@ -30,7 +30,13 @@ from nosilo_core.guided import GuidedOutcome, Residual, recommend, verify_guided
 from src.decision_options import Objective, Scenario, decide
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.export import write_summary_csv
-from src.forecast_metrics import compute_metrics
+from src.forecast_metrics import (
+    BIAS_VERDICTS,
+    TRACKING_SIGNAL_BAND,
+    bias_verdict,
+    compute_metrics,
+    tracking_signal_from_errors,
+)
 from src.forecastability import segment
 from src.forecasting import forecast_demand
 from src.outliers import OutlierReport, scan_outliers
@@ -73,10 +79,26 @@ class SkuForecast:
     #: serie corregida en silencio es un pronostico que nadie puede auditar.
     n_outliers: int = 0
     outlier_periods: tuple[int, ...] = ()
-    #: Signed forecast error over the fitted history: positive = the method runs HIGH.
-    #: MAPE says how wrong, this says in which direction, which is the half a planner
-    #: acts on (Vandeput 2021, sec 2.2) and the half the job used to discard.
+    #: Signed forecast error over the fitted history, **`fitted - actual`**: positive means
+    #: the method runs HIGH. The sign is this repo's own (`forecast_metrics.bias`,
+    #: `verify.backtest`, `outliers.py`), and it is stated because the field once carried
+    #: the opposite sign while claiming this one. MAPE says how wrong, this says in which
+    #: direction, which is the half a planner acts on (Vandeput 2021, sec 2.2) and the half
+    #: the job used to discard.
     bias: float = float("nan")
+    #: Tracking signal de la historia: error acumulado / MAD acumulada, y su veredicto
+    #: contra :data:`TRACKING_SIGNAL_BAND` (``in_band`` | ``over`` | ``under`` |
+    #: ``undefined``). ``bias`` dice cuanto y para que lado; esto dice si el signo se
+    #: SOSTUVO periodo a periodo. La diferencia es la accion: un error grande y
+    #: compensado se cubre con buffer (``sigma_e``), un error sostenido se arregla
+    #: reajustando el metodo -- ningun z-factor corrige un error de nivel.
+    tracking_signal: float = float("nan")
+    bias_verdict: str = "undefined"
+    #: Sobre cuantos errores one-step se calculo ese TS. Sin este numero el veredicto
+    #: no es auditable: con n errores, |TS| <= n, asi que "in_band" sobre 4 errores no
+    #: dice "sin sesgo", dice "la banda era inalcanzable". 0 = no se publico veredicto
+    #: (demanda intermitente: los residuos por periodo miden la intermitencia, no el sesgo).
+    tracking_signal_periods: int = 0
     #: Dispersion of the forecast, and which one it is (see ForecastResult.sigma_source):
     #: forecast_error | demand_std_fallback | unavailable. Safety stock cannot be sized
     #: from a point, so shipping the point alone was never enough.
@@ -125,6 +147,11 @@ class ForecastJobReport:
     #: three the same, and only one of them is the client's fault to fix.
     no_baseline_reason: str = ""
     cycle_comparison: str = ""
+    #: SKUs cuyo pronostico esta SESGADO (|TS| fuera de banda) sobre los residuos one-step
+    #: de la historia -- no sobre el holdout: con 3 errores no hay veredicto posible. Se
+    #: cuenta aparte de ``n_beating_naive``: un metodo puede ganarle al naive Y estar
+    #: sesgado (le gana porque el naive esta peor, no porque el nivel este bien).
+    n_biased: int = 0
 
 
 def _pick_column(df: pd.DataFrame, override: object, candidates: tuple[str, ...]) -> str | None:
@@ -195,6 +222,7 @@ def _backtest(series: list[float], method: str, *, holdout_fraction: float, min_
 def _policy_outcome(
     *, base_summary: str, beating_share: float, regular_share: float, lumpy_share: float,
     n_unvalidated: int = 0, n_skus: int = 0,
+    n_biased: int = 0, biased_names: tuple[str, ...] = (),
 ) -> GuidedOutcome:
     """Rank three forecasting policies (accuracy vs ops simplicity vs manual effort).
 
@@ -203,6 +231,12 @@ def _policy_outcome(
     of silently shipping the same confident label as a well-backed forecast, this
     states the gap as a residual (never a bare/empty risk) and dampens confidence
     proportionally to how much of the portfolio could not be validated.
+
+    ``n_biased`` es otra cosa y por eso NO toca la confianza: el sesgo se MIDIO (el
+    tracking signal salio de la banda), asi que no es un hueco de datos sino un
+    resultado incomodo. Va como residual porque cambia lo que hay que hacer -- esos
+    SKUs no se arreglan con mas buffer -- y la confianza del entregable no es el
+    lugar donde se castiga una mala noticia bien medida.
     """
     scenarios = [
         Scenario(
@@ -233,17 +267,28 @@ def _policy_outcome(
         Objective("manual_effort", weight=0.5),  # cost-like -> minimized
     ]
     confidence = 0.8
-    residuals: list[Residual] | None = None
+    residuals: list[Residual] = []
     if n_unvalidated > 0:
         unvalidated_share = n_unvalidated / n_skus if n_skus else 0.0
         confidence = round(confidence * (1.0 - 0.5 * unvalidated_share), 2)
-        residuals = [Residual(
+        residuals.append(Residual(
             description=f"{n_unvalidated} of {n_skus} SKU(s) had too little demand history to "
                         "backtest - their forecast accuracy (MASE) could not be validated.",
             risk_if_skipped="the chosen method for these SKUs is unverified; a poor fit could go "
                             "unnoticed until a stockout or an excess-stock event exposes it.",
-        )]
-    return decide(base_summary, scenarios, objectives, confidence=confidence, residuals=residuals)
+        ))
+    if n_biased > 0:
+        named = ", ".join(biased_names[:3]) + ("..." if len(biased_names) > 3 else "")
+        residuals.append(Residual(
+            description=f"{n_biased} SKU(s) carry a biased forecast (|tracking signal| > "
+                        f"{TRACKING_SIGNAL_BAND:g}): {named}. Their one-step errors point the same "
+                        "way period after period, so the LEVEL is wrong, not just noisy.",
+            risk_if_skipped="safety stock sized on a biased forecast inherits a directional error - "
+                            "an over-forecast piles up excess, an under-forecast runs dry, and a "
+                            "larger z-factor corrects neither. Re-fit the method before locking the plan.",
+        ))
+    return decide(base_summary, scenarios, objectives, confidence=confidence,
+                  residuals=residuals or None)
 
 
 #: z(0.90): half-width of an 80% band (P10-P90) under a normal error.
@@ -303,6 +348,23 @@ def _sku_forecast(
         mase, mape, mae = float("inf"), float("inf"), float("nan")
         fva, beats = 0.0, False
     was = None if memory.previous is None else memory.previous.mape_by_sku.get(f.name)
+    # El tracking signal se lee de la MISMA serie que ``bias``: los errores one-step
+    # que el motor ya guarda en ``ForecastResult.errors``. Se probo antes contra el
+    # holdout del backtest y no sirve para veredicto: con h errores, |TS| <= h
+    # siempre, asi que con el 25% de una serie de 12 periodos (h=3) la banda +-6 es
+    # inalcanzable y "in_band" habria sido una tranquilidad fabricada.
+    #
+    # Demanda intermitente: el TS NO se publica. Los residuos por periodo de
+    # Croston/TSB son estructuralmente de un solo signo (cada periodo sin demanda
+    # aporta un error chico positivo, cada ocurrencia uno grande negativo), asi que
+    # el cociente mide la intermitencia, no el sesgo, y marcaria a todos los SKU
+    # lentos como "corre bajo".
+    ts = float("nan") if fc.is_intermittent else tracking_signal_from_errors(fc.errors)
+    verdict = (
+        "undefined"
+        if fc.is_intermittent
+        else bias_verdict(ts, n_errors=len(fc.errors))
+    )
     return SkuForecast(
         name=f.name, quadrant=f.quadrant, adi=f.adi, cv2=f.cv2, method=f.recommended_method,
         season_length=_m,
@@ -312,6 +374,8 @@ def _sku_forecast(
         forecast=point, mae=mae, mape=mape, mase=mase, fva=fva, beats_naive=beats,
         n_periods=f.n_periods,
         bias=float(fc.bias), error_std=float(fc.error_std), sigma_source=fc.sigma_source,
+        tracking_signal=ts, bias_verdict=verdict,
+        tracking_signal_periods=(0 if fc.is_intermittent else len(fc.errors)),
         p10=(max(0.0, point - _Z80 * sigma) if sigma is not None else None),
         p90=(point + _Z80 * sigma if sigma is not None else None),
         previous_mape=was,
@@ -329,6 +393,7 @@ def _policy_and_summary(seg, skus: list[SkuForecast]) -> tuple[GuidedOutcome, st
     # puede ganarle a repetir el ciclo anterior"). Contarlo como hueco de datos le
     # bajaba la confianza al entregable por una medicion que SI se hizo.
     n_validated = sum(1 for s in skus if s.benchmark_state in ("scaled", "exact"))
+    biased = tuple(s.name for s in skus if s.bias_verdict in ("over", "under"))
     base_summary = (
         f"{n} SKUs segmented (smooth {seg.mix['smooth']}, erratic {seg.mix['erratic']}, "
         f"intermittent {seg.mix['intermittent']}, lumpy {seg.mix['lumpy']}); "
@@ -341,8 +406,13 @@ def _policy_and_summary(seg, skus: list[SkuForecast]) -> tuple[GuidedOutcome, st
         lumpy_share=(seg.mix["lumpy"] / n if n else 0.0),
         n_unvalidated=n - n_validated,
         n_skus=n,
+        n_biased=len(biased),
+        biased_names=biased,
     )
-    return outcome, f"{base_summary} Recommended policy: {recommend(outcome.options).label}."
+    biased_txt = f" {len(biased)} of {n} carry a biased forecast (|TS| > {TRACKING_SIGNAL_BAND:g})." if biased else ""
+    return outcome, (
+        f"{base_summary}{biased_txt} Recommended policy: {recommend(outcome.options).label}."
+    )
 
 
 def _read_memory(store: StateStore | None) -> CycleMemory:
@@ -406,6 +476,7 @@ def run(
         mean_mase=(sum(finite_mases) / len(finite_mases) if finite_mases else float("inf")),
         mean_mape=mean_mape,
         mean_bias=mean_bias,
+        n_biased=sum(1 for s in skus if s.bias_verdict in ("over", "under")),
         outcome=outcome,
         summary=summary,
         **forecast_cycle.compare(memory, mean_mape, mean_bias, frozen),
@@ -432,6 +503,25 @@ def verify(report: ForecastJobReport) -> list[str]:
     # to prevent, so the gate is on the reason being said, not just on the None.
     if report.previous_cycle_id is None and not report.no_baseline_reason.strip():
         issues.append("there is no previous cycle and the report does not say why")
+    # El veredicto de sesgo y el numero que lo sostiene tienen que poder auditarse
+    # juntos: un SKU que dice "over" con un TS en banda (o "in_band" con un NaN) es
+    # una superficie que afirma algo que su propia medicion no respalda.
+    for s in report.skus:
+        if s.bias_verdict not in BIAS_VERDICTS:
+            issues.append(f"{s.name}: unknown bias verdict {s.bias_verdict!r}")
+        elif s.tracking_signal_periods <= 0:
+            # Sin errores medidos no se puede afirmar NADA: ni "en banda" ni un
+            # numero que lo insinue. Es la misma regla que la negativa del motor.
+            if s.bias_verdict != "undefined" or math.isfinite(s.tracking_signal):
+                issues.append(
+                    f"{s.name}: bias verdict {s.bias_verdict!r} with no measured error "
+                    "series - it must be 'undefined' with no tracking signal"
+                )
+        elif s.bias_verdict != bias_verdict(s.tracking_signal, n_errors=s.tracking_signal_periods):
+            issues.append(
+                f"{s.name}: bias verdict {s.bias_verdict!r} does not match "
+                f"tracking signal {s.tracking_signal:g} over {s.tracking_signal_periods} error(s)"
+            )
     return issues
 
 
@@ -474,6 +564,12 @@ def write_operational(report: ForecastJobReport, out_dir: str | Path, client: st
             "sigma": _fmt(s.error_std),
             "sigma_source": s.sigma_source,
             "bias": _fmt(s.bias),
+            # El TS y su veredicto viajan juntos al CSV por la misma razon que
+            # sigma y sigma_source: un numero sin la regla que lo interpreta obliga
+            # al cliente a re-derivar contra que banda se lo comparo.
+            "tracking_signal": _fmt(s.tracking_signal),
+            "bias_verdict": s.bias_verdict,
+            "tracking_signal_periods": s.tracking_signal_periods,
             "mape": _fmt(s.mape),
             "previous_mape": "" if s.previous_mape is None else round(s.previous_mape, 4),
             "mape_change_vs_previous": (
@@ -524,6 +620,20 @@ def build_deck(
             impact="adopt the method only where it beats naive; elsewhere naive is the honest default",
         ),
     ]
+    biased = [s for s in report.skus if s.bias_verdict in ("over", "under")]
+    if biased:
+        listed = ", ".join(
+            f"{s.name} TS {s.tracking_signal:+.1f} ({'runs high' if s.bias_verdict == 'over' else 'runs low'})"
+            for s in biased[:4]
+        ) + ("..." if len(biased) > 4 else "")
+        findings.append(Finding(
+            "Forecast bias (tracking signal)",
+            f"{len(biased)}/{n} SKU(s) outside the +/-{TRACKING_SIGNAL_BAND:g} band: {listed}. "
+            "Their one-step errors point the same way period after period - the LEVEL is wrong, "
+            "not just noisy.",
+            impact="an over-forecast piles up excess and an under-forecast runs dry; the remedy is "
+                   "re-fitting the method, not a bigger buffer (a larger z does not correct a level error)",
+        ))
     worse = sorted(
         (s for s in report.skus if (s.mape_change_vs_previous or 0.0) > 0.0),
         key=lambda s: s.mape_change_vs_previous, reverse=True,
@@ -573,6 +683,8 @@ def build_deck(
             rationale="Mean scaled error across backtested SKUs (< 1 is better than naive)"),
         Kpi("Mean MAPE", _pct(report.mean_mape), target="minimize",
             rationale="Mean absolute percentage error across backtested SKUs"),
+        Kpi("Biased SKUs (|TS| > 6)", f"{report.n_biased}/{n}", target="minimize",
+            rationale="SKUs whose one-step errors are consistently signed (tracking signal out of band)"),
         Kpi("MAPE vs previous cycle",
             _delta_pp(report.mean_mape_vs_previous, report.no_baseline_reason), target="minimize",
             rationale="Change in mean MAPE since the previous frozen cycle (negative = improving)"),

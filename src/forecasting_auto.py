@@ -72,8 +72,14 @@ def _model_for_route(route: str, season_length: int):
 
 def _error_stats_from_fitted(
     fitted: pd.DataFrame, model_col: str
-) -> tuple[float, float, float, int]:
-    """Return (error_std, bias, mae, n_dropped) from in-sample one-step fitted values.
+) -> tuple[float, float, float, int, np.ndarray]:
+    """Return (error_std, bias, mae, n_dropped, errors) from in-sample one-step fitted values.
+
+    ``errors`` es ``fitted - actual`` (positivo = el metodo corre ALTO), la misma
+    convencion que ``forecasting._error_stats``, ``forecast_metrics.bias`` y
+    ``verify.backtest``. Aca vivia el signo CONTRARIO (``actual - fitted``), asi que
+    el ``bias`` de un SKU pronosticado por AutoETS/TSB decia "corre bajo" donde el
+    resto del repo decia "corre alto".
 
     TSB and Croston emit a NaN warm-up row in their fitted values; AutoETS does not.
     Averaging over that NaN used to return NaN for all three statistics, which then
@@ -85,13 +91,13 @@ def _error_stats_from_fitted(
     pred = fitted[model_col].to_numpy(dtype=float)
     usable = np.isfinite(actual) & np.isfinite(pred)
     n_dropped = int(usable.size - np.count_nonzero(usable))
-    errors = actual[usable] - pred[usable]
+    errors = pred[usable] - actual[usable]
     if errors.size == 0:
-        return 0.0, 0.0, 0.0, n_dropped
+        return 0.0, 0.0, 0.0, n_dropped, errors
     bias = float(np.mean(errors))
     mae = float(np.mean(np.abs(errors)))
     error_std = float(np.std(errors, ddof=1)) if errors.size > 1 else 0.0
-    return error_std, bias, mae, n_dropped
+    return error_std, bias, mae, n_dropped, errors
 
 
 def _std(arr: np.ndarray) -> float:
@@ -143,7 +149,7 @@ def forecast_modern(
     fitted = sf.forecast_fitted_values()
 
     point = float(fc[model_col].iloc[0])
-    error_std, bias, mae, n_dropped = _error_stats_from_fitted(fitted, model_col)
+    error_std, bias, mae, n_dropped, errors = _error_stats_from_fitted(fitted, model_col)
 
     method_label = {
         "AutoETS": "auto_ets",
@@ -161,6 +167,7 @@ def forecast_modern(
         n_periods=arr.size,
         is_intermittent=intermittent,
         n_error_obs_dropped=n_dropped,
+        errors=tuple(float(e) for e in errors),
     )
 
 

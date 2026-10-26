@@ -42,20 +42,23 @@ def test_error_stats_drops_the_warmup_nan_instead_of_propagating_it():
     """A NaN fitted value is an unusable observation, not an unusable statistic."""
     fitted = pd.DataFrame({"y": [1.0, 2.0, 3.0, 4.0], "TSB": [float("nan"), 2.5, 2.5, 3.5]})
 
-    error_std, bias, mae, n_dropped = _error_stats_from_fitted(fitted, "TSB")
+    error_std, bias, mae, n_dropped, errors = _error_stats_from_fitted(fitted, "TSB")
 
     assert n_dropped == 1
     assert math.isfinite(error_std) and math.isfinite(bias) and math.isfinite(mae)
-    # Computed over the 3 surviving pairs: errors = [-0.5, 0.5, 0.5]
-    assert bias == pytest.approx(1.0 / 6.0)
+    # Computed over the 3 surviving pairs: errors = [0.5, -0.5, -0.5] (fitted - actual,
+    # positivo = corre alto; la convencion vieja era al reves y la serie viaja para que
+    # el tracking signal se lea de aca).
+    assert list(errors) == [0.5, -0.5, -0.5]
+    assert bias == pytest.approx(-1.0 / 6.0)
     assert mae == pytest.approx(0.5)
-    assert error_std == pytest.approx(float(np.std([-0.5, 0.5, 0.5], ddof=1)))
+    assert error_std == pytest.approx(float(np.std([0.5, -0.5, -0.5], ddof=1)))
 
 
 def test_error_stats_reports_zero_dropped_when_every_pair_is_usable():
     fitted = pd.DataFrame({"y": [1.0, 2.0, 3.0], "AutoETS": [1.5, 2.5, 2.5]})
 
-    _, _, _, n_dropped = _error_stats_from_fitted(fitted, "AutoETS")
+    _, _, _, n_dropped, _ = _error_stats_from_fitted(fitted, "AutoETS")
 
     assert n_dropped == 0
 
@@ -64,10 +67,11 @@ def test_error_stats_on_all_nan_predictions_reports_everything_dropped():
     """Nothing survived: the caller must be able to tell that from the count."""
     fitted = pd.DataFrame({"y": [1.0, 2.0], "TSB": [float("nan"), float("nan")]})
 
-    error_std, bias, mae, n_dropped = _error_stats_from_fitted(fitted, "TSB")
+    error_std, bias, mae, n_dropped, errors = _error_stats_from_fitted(fitted, "TSB")
 
     assert n_dropped == 2
     assert (error_std, bias, mae) == (0.0, 0.0, 0.0)
+    assert len(errors) == 0
 
 
 # ---- sigma_source: to_engine_inputs may not choose in silence ---------------
