@@ -33,6 +33,18 @@ class WritebackRefused(Exception):
     """Raised when an apply is blocked by the safety policy (missing/invalid approval)."""
 
 
+class ApprovalSecretNotConfigured(WritebackRefused):
+    """``apply()`` refused an approval-gated change because ``LINCHPIN_APPROVAL_SECRET``
+    is unset. Without it an approval minted by ``approve()`` and one signed by hand
+    carry the same signature, so neither can be trusted and neither is applied.
+
+    A deployment's configuration problem rather than a problem with any one approval,
+    which is why a caller (an HTTP route) may report it apart from a missing,
+    mismatched or expired approval. Still a ``WritebackRefused``, so every existing
+    ``except WritebackRefused`` keeps catching it.
+    """
+
+
 def requires_approval(tier: str, *, auto_apply_reversible: bool = False) -> bool:
     """Whether a tier needs explicit human approval before it can be applied."""
     if tier == TIER_READ:
@@ -122,13 +134,32 @@ class Changeset:
         return f"{n} change(s) to {self.target} [{self.risk_tier}] key={self.idempotency_key}"
 
 
+#: Explicit opt-in to apply approvals while no ``LINCHPIN_APPROVAL_SECRET`` is set.
+#: Local development and tests only; it never weakens a configured secret.
+UNSIGNED_APPROVALS_ENV = "LINCHPIN_ALLOW_UNSIGNED_APPROVALS"
+
+
 def _approval_secret() -> str:
-    """Server-side secret used to sign approvals. Empty disables signing (local/dev/tests),
-    matching the ``LINCHPIN_API_KEY``/``LINCHPIN_RATE_LIMIT`` "empty disables the gate"
-    convention already used in ``webapp/security.py``. Set for any deployment where
-    ``approve()`` and ``apply()`` may not be the only code with access to this module.
+    """Server-side secret used to sign approvals.
+
+    Unset or blank does NOT disable this gate. ``LINCHPIN_API_KEY`` and
+    ``LINCHPIN_RATE_LIMIT`` in ``webapp/security.py`` read empty as "no gate"; here
+    empty means "no write". An approval signed with an empty key is one anybody can
+    reproduce, so ``apply()`` refuses every approval-gated change until this is set,
+    unless ``unsigned_approvals_allowed()``.
     """
     return os.environ.get("LINCHPIN_APPROVAL_SECRET", "").strip()
+
+
+def unsigned_approvals_allowed() -> bool:
+    """Whether ``LINCHPIN_ALLOW_UNSIGNED_APPROVALS`` explicitly opts into applying
+    approvals while no secret is configured (local development, tests).
+
+    Same truthy spelling as ``LINCHPIN_REQUIRE_SECURE`` (``1``/``true``/``yes``);
+    anything else, ``0`` and ``false`` included, keeps writes closed. Read at call
+    time, like the secret.
+    """
+    return os.environ.get(UNSIGNED_APPROVALS_ENV, "").strip().lower() in ("1", "true", "yes")
 
 
 def _sign_approval(changeset_key: str, content_hash: str, approved_by: str, expires_at: float) -> str:
@@ -381,7 +412,13 @@ def apply(
     so a 900s TTL never actually expired.
 
     Refuses (``WritebackRefused``) when approval is required but missing, does not
-    match this exact changeset (key AND content), or is expired. Idempotent on
+    match this exact changeset (key AND content), or is expired. While
+    ``LINCHPIN_APPROVAL_SECRET`` is unset it refuses every change that requires
+    approval, whatever approval comes with it (``ApprovalSecretNotConfigured``):
+    none can be told apart from a forgery. ``LINCHPIN_ALLOW_UNSIGNED_APPROVALS``
+    opts out for local development and tests. Changes that need no approval
+    (``read``, or ``reversible`` under ``auto_apply_reversible``) are unaffected.
+    Idempotent on
     ``idempotency_key`` - and safe under concurrency: the key is atomically claimed
     (``store.claim()``) before ``store.commit()`` ever runs, so two callers racing on
     the same key cannot both perform the side-effecting write. A caller that loses
@@ -393,6 +430,13 @@ def apply(
     if now is None:
         now = time.time()
     if requires_approval(changeset.risk_tier, auto_apply_reversible=auto_apply_reversible):
+        if not _approval_secret() and not unsigned_approvals_allowed():
+            raise ApprovalSecretNotConfigured(
+                f"approval required for tier '{changeset.risk_tier}', but LINCHPIN_APPROVAL_SECRET "
+                "is not set: an unsigned approval cannot be told apart from a forged one, so "
+                "nothing approval-gated is applied. Set LINCHPIN_APPROVAL_SECRET, or "
+                f"{UNSIGNED_APPROVALS_ENV}=1 for local development and tests only"
+            )
         if approval is None or not approval.matches(changeset) or not approval.is_valid_at(now):
             raise WritebackRefused(
                 f"approval required for tier '{changeset.risk_tier}' and is missing/mismatched/expired"

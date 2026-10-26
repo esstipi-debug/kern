@@ -260,6 +260,19 @@
   siempre las mismas.
 
 ### Fixed
+- **Sin `LINCHPIN_APPROVAL_SECRET`, las escrituras que necesitan aprobacion se
+  rechazan** (`nosilo_core/writeback.py`). Sin el secreto, la firma de una
+  `Approval` se calculaba con clave vacia: cualquier codigo que conociera el formato
+  podia firmar una a mano, y `apply()` la escribia en Odoo, Shopify o Excel sin que
+  nadie aprobara nada. Ahora `apply()` falla cerrado (`ApprovalSecretNotConfigured`),
+  y el codigo dice lo mismo que la tesis: el software escribe solo con una
+  aprobacion firmada. `LINCHPIN_ALLOW_UNSIGNED_APPROVALS=1` es el opt-in explicito
+  de desarrollo y tests, y nunca debilita un secreto configurado. Lo que no
+  necesita aprobacion (lecturas, reversibles auto-aplicables, la degradacion
+  T1->T2) sigue igual. `POST /api/promotions/{id}/approve` responde 503 con el
+  motivo en vez de un 500, el arranque lo avisa en un WARNING aparte del banner de
+  la API key, y `LINCHPIN_REQUIRE_SECURE` se niega a bootear produccion con el
+  opt-in prendido.
 - **Un SKU vacio se colaba como el SKU literal `"nan"`.** Aparecio al escribir los
   tests de `repricing_job`: pandas lee la celda en blanco como NaN y `str(nan)` es
   `"nan"`, que es no-vacio y pasa un `if not sku`. Habria quedado una fila de
