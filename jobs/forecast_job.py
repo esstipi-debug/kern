@@ -40,6 +40,7 @@ from src.forecast_metrics import (
 from src.forecastability import segment
 from src.forecasting import forecast_demand
 from src.outliers import OutlierReport, scan_outliers
+from src.quantile_forecasting import BAND_METHODS, QuantileBand, band_score, quantile_band
 from src.seasonality import detect_season_length
 from src.state.store import StateStore
 
@@ -104,10 +105,26 @@ class SkuForecast:
     #: from a point, so shipping the point alone was never enough.
     error_std: float = float("nan")
     sigma_source: str = "unavailable"
-    #: 80% band around the point (P10 floored at zero: negative demand is not a scenario).
-    #: ``None`` when no dispersion was estimable - never a fabricated zero-width band.
+    #: Banda del 80% (P10-P90) y su mediana. ``band_method`` dice de donde sale, porque
+    #: son tres numeros distintos con el mismo nombre: ``two_part`` (intermitente: P(venta)
+    #: x tamanos medidos), ``residual_empirical`` (cuantiles de los errores one-step),
+    #: ``normal`` (punto +/- z*sigma, la de antes, cuando no hay historia para las otras) o
+    #: ``unavailable``. ``None`` cuando no hubo dispersion -- nunca una banda de ancho cero
+    #: inventada. El P50 es la MEDIANA: en un intermitente suele ser 0 mientras
+    #: ``forecast`` (la media) no lo es, y las dos cosas son ciertas.
     p10: float | None = None
     p90: float | None = None
+    p50: float | None = None
+    band_method: str = "unavailable"
+    #: La banda puntuada en el holdout: pinball promedio sobre P10/P50/P90, el mismo
+    #: puntaje para la banda normal, y la fraccion del holdout que cayo dentro de
+    #: [P10, P90] (lo esperado es ~0,8). Es la pregunta de MASE vs naive hecha a la banda:
+    #: "le gana a suponer normal?". ``None`` cuando no hubo holdout, o cuando la banda del
+    #: tramo de entrenamiento no salio con el mismo metodo que la publicada -- puntuar
+    #: otra banda y atribuirsela a esta seria un elogio prestado.
+    holdout_pinball: float | None = None
+    holdout_pinball_normal: float | None = None
+    holdout_coverage: float | None = None
     #: This SKU's MAPE in the previous frozen cycle, and the change since (negative
     #: = the forecast improved). ``None`` when the SKU was not in that cycle - a
     #: new SKU has no track record, and calling that 0.0 would invent one.
@@ -152,6 +169,11 @@ class ForecastJobReport:
     #: cuenta aparte de ``n_beating_naive``: un metodo puede ganarle al naive Y estar
     #: sesgado (le gana porque el naive esta peor, no porque el nivel este bien).
     n_biased: int = 0
+    #: SKUs cuya banda no-normal se pudo puntuar contra la normal en el holdout, y en
+    #: cuantos gano (pinball menor). Se cuentan victorias y no se promedia el pinball: esta
+    #: en las unidades de cada SKU y promediar escalas distintas no dice nada.
+    n_band_compared: int = 0
+    n_band_beats_normal: int = 0
 
 
 def _pick_column(df: pd.DataFrame, override: object, candidates: tuple[str, ...]) -> str | None:
@@ -196,6 +218,23 @@ def prepare(data_path: str, params: dict | None = None) -> dict[str, list[float]
     return prepare_records(pd.read_csv(data_path), params)
 
 
+def _split(
+    series: list[float], *, holdout_fraction: float, min_periods: int
+) -> tuple[list[float], list[float]] | None:
+    """(entrenamiento, holdout), o ``None`` si la serie es demasiado corta para cortarla.
+
+    Un solo corte para el backtest del punto y el de la banda: si cada uno cortara por
+    su cuenta, el MASE y el pinball de un mismo SKU hablarian de periodos distintos.
+    """
+    n = len(series)
+    if n < min_periods:
+        return None
+    h = min(max(1, round(n * holdout_fraction)), n - 2)
+    if h < 1:
+        return None
+    return series[:-h], series[-h:]
+
+
 def _backtest(series: list[float], method: str, *, holdout_fraction: float, min_periods: int):
     """Hold out the tail, fit on the head, and score the flat forecast (None if too short).
 
@@ -205,14 +244,11 @@ def _backtest(series: list[float], method: str, *, holdout_fraction: float, min_
     el benchmark esta oscilando de punta a punta todos los periodos, y el FVA que
     sale de ahi es un elogio prestado.
     """
-    n = len(series)
-    if n < min_periods:
+    split = _split(series, holdout_fraction=holdout_fraction, min_periods=min_periods)
+    if split is None:
         return None
-    h = min(max(1, round(n * holdout_fraction)), n - 2)
-    if h < 1:
-        return None
-    train = series[:-h]
-    test = series[-h:]
+    train, test = split
+    h = len(test)
     fc = forecast_demand(train, method=method).forecast
     return compute_metrics(
         test, [fc] * h, train=train, season_length=detect_season_length(train)
@@ -310,6 +346,48 @@ def _dispersion(fc) -> float | None:
     return None
 
 
+def _normal_band(fc) -> QuantileBand | None:
+    """La banda de siempre, punto +/- z(0,90)*sigma, o ``None`` sin dispersion."""
+    sigma = _dispersion(fc)
+    if sigma is None:
+        return None
+    point = float(fc.forecast)
+    return QuantileBand(
+        p10=max(0.0, point - _Z80 * sigma), p50=point, p90=point + _Z80 * sigma,
+        method="normal",
+    )
+
+
+def _band(series: list[float], fc) -> QuantileBand | None:
+    """La banda medida si la historia alcanza; si no, la normal. La forma (intermitente o
+    regular) la dice el mismo ``fc.is_intermittent`` que ya elige Croston/TSB."""
+    return quantile_band(series, fc) or _normal_band(fc)
+
+
+def _band_holdout(
+    series: list[float], method: str, shipped: QuantileBand | None,
+    *, holdout_fraction: float, min_periods: int,
+) -> tuple[float | None, float | None, float | None]:
+    """(pinball de la banda, pinball de la normal, cobertura) sobre el holdout.
+
+    Las dos bandas se ajustan sobre el MISMO tramo de entrenamiento. Si ese tramo no
+    alcanza para el metodo publicado (la serie completa si, el recorte no), no se puntua:
+    seria medir una banda y firmar con el nombre de otra.
+    """
+    split = _split(series, holdout_fraction=holdout_fraction, min_periods=min_periods)
+    if split is None or shipped is None:
+        return None, None, None
+    train, test = split
+    fc_train = forecast_demand(train, method=method)
+    band_train = _band(train, fc_train)
+    if band_train is None or band_train.method != shipped.method:
+        return None, None, None
+    pinball, coverage = band_score(test, band_train)
+    normal_train = _normal_band(fc_train)
+    pinball_normal = None if normal_train is None else band_score(test, normal_train)[0]
+    return pinball, pinball_normal, coverage
+
+
 def _benchmark_state(metrics) -> str:
     """`scaled` | `exact` | `unavailable` -- que pudo decir el naive de referencia."""
     if metrics is None or metrics.naive_obs <= 0:
@@ -336,7 +414,11 @@ def _sku_forecast(
         _outliers = OutlierReport(cleaned=tuple(series), flagged=(), n_flagged=0)
     fc = forecast_demand(series, method=f.recommended_method)
     point = float(fc.forecast)
-    sigma = _dispersion(fc)
+    band = _band(series, fc)
+    pinball, pinball_normal, coverage = _band_holdout(
+        series, f.recommended_method, band,
+        holdout_fraction=holdout_fraction, min_periods=min_periods,
+    )
     metrics = _backtest(
         series, f.recommended_method,
         holdout_fraction=holdout_fraction, min_periods=min_periods,
@@ -376,8 +458,13 @@ def _sku_forecast(
         bias=float(fc.bias), error_std=float(fc.error_std), sigma_source=fc.sigma_source,
         tracking_signal=ts, bias_verdict=verdict,
         tracking_signal_periods=(0 if fc.is_intermittent else len(fc.errors)),
-        p10=(max(0.0, point - _Z80 * sigma) if sigma is not None else None),
-        p90=(point + _Z80 * sigma if sigma is not None else None),
+        p10=None if band is None else band.p10,
+        p50=None if band is None else band.p50,
+        p90=None if band is None else band.p90,
+        band_method="unavailable" if band is None else band.method,
+        holdout_pinball=pinball,
+        holdout_pinball_normal=pinball_normal,
+        holdout_coverage=coverage,
         previous_mape=was,
         mape_change_vs_previous=(
             None if was is None or not math.isfinite(mape) else mape - was
@@ -466,6 +553,11 @@ def run(
     mean_bias = mean_finite(s.bias for s in skus)
     outcome, summary = _policy_and_summary(seg, skus)
     frozen = _freeze(store, cycle_id, skus)
+    compared = [
+        s for s in skus
+        if s.band_method in ("two_part", "residual_empirical")
+        and s.holdout_pinball is not None and s.holdout_pinball_normal is not None
+    ]
 
     return ForecastJobReport(
         skus=tuple(skus),
@@ -477,10 +569,32 @@ def run(
         mean_mape=mean_mape,
         mean_bias=mean_bias,
         n_biased=sum(1 for s in skus if s.bias_verdict in ("over", "under")),
+        n_band_compared=len(compared),
+        n_band_beats_normal=sum(
+            1 for s in compared if s.holdout_pinball < s.holdout_pinball_normal
+        ),
         outcome=outcome,
         summary=summary,
         **forecast_cycle.compare(memory, mean_mape, mean_bias, frozen),
     )
+
+
+def _band_issues(s: SkuForecast) -> list[str]:
+    """La banda se gatea en las dos direcciones, como la negativa del motor: un metodo
+    ``unavailable`` no puede traer numeros, y uno con nombre no puede venir vacio ni
+    cruzado (un P10 sobre el P50 es una banda que se contradice a si misma)."""
+    if s.band_method not in BAND_METHODS:
+        return [f"{s.name}: unknown band method {s.band_method!r}"]
+    values = (s.p10, s.p50, s.p90)
+    if s.band_method == "unavailable":
+        if any(v is not None for v in values):
+            return [f"{s.name}: band method 'unavailable' but the band carries numbers"]
+        return []
+    if any(v is None or not math.isfinite(v) for v in values):
+        return [f"{s.name}: band method {s.band_method!r} with a missing or non-finite quantile"]
+    if not (s.p10 <= s.p50 <= s.p90):
+        return [f"{s.name}: crossed band P10 {s.p10:g} / P50 {s.p50:g} / P90 {s.p90:g}"]
+    return []
 
 
 def verify(report: ForecastJobReport) -> list[str]:
@@ -507,6 +621,7 @@ def verify(report: ForecastJobReport) -> list[str]:
     # juntos: un SKU que dice "over" con un TS en banda (o "in_band" con un NaN) es
     # una superficie que afirma algo que su propia medicion no respalda.
     for s in report.skus:
+        issues.extend(_band_issues(s))
         if s.bias_verdict not in BIAS_VERDICTS:
             issues.append(f"{s.name}: unknown bias verdict {s.bias_verdict!r}")
         elif s.tracking_signal_periods <= 0:
@@ -560,7 +675,16 @@ def write_operational(report: ForecastJobReport, out_dir: str | Path, client: st
             "method": s.method,
             "forecast": round(s.forecast, 2),
             "p10": "" if s.p10 is None else round(s.p10, 2),
+            "p50": "" if s.p50 is None else round(s.p50, 2),
             "p90": "" if s.p90 is None else round(s.p90, 2),
+            # El metodo viaja pegado a la banda: un P10 normal y uno de dos partes son
+            # numeros distintos con la misma columna.
+            "band_method": s.band_method,
+            "holdout_pinball": "" if s.holdout_pinball is None else round(s.holdout_pinball, 4),
+            "holdout_pinball_normal": (
+                "" if s.holdout_pinball_normal is None else round(s.holdout_pinball_normal, 4)
+            ),
+            "holdout_coverage": "" if s.holdout_coverage is None else round(s.holdout_coverage, 4),
             "sigma": _fmt(s.error_std),
             "sigma_source": s.sigma_source,
             "bias": _fmt(s.bias),
@@ -583,6 +707,30 @@ def write_operational(report: ForecastJobReport, out_dir: str | Path, client: st
         for s in report.skus
     ]
     return {"csv": write_summary_csv(rows, d / "forecast_register.csv")}
+
+
+def _band_finding(report: ForecastJobReport) -> Finding:
+    """Con que metodo salio la banda de cada SKU y si le gano a suponer normal."""
+    counts = {m: 0 for m in ("two_part", "residual_empirical", "normal", "unavailable")}
+    for s in report.skus:
+        counts[s.band_method] = counts.get(s.band_method, 0) + 1
+    mix = ", ".join(f"{m} {c}" for m, c in counts.items() if c)
+    if report.n_band_compared:
+        verdict = (
+            f" On the holdout the measured band beat the normal band on "
+            f"{report.n_band_beats_normal}/{report.n_band_compared} SKU(s) (lower pinball loss)."
+        )
+    else:
+        verdict = " No SKU had enough history to score the measured band against the normal one."
+    return Finding(
+        "Forecast band P10-P50-P90 (by method)",
+        f"{mix}. two_part = P(sale) x measured sizes (intermittent); residual_empirical = "
+        f"quantiles of the method's own one-step errors; normal = point +/- 1.28 sigma, kept "
+        f"only where history is too short for the other two.{verdict}",
+        impact="a symmetric normal band hides that a slow SKU's P10 is zero and that the upside "
+               "tail is longer than the downside; the band is published, NOT yet used to size "
+               "safety stock",
+    )
 
 
 def build_deck(
@@ -634,6 +782,7 @@ def build_deck(
             impact="an over-forecast piles up excess and an under-forecast runs dry; the remedy is "
                    "re-fitting the method, not a bigger buffer (a larger z does not correct a level error)",
         ))
+    findings.append(_band_finding(report))
     worse = sorted(
         (s for s in report.skus if (s.mape_change_vs_previous or 0.0) > 0.0),
         key=lambda s: s.mape_change_vs_previous, reverse=True,
