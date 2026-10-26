@@ -138,7 +138,7 @@ Kern's **60 agent-routable capabilities** are classified across four functional 
 ```
 
 <details>
-<summary><b>Inspect the complete 60-tool capability catalog</b></summary>
+<summary><b>The full list, by area (60 tools)</b></summary>
 <br/>
 
 | Domain | Registered Capabilities |
@@ -152,6 +152,7 @@ Kern's **60 agent-routable capabilities** are classified across four functional 
 | **Risk, Returns & Disruption** | `returns` · `risk` · `dea` · `disruption_scan` (GDELT event feeds) |
 | **Cross-Silo Cadence & S&OP** | `sop` · `earned_value` · `launch_readiness` (Campaign vs Inventory gate) · `cross_impact` |
 | **Operations & Audit Evidence** | `procedure_audit` · `procedure_draft` · `iso_ops` · `audit_evidence` (MUS sampling) · `scor_iso_audit` |
+| **Leadership** | `leadership_chain` |
 
 </details>
 
