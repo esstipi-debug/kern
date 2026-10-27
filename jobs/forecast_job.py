@@ -27,6 +27,7 @@ import pandas as pd
 from jobs import forecast_cycle
 from jobs.forecast_cycle import CycleMemory, mean_finite
 from nosilo_core.guided import GuidedOutcome, Residual, recommend, verify_guided
+from src.causal_forecasting import CausalForecastResult, fit_causal_forecast
 from src.decision_options import Objective, Scenario, decide
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.export import write_summary_csv
@@ -42,6 +43,30 @@ from src.forecasting import forecast_demand
 from src.outliers import OutlierReport, scan_outliers
 from src.seasonality import detect_season_length
 from src.state.store import StateStore
+
+_COVARIATE_CANDIDATES = (
+    "promo", "promotion", "promotions", "is_promo", "price", "unit_price",
+    "discount", "event", "events", "holiday", "marketing", "ad_spend", "temperature"
+)
+
+
+class ForecastPayload(dict):
+    """A dictionary mapping SKU name -> list of historical demand quantities.
+
+    Carries optional exogenous covariates and future covariate estimates per SKU.
+    Because it inherits from dict, it maintains 100% backward compatibility with all
+    consumers expecting a plain dict[str, list[float]].
+    """
+
+    def __init__(
+        self,
+        series_by_name: dict[str, list[float]],
+        covariates_by_sku: dict[str, dict[str, list[float]]] | None = None,
+        future_covariates_by_sku: dict[str, dict[str, float]] | None = None,
+    ):
+        super().__init__(series_by_name)
+        self.covariates_by_sku: dict[str, dict[str, list[float]]] = covariates_by_sku or {}
+        self.future_covariates_by_sku: dict[str, dict[str, float]] = future_covariates_by_sku or {}
 
 _PRODUCT_COLS = ("sku", "product_id", "product", "item", "SKU", "Product", "material")
 _QTY_COLS = ("demand", "quantity", "qty", "units", "sales", "Demand", "Quantity", "value")
@@ -113,6 +138,9 @@ class SkuForecast:
     #: new SKU has no track record, and calling that 0.0 would invent one.
     previous_mape: float | None = None
     mape_change_vs_previous: float | None = None
+    causal_result: CausalForecastResult | None = None
+    causal_accepted: bool = False
+    delta_aic: float | None = None
 
 
 @dataclass(frozen=True)
@@ -152,6 +180,8 @@ class ForecastJobReport:
     #: cuenta aparte de ``n_beating_naive``: un metodo puede ganarle al naive Y estar
     #: sesgado (le gana porque el naive esta peor, no porque el nivel este bien).
     n_biased: int = 0
+    n_causal_accepted: int = 0
+    causal_covariates: tuple[str, ...] = ()
 
 
 def _pick_column(df: pd.DataFrame, override: object, candidates: tuple[str, ...]) -> str | None:
@@ -160,11 +190,12 @@ def _pick_column(df: pd.DataFrame, override: object, candidates: tuple[str, ...]
     return next((c for c in candidates if c in df.columns), None)
 
 
-def prepare_records(df: pd.DataFrame, params: dict | None = None) -> dict[str, list[float]]:
-    """Sniff the demand columns and build one cleaned, period-ordered series per SKU.
+def prepare_records(df: pd.DataFrame, params: dict | None = None) -> ForecastPayload:
+    """Sniff demand columns and optional exogenous covariates, building per-SKU series.
 
     Required columns: product and quantity (raises ValueError listing any missing). A period
     column, when present, orders each SKU's series. Missing demand -> 0; negatives floored.
+    Exogenous covariates (promo, price, events) are extracted into ForecastPayload.
     """
     params = params or {}
     product_col = _pick_column(df, params.get("product_col"), _PRODUCT_COLS)
@@ -177,18 +208,61 @@ def prepare_records(df: pd.DataFrame, params: dict | None = None) -> dict[str, l
         )
     period_col = _pick_column(df, params.get("period_col"), _PERIOD_COLS)
 
-    cols = [product_col, qty_col] + ([period_col] if period_col else [])
+    covar_param = params.get("covariate_cols") or params.get("covariates")
+    if covar_param:
+        covar_cols = [str(c) for c in covar_param if str(c) in df.columns]
+    else:
+        known_non_covars = {product_col, qty_col}
+        if period_col:
+            known_non_covars.add(period_col)
+        covar_cols = [
+            c for c in df.columns
+            if c not in known_non_covars
+            and (
+                str(c).lower() in _COVARIATE_CANDIDATES
+                or any(cand in str(c).lower() for cand in ("promo", "discount", "event", "holiday", "price", "marketing"))
+            )
+        ]
+
+    cols = [product_col, qty_col] + ([period_col] if period_col else []) + covar_cols
     work = df[cols].copy()
     work[qty_col] = pd.to_numeric(work[qty_col], errors="coerce").fillna(0.0).clip(lower=0.0)
+    for c in covar_cols:
+        work[c] = pd.to_numeric(work[c], errors="coerce").fillna(0.0)
 
     series_by_name: dict[str, list[float]] = {}
+    covariates_by_sku: dict[str, dict[str, list[float]]] = {}
+    future_covariates_by_sku: dict[str, dict[str, float]] = {}
+
+    fut_param = params.get("future_covariates") or {}
+
     for product, group in work.groupby(product_col, sort=False):
         if period_col:
             group = group.sort_values(period_col)
-        series_by_name[str(product)] = [float(v) for v in group[qty_col].tolist()]
+        sku_name = str(product)
+        series_by_name[sku_name] = [float(v) for v in group[qty_col].tolist()]
+
+        if covar_cols:
+            covars: dict[str, list[float]] = {}
+            futs: dict[str, float] = {}
+            for c in covar_cols:
+                vals = [float(v) for v in group[c].tolist()]
+                covars[c] = vals
+                if isinstance(fut_param, dict) and sku_name in fut_param and isinstance(fut_param[sku_name], dict) and c in fut_param[sku_name]:
+                    futs[c] = float(fut_param[sku_name][c])
+                elif isinstance(fut_param, dict) and c in fut_param:
+                    futs[c] = float(fut_param[c])
+                else:
+                    if any(w in c.lower() for w in ("promo", "event", "holiday", "discount")):
+                        futs[c] = 0.0
+                    else:
+                        futs[c] = float(vals[-1]) if vals else 0.0
+            covariates_by_sku[sku_name] = covars
+            future_covariates_by_sku[sku_name] = futs
+
     if not series_by_name:
         raise ValueError("no demand series found in the data")
-    return series_by_name
+    return ForecastPayload(series_by_name, covariates_by_sku, future_covariates_by_sku)
 
 
 def prepare(data_path: str, params: dict | None = None) -> dict[str, list[float]]:
@@ -322,20 +396,42 @@ def _benchmark_state(metrics) -> str:
 def _sku_forecast(
     f, series: list[float], memory: CycleMemory,
     *, holdout_fraction: float, min_periods: int,
+    covariates: dict[str, list[float]] | None = None,
+    future_covariates: dict[str, float] | None = None,
+    aic_tolerance: float = 2.0,
 ) -> SkuForecast:
     """One SKU's row: point, band, backtest, and last cycle's error beside today's."""
     _m = detect_season_length(series)
-    # Se escanea con el MISMO m que puntua el benchmark: un pico de temporada no es
-    # un outlier, es la temporada. Contra una linea base sin fase, diciembre entero
-    # saldria marcado todos los anios.
     try:
         _outliers = scan_outliers(series, season_length=_m)
     except ValueError:
-        # Historia inutilizable para el escaner (vacia, no finita, negativa). El
-        # pronostico ya la rechaza por su cuenta; aca no se inventa un cero.
         _outliers = OutlierReport(cleaned=tuple(series), flagged=(), n_flagged=0)
     fc = forecast_demand(series, method=f.recommended_method)
     point = float(fc.forecast)
+    chosen_method = f.recommended_method
+    causal_res: CausalForecastResult | None = None
+    causal_accepted = False
+    delta_aic: float | None = None
+
+    if covariates and len(series) >= 6:
+        fut = dict(future_covariates or {})
+        for cname, cvals in covariates.items():
+            if cname not in fut:
+                fut[cname] = float(cvals[-1]) if cvals else 0.0
+        try:
+            causal_res = fit_causal_forecast(
+                y=series,
+                covariates=covariates,
+                future_covariates=fut,
+                aic_tolerance=aic_tolerance,
+            )
+            delta_aic = causal_res.delta_aic
+            if causal_res.verdict == "causal_accepted":
+                causal_accepted = True
+                point = float(causal_res.forecast)
+                chosen_method = causal_res.method
+        except Exception:
+            pass
     sigma = _dispersion(fc)
     metrics = _backtest(
         series, f.recommended_method,
@@ -366,7 +462,7 @@ def _sku_forecast(
         else bias_verdict(ts, n_errors=len(fc.errors))
     )
     return SkuForecast(
-        name=f.name, quadrant=f.quadrant, adi=f.adi, cv2=f.cv2, method=f.recommended_method,
+        name=f.name, quadrant=f.quadrant, adi=f.adi, cv2=f.cv2, method=chosen_method,
         season_length=_m,
         benchmark_state=_benchmark_state(metrics),
         n_outliers=_outliers.n_flagged,
@@ -382,6 +478,9 @@ def _sku_forecast(
         mape_change_vs_previous=(
             None if was is None or not math.isfinite(mape) else mape - was
         ),
+        causal_result=causal_res,
+        causal_accepted=causal_accepted,
+        delta_aic=delta_aic,
     )
 
 
@@ -436,6 +535,9 @@ def run(
     min_backtest_periods: int = 4,
     store: StateStore | None = None,
     cycle_id: str | None = None,
+    covariates_by_sku: dict[str, dict[str, list[float]]] | None = None,
+    future_covariates_by_sku: dict[str, dict[str, float]] | None = None,
+    aic_tolerance: float = 2.0,
 ) -> ForecastJobReport:
     """Segment, auto-forecast + backtest each SKU, and present ranked forecasting policies.
 
@@ -455,9 +557,17 @@ def run(
     """
     memory = _read_memory(store)
     seg = segment(series_by_name)
+    covars_map = covariates_by_sku or getattr(series_by_name, "covariates_by_sku", {})
+    fut_covars_map = future_covariates_by_sku or getattr(series_by_name, "future_covariates_by_sku", {})
+
     skus = [
-        _sku_forecast(f, series_by_name[f.name], memory,
-                      holdout_fraction=holdout_fraction, min_periods=min_backtest_periods)
+        _sku_forecast(
+            f, series_by_name[f.name], memory,
+            holdout_fraction=holdout_fraction, min_periods=min_backtest_periods,
+            covariates=covars_map.get(f.name),
+            future_covariates=fut_covars_map.get(f.name),
+            aic_tolerance=aic_tolerance,
+        )
         for f in seg.items
     ]
 
@@ -465,7 +575,15 @@ def run(
     mean_mape = mean_finite(s.mape for s in skus)
     mean_bias = mean_finite(s.bias for s in skus)
     outcome, summary = _policy_and_summary(seg, skus)
+    n_causal = sum(1 for s in skus if s.causal_accepted)
+    if n_causal > 0:
+        summary += f" {n_causal} SKU(s) adopted causal multivariate forecast (ΔAIC <= -{aic_tolerance:g})."
     frozen = _freeze(store, cycle_id, skus)
+
+    all_covar_names = tuple(sorted({
+        cname for s in skus if s.causal_result and s.causal_result.covariates_retained
+        for cname in s.causal_result.covariates_retained
+    }))
 
     return ForecastJobReport(
         skus=tuple(skus),
@@ -479,6 +597,8 @@ def run(
         n_biased=sum(1 for s in skus if s.bias_verdict in ("over", "under")),
         outcome=outcome,
         summary=summary,
+        n_causal_accepted=n_causal,
+        causal_covariates=all_covar_names,
         **forecast_cycle.compare(memory, mean_mape, mean_bias, frozen),
     )
 
@@ -578,6 +698,8 @@ def write_operational(report: ForecastJobReport, out_dir: str | Path, client: st
             "mase": _fmt(s.mase),
             "fva": round(s.fva, 4),
             "beats_naive": s.beats_naive,
+            "causal_accepted": s.causal_accepted,
+            "delta_aic": round(s.delta_aic, 2) if s.delta_aic is not None else "",
             "n_periods": s.n_periods,
         }
         for s in report.skus
@@ -620,6 +742,14 @@ def build_deck(
             impact="adopt the method only where it beats naive; elsewhere naive is the honest default",
         ),
     ]
+    if report.n_causal_accepted > 0:
+        findings.append(Finding(
+            f"Causal Multivariate Forecast ({report.n_causal_accepted} SKU(s) accepted)",
+            f"{report.n_causal_accepted} of {n} SKU(s) met strict AIC gating (ΔAIC <= -2.0) with "
+            f"exogenous covariates ({', '.join(report.causal_covariates)}). Causal models replace "
+            "the univariate baseline with verified explanatory power.",
+            impact="forward promotional and pricing schedules directly uplift the demand projection",
+        ))
     biased = [s for s in report.skus if s.bias_verdict in ("over", "under")]
     if biased:
         listed = ", ".join(

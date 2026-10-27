@@ -31,7 +31,15 @@ from nosilo_core.guided import (
 )
 from src.deliverable import DataSource, Deliverable, Finding, Kpi, days, not_measured, pct, ppm
 from src.export import write_summary_csv
-from src.mcdm import UNMEASURED_CRITERION, Criterion, RankingResult, award_outcome, topsis_rank
+from src.mcdm import (
+    UNMEASURED_CRITERION,
+    Criterion,
+    MultiSourcingPlan,
+    RankingResult,
+    award_outcome,
+    solve_multi_sourcing,
+    topsis_rank,
+)
 from src.supplier_scorecard import (
     LEAD_TIME_DECLARED,
     LEAD_TIME_MEASURED,
@@ -103,6 +111,7 @@ class SourcingReport:
     # The bottom of the ranking, worst first: who the review is actually about. The
     # award names the winner; nobody schedules a meeting about the winner.
     worst_for_action: tuple[str, ...] = ()
+    multi_sourcing_plan: MultiSourcingPlan | None = None
 
 
 def _cell(value: float | None, digits: int) -> float | str:
@@ -527,7 +536,17 @@ def prepare(data_path: str, params: dict | None = None) -> dict:
         defects_col="defects",
         price_col="price" if price_col else None,
     )
-    return {"scorecards": cards, "prices": prices, "notes": tuple(notes)}
+    return {
+        "scorecards": cards,
+        "prices": prices,
+        "notes": tuple(notes),
+        "demand": params.get("demand"),
+        "capacities": params.get("capacities"),
+        "max_single_supplier_share": params.get(
+            "max_single_supplier_share", params.get("max_share_pct")
+        ),
+        "tradeoff_lambda": float(params.get("tradeoff_lambda", 0.0)),
+    }
 
 
 #: How many of the bottom of the panel get flagged for the supplier review.
@@ -553,6 +572,10 @@ def run(
     *,
     weights: dict[str, float] | None = None,
     notes: tuple[str, ...] | None = None,
+    demand: float | None = None,
+    capacities: dict[str, float] | None = None,
+    max_single_supplier_share: float | None = None,
+    tradeoff_lambda: float = 0.0,
 ) -> SourcingReport:
     """Rank the scored suppliers by TOPSIS and present the award as protected options.
 
@@ -589,6 +612,38 @@ def run(
         + f"; recommended award: {ranking.best}."
         + (f" Not measured in this data: {', '.join(unmeasured)}." if unmeasured else "")
     )
+    multi_sourcing_plan: MultiSourcingPlan | None = None
+    should_multi_source = (
+        (capacities is not None)
+        or (max_single_supplier_share is not None)
+        or (demand is not None and (capacities or max_single_supplier_share))
+    )
+    if should_multi_source and ranking.ranking:
+        if demand is None or demand <= 0:
+            total_units = sum(c.units for c in scorecards if c.units is not None and c.units > 0)
+            target_demand = float(total_units) if total_units > 0 else 100.0
+        else:
+            target_demand = float(demand)
+
+        cand_suppliers = [s for s in ranking.ranking if s in ranking.scores]
+        unit_costs = {s: float(prices.get(s, 1.0)) for s in cand_suppliers}
+        max_share = 0.70 if max_single_supplier_share is None else float(max_single_supplier_share)
+
+        multi_sourcing_plan = solve_multi_sourcing(
+            demand=target_demand,
+            suppliers=cand_suppliers,
+            unit_costs=unit_costs,
+            topsis_scores=ranking.scores,
+            capacities=capacities,
+            max_share_pct=max_share,
+            tradeoff_lambda=tradeoff_lambda,
+        )
+        summary += (
+            f" Multi-sourcing allocation: {len(multi_sourcing_plan.allocations)} supplier(s) "
+            f"allocated for {multi_sourcing_plan.total_units:,.0f} units "
+            f"(diversification premium: ${multi_sourcing_plan.diversification_premium_usd:,.2f})."
+        )
+
     return SourcingReport(
         scorecards=tuple(scorecards),
         prices=prices,
@@ -601,6 +656,7 @@ def run(
         notes=tuple(notes or ()),
         unmeasured=tuple(unmeasured),
         worst_for_action=_worst_for_action(ranking.ranking),
+        multi_sourcing_plan=multi_sourcing_plan,
     )
 
 
@@ -647,6 +703,13 @@ def verify(report: SourcingReport) -> list[str]:
     if not report.criteria:
         gap = ", ".join(report.unmeasured) if report.unmeasured else "every criterion"
         issues.append(f"no measured criterion to rank suppliers on ({gap} absent)")
+    if report.multi_sourcing_plan:
+        plan = report.multi_sourcing_plan
+        if plan.total_units <= 0:
+            issues.append("multi-sourcing total units must be positive")
+        alloc_sum = sum(a.units for a in plan.allocations)
+        if abs(alloc_sum - plan.total_units) > 1e-4:
+            issues.append(f"multi-sourcing allocations sum ({alloc_sum}) does not match demand ({plan.total_units})")
     return issues
 
 
@@ -692,7 +755,21 @@ def write_operational(report: SourcingReport, out_dir: str | Path, client: str =
         }
         for c in report.scorecards
     ]
-    return {"csv": write_summary_csv(rows, d / "supplier_scorecards.csv")}
+    out_files = {"csv": write_summary_csv(rows, d / "supplier_scorecards.csv")}
+    if report.multi_sourcing_plan:
+        plan_rows = [
+            {
+                "supplier": a.supplier,
+                "units": round(a.units, 2),
+                "share_pct": round(a.share_pct, 4),
+                "unit_cost": round(a.unit_cost, 2),
+                "total_cost": round(a.total_cost, 2),
+                "topsis_score": round(a.topsis_score, 4),
+            }
+            for a in report.multi_sourcing_plan.allocations
+        ]
+        out_files["multi_sourcing_csv"] = write_summary_csv(plan_rows, d / "multi_sourcing_plan.csv")
+    return out_files
 
 
 def build_deck(
@@ -765,6 +842,15 @@ def build_deck(
             f"rests on the criteria that actually varied.",
             impact="supply data that actually varies before treating this as a full "
                     "confirmation of the award",
+        ))
+    if report.multi_sourcing_plan:
+        plan = report.multi_sourcing_plan
+        alloc_desc = ", ".join(f"{a.supplier}: {a.units:,.0f} u ({a.share_pct:.1%})" for a in plan.allocations)
+        findings.append(Finding(
+            "Multi-sourcing LP Allocation Plan",
+            f"Demand of {plan.total_units:,.0f} units distributed across {len(plan.allocations)} suppliers: {alloc_desc}. "
+            f"Weighted TOPSIS score: {plan.weighted_topsis_score:.3f}.",
+            impact=f"Diversification premium: ${plan.diversification_premium_usd:,.2f} ({plan.diversification_premium_pct:+.1%}) vs single-source winner {plan.single_source_winner}",
         ))
     otifs = [c.otif for c in report.scorecards if c.otif is not None]
     if otifs:
