@@ -34,6 +34,7 @@ from src.forecasting import (
 )
 from src.horizon import DECLARABLES as HORIZON_DECLARABLES
 from src.horizon import cap_policy, capped_cycle_stock, periods_until
+from src.perishables import bound_order_quantity_by_expiry
 from src.policies import continuous_review_sq, periodic_review_rs
 from src.risk_period import provisional_cover
 from src.safety_stock import tune_service_level
@@ -359,6 +360,12 @@ class SkuRecommendation:
     #: cuando no. Un tope puede bajar el objetivo sin liberar capital (el ciclo ya
     #: cabia debajo del restante), y ahi este campo tiene que quedar vacio.
     cycle_investment_before_horizon: float | None = None
+    # Shelf-life / perishable horizon (src/perishables.py)
+    days_to_expiry: float | None = None
+    perishable_verdict: str | None = None
+    spoilage_risk_units: float = 0.0
+    spoilage_risk_usd: float = 0.0
+    order_quantity_before_shelf_life: float | None = None
 
 
 @dataclass(frozen=True)
@@ -1135,6 +1142,32 @@ def run(
             )
             if cycle_previo <= cycle_units:  # el tope no libero capital en este SKU
                 cycle_previo = None
+        # Perishable / shelf life bounding (src/perishables.py)
+        shelf_life = meta.days_to_expiry
+        perish_verdict = None
+        spoilage_units = 0.0
+        spoilage_usd = 0.0
+        q_before_shelf_life = None
+
+        if shelf_life is not None and shelf_life > 0 and es_sq and order_quantity is not None and order_quantity > 0:
+            daily_d = inputs["mean_demand_per_period"] * (periods_per_year / 365.0)
+            p_lim = bound_order_quantity_by_expiry(
+                unconstrained_q=order_quantity,
+                reorder_point=reorder,
+                daily_demand=daily_d,
+                shelf_life_days=shelf_life,
+                unit_cost=meta.mean_unit_cost,
+                moq=moq if rule else None,
+                order_multiple=multiple if rule else None,
+            )
+            perish_verdict = p_lim.verdict
+            spoilage_units = p_lim.spoilage_risk_units
+            spoilage_usd = p_lim.spoilage_risk_usd
+            if p_lim.is_constrained and p_lim.constrained_q < order_quantity:
+                q_before_shelf_life = order_quantity
+                order_quantity = p_lim.constrained_q
+                cycle_units = order_quantity / 2.0
+
         cycle_inv = cycle_units * meta.mean_unit_cost
         ss_inv = ss * meta.mean_unit_cost
         due_now, qty_now = _order_now(kind, position, reorder, order_quantity, order_up_to_final)
@@ -1174,6 +1207,11 @@ def run(
                 cycle_investment_before_horizon=(
                     None if cycle_previo is None else cycle_previo * meta.mean_unit_cost
                 ),
+                days_to_expiry=shelf_life,
+                perishable_verdict=perish_verdict,
+                spoilage_risk_units=spoilage_units,
+                spoilage_risk_usd=spoilage_usd,
+                order_quantity_before_shelf_life=q_before_shelf_life,
             )
         )
         items.append(InventoryItem(product_id=pid, order_quantity=2.0 * cycle_units, safety_stock=ss, unit_cost=meta.mean_unit_cost))

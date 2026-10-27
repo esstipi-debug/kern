@@ -23,6 +23,7 @@ class ProductMetadata:
     # lot choice (src.constraints.cheapest_feasible_lot).
     minimum_order_quantity: float = 0.0
     order_multiple: float = 0.0
+    days_to_expiry: float | None = None
 
 
 def load_demand_frame(path: str | Path) -> pd.DataFrame:
