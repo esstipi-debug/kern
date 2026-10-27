@@ -205,6 +205,8 @@ _METHOD_RULES: tuple[tuple[tuple[str, ...], str, str], ...] = (
     (("leadership", "chain", "collaborative"), "chain_model", "CHAIN leadership"),
     (("resilience", "risk", "disruption"), "supply_chain_resilience", "risk / resilience"),
     (("sustainab", "carbon", "circular"), "sustainable_procurement", "sustainable logistics"),
+    (("hierarch", "reconciliation", "mint"), "temporal_hierarchy", "hierarchical reconciliation / MinT"),
+    (("quantile", "pinball", "wspl"), "forecast_uncertainty_communication", "forecast uncertainty / quantiles"),
 )
 
 _MIN_INFERRED_CONFIDENCE = 0.75
@@ -270,6 +272,8 @@ _ACRONYMS: dict[str, tuple[str, ...]] = {
     "sop": ("sales and operations planning", "s&op"),
     "otif": ("on time in full",),
     "moq": ("minimum order quantity",),
+    "mint": ("minimum trace",),
+    "wspl": ("weighted scaled pinball loss",),
 }
 
 
