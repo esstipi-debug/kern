@@ -1,7 +1,6 @@
 """Integration test: perishable / shelf-life bounding in inventory_optimization."""
 
 import pandas as pd
-import pytest
 
 from jobs.inventory_optimization import run
 

@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from src.causal_forecasting import CausalForecastResult, fit_causal_forecast
+from src.causal_forecasting import fit_causal_forecast
 
 
 def test_promotional_covariate_accepted_by_aic():

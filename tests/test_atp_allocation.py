@@ -1,6 +1,7 @@
 """Tests for src/atp_allocation.py (Multi-Level BOM & Capacity Rationing)."""
 
 import pytest
+
 from src.atp_allocation import (
     BomGraph,
     Tier1Contract,

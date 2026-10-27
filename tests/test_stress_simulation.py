@@ -1,9 +1,7 @@
 """Tests for src/stress_simulation.py (180-Day Counterfactual Stress Engine)."""
 
-import pytest
 from src.stress_simulation import (
     StressSimulationConfig,
-    StressSimulationComparison,
     run_stress_simulation,
 )
 

@@ -1,11 +1,12 @@
 """Tests for sourcing_job multi-sourcing LP integration with MCDM TOPSIS."""
 
 from pathlib import Path
+
 import pandas as pd
 import pytest
 
 from jobs import sourcing_job as srcj
-from src.mcdm import MultiSourcingPlan, solve_multi_sourcing, SupplierAllocation
+from src.mcdm import MultiSourcingPlan
 
 
 def _deliveries_df() -> pd.DataFrame:

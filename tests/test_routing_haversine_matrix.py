@@ -3,14 +3,11 @@
 import pytest
 
 from src.logistics.routing import (
-    DEFAULT_CIRCUITY_FACTOR,
     Depot,
     Stop,
     clarke_wright_savings,
     haversine_distance,
     pair_distance,
-    route_distance,
-    sweep,
 )
 
 

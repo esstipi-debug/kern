@@ -1,7 +1,6 @@
 """Tests for vehicle_routing_job distance matrix, geodesic calculation, and engine wiring."""
 
 import pandas as pd
-import pytest
 
 from jobs import vehicle_routing_job as vrj
 from src.logistics.routing import haversine_distance, pair_distance

@@ -1,8 +1,8 @@
 """Unit tests for src/perishables.py — perishable replenishment and shelf-life bounds."""
 
 import pytest
+
 from src.perishables import (
-    PerishableLimit,
     bound_order_quantity_by_expiry,
     effective_shelf_life,
 )

@@ -1,6 +1,7 @@
 """Tests for src/campaign_simulator.py (Marketing Campaign Stockout & Dual LP)."""
 
 import pytest
+
 from src.campaign_simulator import (
     ScheduledReplenishment,
     simulate_campaign_feasibility,

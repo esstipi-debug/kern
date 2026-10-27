@@ -1,6 +1,5 @@
 """Tests for src/push_radar.py (Push Inventory Radar & Clearance Pricing)."""
 
-import pytest
 from src.push_radar import (
     InventoryItemProfile,
     evaluate_push_opportunities,

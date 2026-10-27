@@ -1,12 +1,12 @@
 """Tests for forecast_job causal forecasting integration and strict AIC gating."""
 
 from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from jobs import forecast_job as fj
-from src.causal_forecasting import CausalForecastResult, fit_causal_forecast
 
 
 @pytest.fixture(autouse=True)

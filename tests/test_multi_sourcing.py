@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.mcdm import MultiSourcingPlan, SupplierAllocation, solve_multi_sourcing
+from src.mcdm import solve_multi_sourcing
 
 
 def test_dual_sourcing_split_70_30():
