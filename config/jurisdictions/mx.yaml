@@ -1,0 +1,27 @@
+code: mx
+country_name: México
+
+transport:
+  statutory_citation: "NOM-012-SCT-2-2017 (Pesos y Dimensiones) & NOM-087-SCT-2-2017 (Horas Conducción)"
+  max_standard_gvw_kg: 46500.0       # T3-S2 en camino ET/A
+  max_payload_kg: 27000.0
+  max_high_capacity_gvw_kg: 66500.0  # Full T3-S2-R4 autorregulado
+  max_continuous_driving_hours: 5.0
+  mandatory_break_minutes: 30.0
+  max_daily_driving_hours: 14.0
+  min_daily_rest_hours: 8.0
+
+customs:
+  statutory_manifest_name: "Complemento Carta Porte (SAT / CFDI)"
+  manifest_mandatory_before_dispatch: true
+  standard_customs_clearance_days: 2.0
+  sanitary_inspection_buffer_days: 5.0
+  authority_name: "COFEPRIS / SENASICA / SAT Aduanas"
+
+financial:
+  benchmark_interest_rate: 0.105
+  default_annual_holding_cost_rate: 0.28
+  local_currency: MXN
+
+cold_chain_standard: "NOM-251-SSA1-2009 (Prácticas de higiene y refrigeración)"
+hazmat_standard: "NOM-010-SCT2/2009 & NOM-002-SCT/2011"

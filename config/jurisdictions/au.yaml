@@ -1,0 +1,27 @@
+code: au
+country_name: Australia
+
+transport:
+  statutory_citation: "Heavy Vehicle National Law (HVNL) - General Mass Limits (GML)"
+  max_standard_gvw_kg: 42500.0       # 6-axle semi GML
+  max_payload_kg: 26000.0
+  max_high_capacity_gvw_kg: 62500.0  # B-Double GML
+  max_continuous_driving_hours: 5.25
+  mandatory_break_minutes: 15.0
+  max_daily_driving_hours: 12.0
+  min_daily_rest_hours: 7.0
+
+customs:
+  statutory_manifest_name: "Integrated Cargo System (ICS / ABF)"
+  manifest_mandatory_before_dispatch: true
+  standard_customs_clearance_days: 1.5
+  sanitary_inspection_buffer_days: 4.0
+  authority_name: "DAFF (Biosecurity) / ABF"
+
+financial:
+  benchmark_interest_rate: 0.0435
+  default_annual_holding_cost_rate: 0.19
+  local_currency: AUD
+
+cold_chain_standard: "FSANZ Standard 3.2.2 (Food Safety Practices)"
+hazmat_standard: "Australian Dangerous Goods Code (ADG 7.8) Chapter 9.2"

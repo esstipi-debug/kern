@@ -1,0 +1,17 @@
+# Per-jurisdiction pricing-guardrail profile: Australia
+# Enforces Australian Consumer Law (ACL) and ACCC two-price comparison guidelines.
+
+market: au
+
+discount_reference_gate: soft
+discount_tolerance_pct: 0.5
+map_alert_label: "Price monitoring observation"
+
+legal_basis: >
+  Competition and Consumer Act 2010 (Cth) Schedule 2 (Australian Consumer Law, s. 29)
+  -- False or misleading representations about price. Resale Price Maintenance (s. 48)
+  is per se illegal; alerts remain strictly internal monitoring observations.
+
+notes: >
+  discount_reference_gate is "soft" -- computes prior lowest price, records evidence trail,
+  and warns if discount is calculated against an inflated reference price.

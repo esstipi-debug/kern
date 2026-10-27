@@ -1,0 +1,27 @@
+code: ca
+country_name: Canada
+
+transport:
+  statutory_citation: "National Safety Code (NSC) Standard 9 & TAC Weights & Dimensions MOU"
+  max_standard_gvw_kg: 39500.0       # Standard 5-axle semi
+  max_payload_kg: 24000.0
+  max_high_capacity_gvw_kg: 63500.0  # B-Train 8-axle
+  max_continuous_driving_hours: 13.0 # 13h driving window
+  mandatory_break_minutes: 30.0
+  max_daily_driving_hours: 13.0
+  min_daily_rest_hours: 10.0
+
+customs:
+  statutory_manifest_name: "ACI / eManifest (CBSA)"
+  manifest_mandatory_before_dispatch: true
+  standard_customs_clearance_days: 1.0
+  sanitary_inspection_buffer_days: 2.5
+  authority_name: "CFIA / CBSA CARM"
+
+financial:
+  benchmark_interest_rate: 0.0425
+  default_annual_holding_cost_rate: 0.19
+  local_currency: CAD
+
+cold_chain_standard: "CFIA Safe Food for Canadians Regulations (SFCR)"
+hazmat_standard: "Transportation of Dangerous Goods (TDG) Regulations"

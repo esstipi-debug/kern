@@ -1,0 +1,17 @@
+# Per-jurisdiction pricing-guardrail profile: Brasil
+# Enforces Código de Defesa do Consumidor (CDC) and PROCON pricing transparency.
+
+market: br
+
+discount_reference_gate: soft
+discount_tolerance_pct: 0.5
+map_alert_label: "Alerta de dispersao de preco"
+
+legal_basis: >
+  Lei Federal nº 8.078/1990 (Código de Defesa do Consumidor, Art. 37) contra
+  propaganda enganosa e maquiagem de preços ("metade do dobro" em promoções).
+  Monitoramento estrito de preços prévios para instrução probatória em fiscalizações do PROCON.
+
+notes: >
+  discount_reference_gate is "soft" -- gera trilha de auditoria completa com
+  o menor preço praticado nos 30 dias anteriores à liquidação.

@@ -1,0 +1,17 @@
+# Per-jurisdiction pricing-guardrail profile: Canada
+# Enforces Competition Act Ordinary Selling Price (OSP) guidance.
+
+market: ca
+
+discount_reference_gate: soft
+discount_tolerance_pct: 0.5
+map_alert_label: "MAP notification"
+
+legal_basis: >
+  Competition Act (R.S.C., 1985, c. C-34) s. 74.01 -- Ordinary Selling Price
+  (OSP) representations. Disclosing comparison prices requires genuine prior
+  transaction history (volume test or time test) to avoid misleading advertising.
+
+notes: >
+  discount_reference_gate is "soft" -- warns and builds evidence trail without
+  hard blocking, keeping compliance records aligned with Competition Bureau guidelines.

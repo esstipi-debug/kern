@@ -1,0 +1,27 @@
+code: br
+country_name: Brasil
+
+transport:
+  statutory_citation: "Resolução CONTRAN nº 882/2021 & Lei nº 13.103/2015 (Lei do Motorista)"
+  max_standard_gvw_kg: 45000.0       # Cavalo 6x2 + Semirreboque 3 eixos (PBTC)
+  max_payload_kg: 27000.0
+  max_high_capacity_gvw_kg: 57000.0  # Bitrem 7 eixos (57t) / Rodotrem 74t c/ AET
+  max_continuous_driving_hours: 5.5
+  mandatory_break_minutes: 30.0
+  max_daily_driving_hours: 11.0
+  min_daily_rest_hours: 11.0
+
+customs:
+  statutory_manifest_name: "MDF-e / NF-e (Manifesto Eletrônico de Documentos Fiscais)"
+  manifest_mandatory_before_dispatch: true
+  standard_customs_clearance_days: 3.0
+  sanitary_inspection_buffer_days: 6.0
+  authority_name: "ANVISA / MAPA / Receita Federal do Brasil"
+
+financial:
+  benchmark_interest_rate: 0.1075
+  default_annual_holding_cost_rate: 0.30
+  local_currency: BRL
+
+cold_chain_standard: "ANVISA RDC nº 216/2004 & RDC nº 331/2019"
+hazmat_standard: "ANTT Resolução nº 5.998/2022"
