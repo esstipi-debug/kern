@@ -25,6 +25,7 @@ prints a settlement repeats that framing.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 from src.constraints import cheapest_feasible_lot, feasible_lots, feasible_neighbours, lot_rule
@@ -32,6 +33,7 @@ from src.eoq import PriceBreak, compute_eoq, compute_eoq_volume_discount
 from src.fill_rate import fill_rate_from_safety_stock, normal_loss_standard
 from src.financial_kpis import days_inventory_outstanding
 from src.logistics.modes import FreightRates, ModeSelection, Shipment, select_mode
+from src.perishables import PerishableLimit, bound_order_quantity_by_expiry, effective_shelf_life
 from src.safety_stock import safety_stock, service_level_factor
 
 HAT_COMPRADOR = "comprador"
@@ -39,13 +41,15 @@ HAT_PLANNER = "planner"
 HAT_CFO = "cfo"
 HAT_COMERCIAL = "comercial"
 HAT_TRANSPORTE = "transporte"
+HAT_MERMA = "merma"
 #: Appended, never inserted: `src.cross_impact.CrossImpact.rows` and
 #: `src.hat_council.tension_map`'s pair order are both defined as "HAT_KEYS
-#: order", so putting `transporte` anywhere but last would silently reorder
-#: every existing deliverable.
+#: order", so putting `transporte` and `merma` anywhere but last would silently
+#: reorder every existing deliverable.
 HAT_KEYS: tuple[str, ...] = (
-    HAT_COMPRADOR, HAT_PLANNER, HAT_CFO, HAT_COMERCIAL, HAT_TRANSPORTE,
+    HAT_COMPRADOR, HAT_PLANNER, HAT_CFO, HAT_COMERCIAL, HAT_TRANSPORTE, HAT_MERMA,
 )
+HAT_ORDER: tuple[str, ...] = HAT_KEYS
 
 # D1: the settlement domain is a 2D grid, anchored on closed-form quantities.
 SL_GRID: tuple[float, ...] = (0.90, 0.925, 0.95, 0.975, 0.99)
@@ -112,6 +116,11 @@ HATS: dict[str, Hat] = {
         objetivo="minimizar el flete por unidad movida (llenar el camion sin derramarlo)",
         kpis=("flete por unidad", "flete anual", "envios por anio"),
         tool_keys=frozenset({"transportation", "cost_to_serve"}), mode_key="scm"),
+    HAT_MERMA: Hat(
+        key=HAT_MERMA, label="Merma",
+        objetivo="minimizar el costo y riesgo de merma por caducidad antes del consumo",
+        kpis=("spoilage_risk_usd", "spoilage_units", "max_absorbable_units"),
+        tool_keys=frozenset({"inventory_optimization", "fefo"}), mode_key="inventory"),
 }
 
 
@@ -191,11 +200,43 @@ class FreightProfile:
 
 
 @dataclass(frozen=True)
+class PerishableProfile:
+    """The physical shelf life and channel constraints that make `merma` evaluable.
+
+    Declared per SKU by the operator -- never derived from demand.
+    """
+
+    shelf_life_days: float
+    channel_gating_pct: float = 0.0
+    transit_lead_time_days: float = 0.0
+    spoilage_tolerance_units: float = 0.0
+
+    def __post_init__(self) -> None:
+        if self.shelf_life_days <= 0:
+            raise ValueError("shelf_life_days must be > 0")
+        if not (0.0 <= self.channel_gating_pct < 1.0):
+            raise ValueError(f"channel_gating_pct must be in [0, 1), got {self.channel_gating_pct}")
+        if self.transit_lead_time_days < 0:
+            raise ValueError(f"transit_lead_time_days must be >= 0, got {self.transit_lead_time_days}")
+        if self.spoilage_tolerance_units < 0:
+            raise ValueError(f"spoilage_tolerance_units must be >= 0, got {self.spoilage_tolerance_units}")
+
+    @property
+    def effective_shelf_life_days(self) -> float:
+        return effective_shelf_life(
+            self.shelf_life_days,
+            channel_gating_pct=self.channel_gating_pct,
+            transit_lead_time_days=self.transit_lead_time_days,
+        )
+
+
+@dataclass(frozen=True)
 class HatInputs:
     """One SKU's decision inputs. `price_breaks_assumed` marks the D8
     synthetic default so every output can carry the "(assumed)" label.
-    `freight` is None on a SKU nobody declared transport facts for -- see
-    `evaluable_hats`, which is what turns that None into four areas."""
+    `freight` is None on a SKU nobody declared transport facts for.
+    `perishable` is None on a SKU nobody declared shelf life for -- see
+    `evaluable_hats`, which turns those Nones into excluded areas."""
 
     sku: str
     annual_demand: float
@@ -213,6 +254,7 @@ class HatInputs:
     #: what jobs/inventory_optimization.py ships, so the equivalence holds.
     minimum_order_quantity: float = 0.0
     order_multiple: float = 0.0
+    perishable: PerishableProfile | None = None
 
     def __post_init__(self) -> None:
         if self.annual_demand <= 0:
@@ -274,13 +316,19 @@ def evaluable_hats(inputs: HatInputs) -> tuple[str, ...]:
     (the same call `src.flow_map` makes when it reports an edge UNMEASURABLE
     rather than assuming a transit time).
 
+    Similarly, `merma` drops out when no `PerishableProfile` was declared,
+    because inventing a shelf life would turn a dry-good SKU into an expiring
+    item or vice-versa.
+
     Callers must not just iterate this and move on: whatever they render has to
-    NAME the excluded area. Four hats agreeing quietly is indistinguishable from
-    five hats agreeing, and only one of those is true.
+    NAME the excluded area.
     """
+    excluded = set()
     if inputs.freight is None:
-        return tuple(k for k in HAT_KEYS if k != HAT_TRANSPORTE)
-    return HAT_KEYS
+        excluded.add(HAT_TRANSPORTE)
+    if inputs.perishable is None:
+        excluded.add(HAT_MERMA)
+    return tuple(k for k in HAT_KEYS if k not in excluded)
 
 
 def parse_weights(
@@ -369,9 +417,11 @@ def build_inputs(
     freight: FreightProfile | None = None,
     minimum_order_quantity: float = 0.0,
     order_multiple: float = 0.0,
+    perishable: PerishableProfile | None = None,
 ) -> HatInputs:
     """Assemble one SKU's inputs; `price_breaks=None` -> D8 synthetic default.
     `freight=None` leaves `transporte` off the table (no synthetic default).
+    `perishable=None` leaves `merma` off the table (no synthetic default).
     `minimum_order_quantity` / `order_multiple` are the supplier's terms; 0 = none."""
     assumed = price_breaks is None
     breaks = (
@@ -384,6 +434,7 @@ def build_inputs(
         price_breaks=breaks, price_breaks_assumed=assumed, config=config,
         freight=freight,
         minimum_order_quantity=minimum_order_quantity, order_multiple=order_multiple,
+        perishable=perishable,
     )
 
 
@@ -661,11 +712,68 @@ def _u_transporte(inputs: HatInputs, cand: Candidate) -> float:
     return -annual_freight(inputs, cand)
 
 
+def perishable_limit(inputs: HatInputs, cand: Candidate) -> PerishableLimit:
+    """Perishable boundary evaluation for a candidate (Q, SL).
+
+    Raises ValueError if no PerishableProfile was declared.
+    """
+    p = inputs.perishable
+    if p is None:
+        raise ValueError(
+            f"{inputs.sku}: merma is not evaluable -- no PerishableProfile declared. "
+            "It needs shelf_life_days, and there is no default for it: "
+            "shelf life cannot be derived from a demand series. Use "
+            "evaluable_hats(inputs) to find out before asking for this KPI.")
+    eff_life = p.effective_shelf_life_days
+    daily_d = inputs.annual_demand / 365.0
+    rop = inputs.mean_weekly * inputs.lead_time_weeks + ss_units(inputs, cand.service_level)
+    return bound_order_quantity_by_expiry(
+        unconstrained_q=cand.order_quantity,
+        reorder_point=rop,
+        daily_demand=daily_d,
+        shelf_life_days=eff_life,
+        unit_cost=unit_cost_at(inputs, cand.order_quantity),
+        moq=inputs.minimum_order_quantity if inputs.minimum_order_quantity > 0 else None,
+        order_multiple=inputs.order_multiple if inputs.order_multiple > 0 else None,
+    )
+
+
+def spoilage_units_at(inputs: HatInputs, cand: Candidate) -> float:
+    """Excess units that will spoil if candidate (Q, SL) is ordered."""
+    p_lim = perishable_limit(inputs, cand)
+    if cand.order_quantity > p_lim.max_absorbable_units:
+        return cand.order_quantity - p_lim.max_absorbable_units
+    return 0.0
+
+
+def spoilage_risk_usd_at(inputs: HatInputs, cand: Candidate) -> float:
+    """USD exposure of spoiled units at candidate's unit cost."""
+    units = spoilage_units_at(inputs, cand)
+    return units * unit_cost_at(inputs, cand.order_quantity)
+
+
+def _u_merma(inputs: HatInputs, cand: Candidate) -> float:
+    """Utility in [0, 1] for the merma hat.
+
+    1.0 = zero spoilage (order fits within absorption capacity).
+    Drops sharply towards 0.0 as spoilage exceeds tolerance.
+    """
+    p_lim = perishable_limit(inputs, cand)
+    spoilage = max(0.0, cand.order_quantity - p_lim.max_absorbable_units)
+    tol = inputs.perishable.spoilage_tolerance_units if inputs.perishable else 0.0
+    if spoilage <= tol:
+        return 1.0
+    excess = spoilage - tol
+    ref_units = max(1.0, p_lim.max_absorbable_units)
+    rel_penalty = excess / ref_units
+    return max(0.0, min(1.0, math.exp(-5.0 * rel_penalty)))
+
+
 def utilities_raw(
     inputs: HatInputs, candidates: tuple[Candidate, ...],
 ) -> dict[str, tuple[float, ...]]:
-    """Raw utilities per hat, aligned with `candidates`. The returned dict has a
-    `transporte` key only when one is evaluable -- its keys are `evaluable_hats`.
+    """Raw utilities per hat, aligned with `candidates`. The returned dict has
+    `transporte` and `merma` keys only when evaluable -- its keys are `evaluable_hats`.
 
     Planner (spec sec 4): candidates below sl_target get a FINITE penalty strictly
     below every valid candidate, ordered by deficit:
@@ -698,6 +806,8 @@ def utilities_raw(
     }
     if inputs.freight is not None:
         out[HAT_TRANSPORTE] = tuple(_u_transporte(inputs, c) for c in candidates)
+    if inputs.perishable is not None:
+        out[HAT_MERMA] = tuple(_u_merma(inputs, c) for c in candidates)
     return out
 
 
@@ -777,6 +887,20 @@ def hat_kpis(inputs: HatInputs, hat_key: str, cand: Candidate) -> dict[str, floa
             "shipments_per_year": inputs.annual_demand / cand.order_quantity,
             "transit_days": sel.transit_days,
         }
+    if hat_key == HAT_MERMA:
+        # Raises when no perishable profile was declared -- never zero spoilage,
+        # which would read as "this item never expires" instead of "nobody measured it".
+        p_lim = perishable_limit(inputs, cand)
+        spoilage_u = max(0.0, cand.order_quantity - p_lim.max_absorbable_units)
+        spoilage_usd = spoilage_u * c_q
+        eff_life = inputs.perishable.effective_shelf_life_days if inputs.perishable else 0.0
+        return {
+            "spoilage_risk_usd": spoilage_usd,
+            "spoilage_usd": spoilage_usd,
+            "spoilage_units": spoilage_u,
+            "max_absorbable_units": p_lim.max_absorbable_units,
+            "effective_shelf_life_days": eff_life,
+        }
     raise ValueError(f"unknown hat: {hat_key}")
 
 
@@ -786,6 +910,7 @@ _HEADLINE = {
     HAT_CFO: "capital_charge_usd",
     HAT_COMERCIAL: "fill_rate",
     HAT_TRANSPORTE: "freight_per_unit_usd",
+    HAT_MERMA: "spoilage_risk_usd",
 }
 
 

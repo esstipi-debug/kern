@@ -6,6 +6,7 @@ from src.cross_impact import CrossImpact, ImpactRow, measure
 from src.hats import (
     HAT_COMPRADOR,
     HAT_KEYS,
+    HAT_MERMA,
     HAT_TRANSPORTE,
     Candidate,
     FreightProfile,
@@ -49,15 +50,15 @@ def test_one_row_per_evaluable_hat_in_hat_keys_order(inputs):
     assert all(isinstance(r, ImpactRow) for r in ci.rows)
     # The area with no row is DECLARED, not merely absent: a caller that counts
     # rows to count objections has to be able to see what it is not counting.
-    assert ci.excluded_hats == (HAT_TRANSPORTE,)
+    assert ci.excluded_hats == (HAT_TRANSPORTE, HAT_MERMA)
     assert set(r.hat_key for r in ci.rows) | set(ci.excluded_hats) == set(HAT_KEYS)
 
 
 def test_a_declared_freight_profile_puts_transporte_on_the_table(inputs_con_flete):
     ci = measure(inputs_con_flete, Candidate(200.0, 0.95), Candidate(400.0, 0.95),
                  HAT_COMPRADOR)
-    assert tuple(r.hat_key for r in ci.rows) == HAT_KEYS
-    assert ci.excluded_hats == ()
+    assert tuple(r.hat_key for r in ci.rows) == evaluable_hats(inputs_con_flete)
+    assert ci.excluded_hats == (HAT_MERMA,)
     row = next(r for r in ci.rows if r.hat_key == HAT_TRANSPORTE)
     assert row.kpi_name == "freight_per_unit_usd"
     # Doubling the order halves the shipments; freight per unit cannot rise here.

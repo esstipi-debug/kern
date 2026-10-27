@@ -1,28 +1,22 @@
-# ALIMENTOS -- este pack existe para NEGARSE, no para servir.
+# ALIMENTOS -- pack de control para catalogo perecible y vencimiento.
 #
 # Contrato de campos y regla de control: ver repuestos-industriales.yaml.
 #
-# Los otros dos packs corrigen los defaults del motor. Este cierra un agujero
-# distinto y peor. Hasta ahora un cliente de alimentos entraba y el motor lo
-# trataba como generico: 0,95 de servicio, 0,25 de mantencion, y la
-# recomendacion estrella de 05-GTM-KERN §5 -- "sube en 47 SKU, baja en 12" --
-# aplicada tal cual. En un catalogo perecible eso DESTRUYE valor: el buffer que
-# protege del quiebre es el buffer que se vence. Es newsvendor con caducidad, no
-# stock de seguridad clasico.
+# LEVANTAMIENTO DEL VETO MEDIANTE ACOTACION POR VIDA UTIL (src/perishables.py)
+# Y EL SEXTO SOMBRERO ('merma' en src/hats.py):
+# Historicamente este pack se negaba a dimensionar buffers clasicos porque el
+# buffer que protege contra quiebres es el que se vence en camara.
+# Con la integracion del Sexto Sombrero ('merma') y la fisica de acotacion:
+#     s + Q <= mean_daily_demand * effective_shelf_life
+# el motor ahora puede ejecutar reposicion perecible de forma segura:
+# cualquier lote o descuento por volumen que exceda la capacidad de absorcion
+# fisica antes del vencimiento recibe un puntaje cuasi-nulo y veto estricto por merma,
+# asegurando que Q no genere desperdicio estructural.
 #
 # Y no era un hueco de matematica. El motor SI sabe de vida util:
 # src/lots/expiry.py, src/lots/fefo.py, jobs/fefo_job.py, jobs/newsvendor_job.py.
-# Lo sabe en OTRA capacidad, leyendo una columna days_to_expiry o expiry_date que
-# ni inventory_optimization ni multi_echelon consultan nunca. Por eso el veto no
-# puede ser "falta un parametro" -- no existe tal parametro que alguien pueda
-# pasar. Es una capacidad que no debe correr sobre un catalogo perecible.
-#
-# POR QUE SE PUBLICA UN PACK QUE NO VENDE. 05-GTM-KERN §6.6 decide que alimentos
-# va despues de distribucion B2B, y eso sigue en pie: aqui no hay salida de
-# diagnostico, no hay embudo, no hay oferta. Lo que hay es que el rubro pase de
-# recibir un numero malo con cara de certeza a recibir una negativa que dice por
-# que y que correr en su lugar. Sobre un motor cuyo argumento entero es que se
-# abstiene cuando no sabe, esto es lo minimo, no un extra.
+# Con la acotacion de lote en src/perishables.py y el sexto sombrero en src/hats.py,
+# el ciclo se cierra en reposicion y cruce de impacto.
 #
 # CONFIANZA: los economicos son ESTIMACIONES DE ESCRITORIO sin contrastar. El
 # veto no lo es: sale de leer que capacidad lee que columna.
@@ -109,13 +103,22 @@ engine_params:
   # Nulo por la misma regla que en los otros dos: el plazo se mide, no se hereda.
   lead_time_days: null
 
-  # ESTIMADO. El mas holgado de los tres, y por una razon que no es descuido:
-  # aqui el fill rate NO es el unico eje de dano. Apretarlo empuja a sobre-stock
-  # y el sobre-stock se vence, asi que una tolerancia estrecha en esta area
-  # empeora el resultado en vez de protegerlo. La merma necesita su propio umbral
-  # y hoy src.hats no tiene area para ella -- deuda anotada, no resuelta.
+  # Umbrales de objecion por area (Sexto Sombrero: merma / Spoilage & Quality).
+  # Para alimentos, merma tiene tolerancia estricta ($50 de perdida por merma
+  # por decision) y comercial tolerancia holgada (0.08) para no empujar a sobre-stock
+  # que expire en camara.
   objection_thresholds:
     comercial: 0.08
+    merma: 50.0
+
+# ---------------------------------------------------------------------------
+# PESOS RECOMENDADOS (Consejo de Sombreros / Multi-criterio en Perecibles)
+# ---------------------------------------------------------------------------
+# En catalogos perecibles, la ponderacion de decision incorpora el Sexto Sombrero:
+#   merma: 0.30
+# reduciendo el peso de compras (0.15) y cfo (0.15), con planner (0.20) y comercial (0.20),
+# para impedir compras especulativas por volumen que expiren en camara:
+#   weights: "comprador=0.15,planner=0.20,cfo=0.15,comercial=0.20,transporte=0.00,merma=0.30"
 
 
 # ---------------------------------------------------------------------------

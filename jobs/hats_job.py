@@ -65,6 +65,7 @@ from src.hats import (
     FreightProfile,
     HatConfig,
     HatInputs,
+    PerishableProfile,
     baseline_plan,
     build_inputs,
     decision_cost,
@@ -91,6 +92,8 @@ _MOQ_COLS = ("moq", "minimum_order_quantity", "min_order_qty", "min_order_quanti
              "cantidad_minima", "pedido_minimo", "lote_minimo")
 _MULTIPLE_COLS = ("order_multiple", "case_pack", "pack_size", "units_per_case",
                   "multiplo", "multiplo_de_pedido", "unidades_por_caja")
+_EXPIRY_COLS = ("days_to_expiry", "days_until_expiry", "shelf_life_days", "shelf_life",
+                "vida_util_dias", "dias_para_vencer", "dias_vencimiento")
 
 _POLICY_NOTE = "los pesos son politica del operador, no consenso objetivo"
 
@@ -209,6 +212,7 @@ def prepare(data_path: str, params: dict | None = None) -> dict:
     weight = _pick(df, params.get("weight_col"), _WEIGHT_COLS)
     moq_col = _pick(df, params.get("moq_col"), _MOQ_COLS)
     multiple_col = _pick(df, params.get("multiple_col"), _MULTIPLE_COLS)
+    expiry_col = _pick(df, params.get("expiry_col"), _EXPIRY_COLS)
     missing = [n for n, c in (("product_id", prod), ("quantity", qty),
                               ("unit_cost", cost), ("lead_time_days", lead)) if c is None]
     if missing:
@@ -250,6 +254,24 @@ def prepare(data_path: str, params: dict | None = None) -> dict:
                     rates=freight_rates,
                     max_transit_days=max_transit,
                 )
+        shelf_days = None
+        if expiry_col is not None:
+            e = pd.to_numeric(g[expiry_col], errors="coerce").dropna()
+            e = e[e > 0]
+            if len(e):
+                shelf_days = float(e.mean())
+        elif params.get("shelf_life_days") is not None:
+            shelf_days = float(params["shelf_life_days"])
+
+        perishable = None
+        if shelf_days is not None and shelf_days > 0:
+            channel_gating = float(params.get("channel_gating_pct", 0.0))
+            transit_lead = float(params.get("transit_lead_time_days", 0.0))
+            perishable = PerishableProfile(
+                shelf_life_days=shelf_days,
+                channel_gating_pct=channel_gating,
+                transit_lead_time_days=transit_lead,
+            )
         inputs.append(build_inputs(
             sku=pid,
             annual_demand=config.periods_per_year * mu_w,
@@ -264,6 +286,7 @@ def prepare(data_path: str, params: dict | None = None) -> dict:
                 g, moq_col, params.get("minimum_order_quantity"), "minimum_order_quantity"),
             order_multiple=_supplier_term(
                 g, multiple_col, params.get("order_multiple"), "order_multiple"),
+            perishable=perishable,
         ))
     if not inputs:
         detail = f" (skipped: {'; '.join(skipped)})" if skipped else ""

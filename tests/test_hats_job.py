@@ -42,9 +42,9 @@ def test_prepare_builds_sorted_inputs_with_defaults(tmp_path):
     assert a.lead_time_weeks == pytest.approx(1.0)
     assert a.price_breaks_assumed is True                 # D8 default
     # Uniform over the areas ON THE TABLE, not over the vocabulary: this CSV has
-    # no weight column and the run no distance_km, so transporte never enters and
-    # a header of five weights would describe a settlement that did not happen.
-    assert payload["weights"] == {k: 0.25 for k in HAT_KEYS if k != "transporte"}
+    # no weight column and the run no distance_km, so transporte and merma never enter
+    # and a header of all weights would describe a settlement that did not happen.
+    assert payload["weights"] == {k: 0.25 for k in HAT_KEYS if k not in ("transporte", "merma")}
     assert payload["config"].wacc == 0.12
 
 
@@ -86,11 +86,11 @@ def test_run_tension_emits_protected_options(tmp_path):
     assert report.outcome.status == OPTIONS
     assert passed_guided(report.outcome)
     # One option per hat that was SCORED, plus the baseline. The fixture CSV has
-    # no weight column and the run no distance, so transporte is off the table and
-    # the count is 5, not 6 -- and the outcome says so in a residual.
+    # no weight column and no expiry column, so transporte and merma are off the table and
+    # the count is 5, not 7 -- and the outcome says so in a residual.
     flagship = next(m for m in report.maps if m.sku == report.flagship_sku)
     assert len(report.outcome.options) == len(flagship.ideals) + 1 == 5
-    assert flagship.excluded_hats == ("transporte",)
+    assert flagship.excluded_hats == ("transporte", "merma")
     assert any("transporte" in r.description for r in report.outcome.residuals)
     assert all(0.0 <= o.score <= 1.0 for o in report.outcome.options)
     assert "eleccion es humana" in report.outcome.summary

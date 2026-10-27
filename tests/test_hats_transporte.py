@@ -22,6 +22,7 @@ from src.hat_council import settle, tension_map
 from src.hats import (
     HAT_CFO,
     HAT_KEYS,
+    HAT_MERMA,
     HAT_TRANSPORTE,
     Candidate,
     FreightProfile,
@@ -86,9 +87,9 @@ def test_la_utilidad_de_transporte_es_plana_en_el_nivel_de_servicio():
 
 def test_sin_perfil_de_flete_el_area_queda_declarada_fuera_de_la_mesa():
     inp = _inputs()
-    assert evaluable_hats(inp) == tuple(k for k in HAT_KEYS if k != HAT_TRANSPORTE)
+    assert evaluable_hats(inp) == tuple(k for k in HAT_KEYS if k not in (HAT_TRANSPORTE, HAT_MERMA))
     tmap = tension_map(inp)
-    assert tmap.excluded_hats == (HAT_TRANSPORTE,)
+    assert tmap.excluded_hats == (HAT_TRANSPORTE, HAT_MERMA)
     assert set(tmap.ideals) | set(tmap.excluded_hats) == set(HAT_KEYS)
 
 
@@ -133,8 +134,8 @@ def test_el_juez_suma_flete_solo_cuando_hay_flete_declarado():
 def test_con_flete_el_acta_cubre_las_cinco_areas():
     inp = _inputs(_PESADO)
     s = settle(inp, None)
-    assert [e.hat_key for e in s.acta] == list(HAT_KEYS)
-    assert s.excluded_hats == ()
+    assert [e.hat_key for e in s.acta] == list(evaluable_hats(inp))
+    assert s.excluded_hats == (HAT_MERMA,)
     assert sum(s.weights.values()) == pytest.approx(1.0)
     assert len(s.weights) == 5
 
@@ -167,7 +168,7 @@ def test_un_peso_sobre_un_area_fuera_de_la_mesa_se_renormaliza_y_se_declara():
     w = parse_weights({k: 1.0 for k in HAT_KEYS}, evaluable_hats(inp))
     assert set(w) == set(evaluable_hats(inp))
     assert sum(w.values()) == pytest.approx(1.0)
-    assert settle(inp, {k: 1.0 for k in HAT_KEYS}).excluded_hats == (HAT_TRANSPORTE,)
+    assert settle(inp, {k: 1.0 for k in HAT_KEYS}).excluded_hats == (HAT_TRANSPORTE, HAT_MERMA)
 
 
 def test_una_politica_entera_sobre_un_area_no_evaluable_si_levanta():
@@ -232,7 +233,7 @@ def test_el_job_arma_el_perfil_desde_la_columna_y_el_parametro(tmp_path):
     assert inp.freight is not None
     assert inp.freight.weight_kg_per_unit == pytest.approx(12.0)
     assert inp.freight.distance_km == 900.0
-    assert set(payload["weights"]) == set(HAT_KEYS)
+    assert set(payload["weights"]) == set(evaluable_hats(inp))
 
 
 @pytest.mark.parametrize("con_peso,distancia", [(True, None), (False, 900.0)])
@@ -256,7 +257,7 @@ def test_con_las_dos_mitades_hay_una_opcion_mas_y_ningun_residual_de_exclusion(t
         hats_job.prepare(_csv(tmp_path, True), {"distance_km": 900.0}))
     assert hats_job.verify_tension(report) == []
     assert len(report.outcome.options) == 6          # 5 ideales + baseline
-    assert all(m.excluded_hats == () for m in report.maps)
+    assert all(m.excluded_hats == (HAT_MERMA,) for m in report.maps)
     # El tarifario si es supuesto, y eso tiene que seguir dicho.
     assert report.freight_rates_assumed is True
     assert any("tarifario" in r.description.lower() for r in report.outcome.residuals)
@@ -267,6 +268,6 @@ def test_el_settlement_reparte_el_acta_entre_las_cinco_areas(tmp_path):
     report = hats_job.run_settlement(payload)
     assert hats_job.verify_settlement(report) == []
     (s,) = report.settlements
-    assert [e.hat_key for e in s.acta] == list(HAT_KEYS)
+    assert [e.hat_key for e in s.acta] == list(evaluable_hats(payload["inputs"][0]))
     assert "AREAS FUERA DE LA MESA" in report.outcome.handoffs[0].artifact
-    assert "las cinco areas estuvieron en la mesa" in report.outcome.handoffs[0].artifact
+    assert "merma - sin insumos para puntuar" in report.outcome.handoffs[0].artifact

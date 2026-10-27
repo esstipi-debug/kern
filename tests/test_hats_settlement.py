@@ -19,6 +19,7 @@ from src.hats import (
     Candidate,
     FreightProfile,
     HatConfig,
+    PerishableProfile,
     baseline_plan,
     build_inputs,
     evaluable_hats,
@@ -34,8 +35,12 @@ def _inputs(**kw):
 
 
 def _inputs_freight(**kw):
-    """The same SKU with transport facts declared: all five areas on the table."""
-    return _inputs(freight=FreightProfile(weight_kg_per_unit=8.0, distance_km=750.0), **kw)
+    """The same SKU with transport and perishable facts declared: all areas on the table."""
+    return _inputs(
+        freight=FreightProfile(weight_kg_per_unit=8.0, distance_km=750.0),
+        perishable=PerishableProfile(shelf_life_days=60.0),
+        **kw,
+    )
 
 
 @pytest.mark.parametrize("hat", list(HAT_KEYS))
@@ -70,7 +75,7 @@ def test_acta_covers_all_hats_with_unit_interval_concessions():
     # Four entries on the four-hat SKU, in HAT_KEYS order. The acta records the
     # areas that were on the table; the ones that were not are in excluded_hats.
     assert [e.hat_key for e in s.acta] == list(evaluable_hats(_inputs()))
-    assert s.excluded_hats == ("transporte",)
+    assert s.excluded_hats == ("transporte", "merma")
     for e in s.acta:
         assert 0.0 <= e.concesion <= 1.0
         assert e.concesion == pytest.approx(1.0 - e.utility_norm_at_chosen)

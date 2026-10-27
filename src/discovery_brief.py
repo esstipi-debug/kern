@@ -21,7 +21,7 @@ from nosilo_core.guided import ExecutionOption, GuidedOutcome, Residual, as_exec
 # y liviano por contrato. La copia NO puede derivar --
 # tests/test_discovery_brief.py asierta igualdad contra src.hats.HAT_KEYS, donde
 # importar scipy no cuesta nada.
-_HAT_KEYS = ("comprador", "planner", "cfo", "comercial", "transporte")
+_HAT_KEYS = ("comprador", "planner", "cfo", "comercial", "transporte", "merma")
 
 
 @dataclass(frozen=True)

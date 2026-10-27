@@ -12,6 +12,7 @@ from src.hats import (
     HAT_COMERCIAL,
     HAT_COMPRADOR,
     HAT_KEYS,
+    HAT_MERMA,
     HAT_TRANSPORTE,
     HATS,
     SL_GRID,
@@ -103,10 +104,10 @@ def test_parse_weights_accepts_dict_and_renormalizes():
 # -- contracts ----------------------------------------------------------------
 
 
-def test_hats_registry_has_the_five_hats_in_order():
-    # transporte is LAST on purpose: cross_impact rows and the tension pair order
-    # are both defined as "HAT_KEYS order", so inserting it would reorder them.
-    assert HAT_KEYS == ("comprador", "planner", "cfo", "comercial", "transporte")
+def test_hats_registry_has_the_six_hats_in_order():
+    # transporte and merma are at the end on purpose: cross_impact rows and the tension pair order
+    # are both defined as "HAT_KEYS order", so inserting anywhere else would reorder them.
+    assert HAT_KEYS == ("comprador", "planner", "cfo", "comercial", "transporte", "merma")
     assert set(HATS) == set(HAT_KEYS)
     for hat in HATS.values():
         assert hat.kpis and hat.objetivo and hat.label
@@ -272,6 +273,7 @@ def test_evaluate_produces_aligned_norms_in_unit_range():
     # guessed. Iterating HAT_KEYS over it would KeyError, deliberately.
     assert set(ev.utilities_norm) == set(evaluable_hats(inp))
     assert HAT_TRANSPORTE not in ev.utilities_norm
+    assert HAT_MERMA not in ev.utilities_norm
     for key in evaluable_hats(inp):
         norms = ev.utilities_norm[key]
         assert len(norms) == len(ev.candidates)
@@ -324,7 +326,7 @@ def test_tension_map_shape_and_clash_ordering():
     # Scored + excluded must together account for the whole vocabulary: a hat that
     # is simply absent, with nothing said about it, is the failure mode.
     assert set(tmap.ideals) | set(tmap.excluded_hats) == set(HAT_KEYS)
-    assert tmap.excluded_hats == (HAT_TRANSPORTE,)     # no freight profile declared
+    assert tmap.excluded_hats == (HAT_TRANSPORTE, HAT_MERMA)     # no freight or perishable profile declared
     assert tmap.candidates_evaluated >= 125
     assert len(tmap.clashes) == 6              # C(4,2) pairs, nothing dropped
     mags = [abs(c.delta_capital_usd) for c in tmap.clashes]

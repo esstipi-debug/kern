@@ -25,6 +25,7 @@ from src.deliverable import Deliverable, Finding, Kpi
 from src.export import write_summary_csv  # NOTE: export.py, not deliverable.py
 from src.hats import (
     HAT_KEYS,
+    HAT_MERMA,
     HAT_TRANSPORTE,
     Candidate,
     HatInputs,
@@ -165,6 +166,10 @@ _MISSING_INPUT_REASON: dict[str, str] = {
     HAT_TRANSPORTE: (
         "transporte: sin perfil de flete declarado (peso por unidad y distancia de la "
         "ruta) - el area no es medible en esta corrida, que no es lo mismo que no objetar"
+    ),
+    HAT_MERMA: (
+        "merma: sin perfil de perecibilidad declarado (dias de vida util) - "
+        "el area no es medible en esta corrida, que no es lo mismo que no objetar"
     ),
 }
 
