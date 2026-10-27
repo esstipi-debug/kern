@@ -90,6 +90,11 @@ NO_EXPUESTOS_POR_DESTINO = {
         "costo/precision del motor. No es un hecho del cliente ni cambia lo que se le "
         "promete"
     ),
+    "jobs.forecast_job.run.challenger_origins": (
+        "es el presupuesto de origenes con que se puntua la banda retadora, una perilla "
+        "de costo como `oos_origins`. No es un hecho del cliente y no mueve la banda "
+        "publicada: con 0 solo se deja de puntuar la retadora"
+    ),
     "jobs.sop_job.run.confidence": (
         "la confianza declarada del plan S&OP. Una confianza que el llamador TIPEA no "
         "es una medicion, es un numero inventado con nombre de medicion -- exactamente "

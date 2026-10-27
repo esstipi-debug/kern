@@ -159,7 +159,11 @@ def test_t01_cumple_el_entregable_ya_lleva_banda_de_incertidumbre():
     r = _resultado(puntuar(), "T01")
     assert r.estado is Estado.CUMPLE, r.evidencia
     assert r.puntos == 1.0
-    assert set(r.detalle["campos_de_dispersion"]) == {"error_std", "p10", "p90", "sigma_source"}
+    # La banda retadora (challenger_*) tambien es dispersion: se publica al lado de la
+    # normal, con su metodo, y la comprobacion la ve.
+    assert set(r.detalle["campos_de_dispersion"]) == {
+        "error_std", "p10", "p90", "sigma_source", "challenger_p10", "challenger_p90",
+    }
 
 
 def test_t02_cumple_con_su_propio_store_aislado():

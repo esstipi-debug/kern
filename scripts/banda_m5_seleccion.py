@@ -10,7 +10,7 @@ warnings.filterwarnings("ignore")
 from jobs import forecast_job as fj  # noqa: E402
 from src.forecastability import segment  # noqa: E402
 from src.forecasting import forecast_demand  # noqa: E402
-from src.quantile_forecasting import band_score  # noqa: E402
+from src.quantile_forecasting import band_score, quantile_band  # noqa: E402
 
 M5 = r"C:\Users\Gamer\Music\scm\kern\data\kaggle\m5\m5\datasets\sales_train_evaluation.csv"
 N, SEMILLA = int(sys.argv[1]), 20261026
@@ -27,7 +27,7 @@ def puntajes(y, method, origenes):
     med, nor, cob_m, cob_n = 0.0, 0.0, [], []
     for t in origenes:
         fc = forecast_demand(y[:t], method=method)
-        b, n = fj._band(y[:t], fc), fj._normal_band(fc)
+        b, n = quantile_band(y[:t], fc) or fj._normal_band(fc), fj._normal_band(fc)
         if b is None or n is None or b.method == "normal":
             return None
         pb, cb = band_score([y[t]], b)
