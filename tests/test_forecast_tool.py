@@ -8,6 +8,7 @@ demand" brief produces both the study deck AND >=2 ranked options to act.
 """
 
 import math
+from dataclasses import replace
 from pathlib import Path
 
 import pandas as pd
@@ -19,6 +20,7 @@ from nosilo_core.guided import OPTIONS, passed_guided
 from scm_agent import intent, tools
 from scm_agent.orchestrator import Orchestrator
 from src.deliverable import Deliverable
+from src.forecast_metrics import TRACKING_SIGNAL_BAND
 
 _SMOOTH = [10, 11, 9, 10, 12, 8, 10, 11, 9, 10, 11, 10]
 _ERRATIC = [1, 20, 2, 18, 3, 25, 1, 22, 4, 19, 2, 23]
@@ -317,3 +319,87 @@ def test_un_pico_de_temporada_no_se_marca_como_excepcional():
 
     assert sku.season_length == 4
     assert sku.n_outliers == 0, f"marco la temporada como anomalia: {sku.outlier_periods}"
+
+
+# -- tracking signal: sesgo (nivel mal) vs ruido (dispersion) ------------------
+#
+# Liu (2022, p.312, ec. 8.16) publica TS = CFE/MAD y el umbral +-6 que atribuye a
+# Chopra & Meindl. La diferencia con ``bias`` es la ACCION: un error grande y
+# compensado se cubre con buffer; uno sostenido se arregla reajustando el metodo,
+# porque ninguna z corrige un error de nivel.
+
+#: El nivel se mueve y el metodo queda abajo: TS muy negativo, bias negativo.
+_STEP_UP = [10.0] * 12 + [40.0] * 4
+#: El nivel se cae: TS positivo (corre alto), el caso que sobra inventario.
+_STEP_DOWN = [50.0] * 12 + [10.0] * 4
+
+
+def test_una_serie_que_se_mueve_de_nivel_sale_como_pronostico_sesgado():
+    report = fj.run({"STEP": _STEP_UP})
+    sku = report.skus[0]
+
+    assert sku.bias_verdict == "under"
+    assert sku.tracking_signal < -TRACKING_SIGNAL_BAND
+    assert sku.tracking_signal_periods > TRACKING_SIGNAL_BAND
+    assert report.n_biased == 1
+    assert "biased forecast" in report.summary
+    biased = [r for r in report.outcome.residuals if "biased" in r.description.lower()]
+    assert biased and "STEP" in biased[0].description
+    assert "z-factor" in biased[0].risk_if_skipped
+    assert fj.verify(report) == []          # un sesgo es un hallazgo, no un bloqueo
+
+
+def test_el_sesgo_opuesto_tambien_se_nombra_y_apunta_para_el_otro_lado():
+    report = fj.run({"DROP": _STEP_DOWN})
+    sku = report.skus[0]
+
+    assert sku.bias_verdict == "over"
+    assert sku.tracking_signal > TRACKING_SIGNAL_BAND
+    assert sku.bias > 0                      # + = corre alto, la misma convencion que el metric
+
+
+def test_el_sesgo_llega_al_csv_y_al_deck_sin_romper_el_ascii(tmp_path):
+    report = fj.run({"STEP": _STEP_UP})
+
+    csv = fj.write_operational(report, tmp_path, "Acme")["csv"]
+    df = pd.read_csv(csv)
+    assert df.loc[0, "bias_verdict"] == "under"
+    assert df.loc[0, "tracking_signal"] < 0
+    assert int(df.loc[0, "tracking_signal_periods"]) > TRACKING_SIGNAL_BAND
+
+    md = fj.build_deck(report, client="Acme").to_markdown()
+    assert md.isascii()
+    assert "tracking signal" in md.lower()
+    assert "Biased SKUs" in md
+    assert "re-fitting the method" in md
+
+
+def test_demanda_intermitente_no_publica_veredicto_de_sesgo():
+    """Los residuos por periodo de Croston/TSB son estructuralmente de un signo.
+
+    Cada periodo sin demanda aporta un error chico positivo y cada ocurrencia uno
+    grande negativo, asi que el cociente mide la intermitencia y no el sesgo:
+    publicarlo marcaria a todos los SKU lentos como "corre bajo".
+    """
+    report = fj.run({"SLOW": _INTERMITTENT})
+    sku = report.skus[0]
+
+    assert sku.bias_verdict == "undefined"
+    assert math.isnan(sku.tracking_signal)
+    assert sku.tracking_signal_periods == 0
+    assert report.n_biased == 0
+    assert fj.verify(report) == []
+
+
+def test_verify_rechaza_un_veredicto_que_su_ts_no_sostiene():
+    """El veredicto y el numero tienen que poder auditarse juntos."""
+    report = fj.run({"STEP": _STEP_UP})
+    sku = report.skus[0]
+
+    mintiendo = replace(sku, bias_verdict="in_band")
+    issues = fj.verify(replace(report, skus=(mintiendo,)))
+    assert any("does not match" in i for i in issues)
+
+    sin_serie = replace(sku, tracking_signal=3.0, tracking_signal_periods=0)
+    issues = fj.verify(replace(report, skus=(sin_serie,)))
+    assert any("no measured error series" in i for i in issues)

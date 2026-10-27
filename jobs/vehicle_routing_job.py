@@ -17,11 +17,13 @@ import pandas as pd
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.export import write_summary_csv
 from src.logistics.routing import (
+    DEFAULT_CIRCUITY_FACTOR,
     Depot,
     Route,
     RoutingPlan,
     Stop,
     clarke_wright_savings,
+    haversine_distance,
     naive_distance,
     sweep,
 )
@@ -48,6 +50,61 @@ class VehicleRoutingReport:
     savings_vs_naive: float
     late_stops: tuple[str, ...]
     summary: str
+    distance_source: str = "euclidean"
+    distance_matrix: dict[tuple[str, str], float] | None = None
+
+
+def _parse_distance_matrix(matrix_input: object) -> dict[tuple[str, str], float] | None:
+    """Parse distance matrix from dict, DataFrame, or CSV path into dict[tuple[str, str], float]."""
+    if matrix_input is None:
+        return None
+    if isinstance(matrix_input, (str, Path)):
+        p = Path(matrix_input)
+        if p.exists():
+            df_mat = pd.read_csv(p)
+            return _parse_distance_matrix(df_mat)
+        return None
+    if isinstance(matrix_input, pd.DataFrame):
+        df_mat = matrix_input
+        if df_mat.shape[1] == 3 and not (df_mat.index.equals(df_mat.columns)):
+            c_orig, c_dest, c_dist = df_mat.columns
+            return {
+                (str(r[c_orig]), str(r[c_dest])): float(r[c_dist])
+                for _, r in df_mat.iterrows()
+                if pd.notna(r[c_dist])
+            }
+        res: dict[tuple[str, str], float] = {}
+        for r_idx, row in df_mat.iterrows():
+            for c_col, val in row.items():
+                if pd.notna(val):
+                    res[(str(r_idx), str(c_col))] = float(val)
+        return res
+    if isinstance(matrix_input, dict):
+        res = {}
+        for k, v in matrix_input.items():
+            if isinstance(k, tuple) and len(k) == 2:
+                res[(str(k[0]), str(k[1]))] = float(v)
+            elif isinstance(v, dict):
+                for k2, v2 in v.items():
+                    res[(str(k), str(k2))] = float(v2)
+        return res
+    return None
+
+
+def _compute_geodesic_matrix(
+    depot: Depot,
+    stops: list[Stop],
+    circuity_factor: float = DEFAULT_CIRCUITY_FACTOR,
+) -> dict[tuple[str, str], float]:
+    """Compute all-pairs geodesic distance matrix using haversine formula with circuity factor."""
+    all_nodes = [("depot", depot.x, depot.y)] + [(s.stop_id, s.x, s.y) for s in stops]
+    matrix: dict[tuple[str, str], float] = {}
+    for i, (id_a, ax, ay) in enumerate(all_nodes):
+        for id_b, bx, by in all_nodes[i:]:
+            d = haversine_distance(ay, ax, by, bx) * circuity_factor
+            matrix[(id_a, id_b)] = d
+            matrix[(id_b, id_a)] = d
+    return matrix
 
 
 def _pick_column(df: pd.DataFrame, override: object, candidates: tuple[str, ...]) -> str | None:
@@ -102,15 +159,41 @@ def prepare_records(df: pd.DataFrame, params: dict | None = None) -> dict:
     if dupes:
         raise ValueError(f"duplicate stop id(s), each stop must have a unique id: {', '.join(dupes)}")
     depot = Depot(float(params.get("depot_x", 0.0)), float(params.get("depot_y", 0.0)))
+    circuity = float(params.get("circuity_factor", DEFAULT_CIRCUITY_FACTOR))
+
+    is_geographic = bool(
+        params.get("is_geographic")
+        or params.get("geographic")
+        or (x in ("lon", "longitude") and y in ("lat", "latitude"))
+    )
+
+    raw_mat = (
+        params.get("distance_matrix")
+        or params.get("matrix")
+        or params.get("matrix_path")
+        or params.get("distance_matrix_path")
+    )
+    matrix = _parse_distance_matrix(raw_mat)
+    if matrix is None and is_geographic:
+        matrix = _compute_geodesic_matrix(depot, stops, circuity)
+
     return {
-        "stops": stops, "depot": depot, "capacity": float(capacity),
+        "stops": stops,
+        "depot": depot,
+        "capacity": float(capacity),
         "speed": float(params.get("speed", 1.0)),
+        "matrix": matrix,
+        "is_geographic": is_geographic,
+        "circuity_factor": circuity,
     }
 
 
-def prepare(data_path: str, params: dict | None = None) -> dict:
+def prepare(data_path: str, params: dict | None = None, *, distance_matrix: object = None) -> dict:
     """Read a stops CSV and build the vehicle-routing payload."""
-    return prepare_records(pd.read_csv(data_path), params)
+    p = dict(params or {})
+    if distance_matrix is not None:
+        p["distance_matrix"] = distance_matrix
+    return prepare_records(pd.read_csv(data_path), p)
 
 
 def run(payload: dict) -> VehicleRoutingReport:
@@ -119,10 +202,22 @@ def run(payload: dict) -> VehicleRoutingReport:
     depot: Depot = payload["depot"]
     capacity: float = payload["capacity"]
     speed: float = payload["speed"]
+    matrix: dict[tuple[str, str], float] | None = payload.get("matrix")
+    is_geographic: bool = payload.get("is_geographic", False)
+    circuity_factor: float = payload.get("circuity_factor", DEFAULT_CIRCUITY_FACTOR)
 
-    savings_plan = clarke_wright_savings(stops, depot, capacity, speed=speed)
-    sweep_plan = sweep(stops, depot, capacity, speed=speed)
-    naive = naive_distance(stops, depot)
+    savings_plan = clarke_wright_savings(
+        stops, depot, capacity, speed=speed,
+        matrix=matrix, is_geographic=is_geographic, circuity_factor=circuity_factor,
+    )
+    sweep_plan = sweep(
+        stops, depot, capacity, speed=speed,
+        matrix=matrix, is_geographic=is_geographic, circuity_factor=circuity_factor,
+    )
+    naive = naive_distance(
+        stops, depot,
+        matrix=matrix, is_geographic=is_geographic, circuity_factor=circuity_factor,
+    )
 
     best = savings_plan if savings_plan.total_distance <= sweep_plan.total_distance else sweep_plan
     late = tuple(sorted({sid for r in best.routes for sid in r.late_stops}))
@@ -142,6 +237,8 @@ def run(payload: dict) -> VehicleRoutingReport:
         recommended_method=best.method, recommended_distance=best.total_distance,
         recommended_routes=best.routes, savings_vs_naive=saving, late_stops=late,
         summary=summary,
+        distance_source=best.distance_source,
+        distance_matrix=matrix,
     )
 
 
@@ -249,6 +346,18 @@ def build_deck(
         "or renegotiate the window).",
     )
 
+    residual = (
+        "Distance matrix supplied: verified against network costs."
+        if report.distance_source == "matrix"
+        else (
+            "Geodesic (Haversine with circuity) distance: confirm against real road distance/time before dispatch."
+            if "haversine" in report.distance_source
+            else "Straight-line (Euclidean) distance from a single depot: confirm against real road "
+                 "distance/time before dispatch. Time-window handling is a lightweight feasibility "
+                 "check (arrival-time accumulation + late-arrival flagging), not a full VRPTW solver."
+        )
+    )
+
     return Deliverable(
         title="Vehicle Routing & Scheduling",
         client=client,
@@ -259,8 +368,6 @@ def build_deck(
         recommendations=recommendations,
         citations=tuple(citations),
         confidence=confidence,
-        residual="Straight-line (Euclidean) distance from a single depot: confirm against real road "
-                 "distance/time before dispatch. Time-window handling is a lightweight feasibility "
-                 "check (arrival-time accumulation + late-arrival flagging), not a full VRPTW solver.",
+        residual=residual,
         prepared=prepared,
     )

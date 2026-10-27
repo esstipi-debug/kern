@@ -241,3 +241,137 @@ def award_outcome(
         + [UNMEASURED_CRITERION] * len(unmeasured)
     )
     return as_options(summary, options, confidence=confidence)
+
+
+# ── Multi-sourcing constrained allocation (linear programming) ───────────────────
+
+
+@dataclass(frozen=True)
+class SupplierAllocation:
+    supplier: str
+    units: float
+    share_pct: float
+    unit_cost: float
+    total_cost: float
+    topsis_score: float
+
+
+@dataclass(frozen=True)
+class MultiSourcingPlan:
+    allocations: tuple[SupplierAllocation, ...]
+    total_units: float
+    total_cost: float
+    weighted_topsis_score: float
+    single_source_cost: float
+    diversification_premium_usd: float
+    diversification_premium_pct: float
+    single_source_winner: str
+
+
+def solve_multi_sourcing(
+    demand: float,
+    suppliers: list[str],
+    unit_costs: dict[str, float],
+    topsis_scores: dict[str, float],
+    *,
+    capacities: dict[str, float] | None = None,
+    max_share_pct: float = 0.70,
+    tradeoff_lambda: float = 0.0,
+) -> MultiSourcingPlan:
+    """Solve the bounded multi-sourcing allocation via linear programming.
+
+    Parameters:
+      demand: Total units required to procure (must be > 0).
+      suppliers: List of supplier identifiers to consider.
+      unit_costs: Supplier unit price or landed cost.
+      topsis_scores: Supplier multi-criteria performance score in [0, 1].
+      capacities: Maximum units each supplier can provide (None = unlimited).
+      max_share_pct: Maximum fraction of demand allowed for any single supplier (e.g. 0.70).
+      tradeoff_lambda: Weight given to TOPSIS score vs unit cost in objective.
+        Objective: minimize sum_i (unit_cost_i - tradeoff_lambda * topsis_score_i) * x_i.
+    """
+    if demand <= 0:
+        raise ValueError(f"demand must be positive, got {demand}")
+    if not suppliers:
+        raise ValueError("at least one supplier is required")
+    if not (0.0 < max_share_pct <= 1.0):
+        raise ValueError(f"max_share_pct must be in (0, 1], got {max_share_pct}")
+
+    n = len(suppliers)
+    for s in suppliers:
+        if s not in unit_costs:
+            raise ValueError(f"missing unit_cost for supplier {s!r}")
+        if s not in topsis_scores:
+            raise ValueError(f"missing topsis_score for supplier {s!r}")
+
+    # Objective coefficients: effective cost per unit
+    c_eff = [
+        unit_costs[s] - (tradeoff_lambda * topsis_scores[s])
+        for s in suppliers
+    ]
+
+    # Constraint: sum(x_i) == demand
+    A_eq = [[1.0] * n]
+    b_eq = [demand]
+
+    # Upper bounds: min(capacity, max_share * demand)
+    bounds = []
+    max_units = max_share_pct * demand
+    for s in suppliers:
+        cap = capacities.get(s, float("inf")) if capacities else float("inf")
+        ub = min(cap, max_units)
+        bounds.append((0.0, ub))
+
+    # Check total available theoretical capacity
+    if sum(ub for _, ub in bounds) < demand - 1e-9:
+        raise ValueError(
+            f"infeasible allocation: maximum combined capacity of suppliers ({sum(ub for _, ub in bounds):.1f}) "
+            f"cannot satisfy total demand ({demand:.1f}) under max_share_pct={max_share_pct:.2f}"
+        )
+
+    res = linprog(c_eff, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method="highs")
+    if not res.success:
+        raise ValueError(f"multi-sourcing solver failed: {res.message}")
+
+    # Determine single source baseline winner (best TOPSIS score)
+    single_winner = max(suppliers, key=lambda s: topsis_scores[s])
+    single_source_cost = demand * unit_costs[single_winner]
+
+    allocations_list = []
+    total_cost = 0.0
+    weighted_score_sum = 0.0
+
+    for i, s in enumerate(suppliers):
+        qty = float(res.x[i])
+        if qty > 1e-6:
+            share = qty / demand
+            cost = qty * unit_costs[s]
+            total_cost += cost
+            weighted_score_sum += qty * topsis_scores[s]
+            allocations_list.append(
+                SupplierAllocation(
+                    supplier=s,
+                    units=qty,
+                    share_pct=share,
+                    unit_cost=unit_costs[s],
+                    total_cost=cost,
+                    topsis_score=topsis_scores[s],
+                )
+            )
+
+    # Sort allocations: largest allocation first
+    allocations_list.sort(key=lambda a: a.units, reverse=True)
+
+    diversification_premium = total_cost - single_source_cost
+    diversification_pct = (diversification_premium / single_source_cost) if single_source_cost > 0 else 0.0
+
+    return MultiSourcingPlan(
+        allocations=tuple(allocations_list),
+        total_units=demand,
+        total_cost=total_cost,
+        weighted_topsis_score=weighted_score_sum / demand,
+        single_source_cost=single_source_cost,
+        diversification_premium_usd=diversification_premium,
+        diversification_premium_pct=diversification_pct,
+        single_source_winner=single_winner,
+    )

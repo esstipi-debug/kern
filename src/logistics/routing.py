@@ -51,27 +51,106 @@ class RoutingPlan:
     routes: tuple[Route, ...]
     total_distance: float
     n_vehicles: int
+    distance_source: str = "euclidean"
+
+
+DEFAULT_CIRCUITY_FACTOR = 1.30
+
+
+def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Great-circle distance in kilometers using the Haversine formula on Earth (R=6371.009 km)."""
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    delta_phi = math.radians(lat2 - lat1)
+    delta_lambda = math.radians(lon2 - lon1)
+
+    a = math.sin(delta_phi / 2.0) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2.0) ** 2
+    c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(max(0.0, 1.0 - a)))
+    return 6371.009 * c
+
+
+def pair_distance(
+    ax: float,
+    ay: float,
+    bx: float,
+    by: float,
+    *,
+    id_a: str | None = None,
+    id_b: str | None = None,
+    matrix: dict[tuple[str, str], float] | None = None,
+    is_geographic: bool = False,
+    circuity_factor: float = DEFAULT_CIRCUITY_FACTOR,
+) -> float:
+    """Distance between two points: matrix -> haversine*circuity -> euclidean.
+
+    In geographic mode: y is latitude, x is longitude (standard GIS convention).
+    """
+    if matrix and id_a is not None and id_b is not None:
+        if (id_a, id_b) in matrix:
+            return matrix[(id_a, id_b)]
+        if (id_b, id_a) in matrix:
+            return matrix[(id_b, id_a)]
+
+    if is_geographic:
+        return haversine_distance(ay, ax, by, bx) * circuity_factor
+
+    return math.hypot(ax - bx, ay - by)
 
 
 def _dist(ax: float, ay: float, bx: float, by: float) -> float:
     return math.hypot(ax - bx, ay - by)
 
 
-def naive_distance(stops: list[Stop], depot: Depot) -> float:
+def naive_distance(
+    stops: list[Stop],
+    depot: Depot,
+    *,
+    matrix: dict[tuple[str, str], float] | None = None,
+    is_geographic: bool = False,
+    circuity_factor: float = DEFAULT_CIRCUITY_FACTOR,
+) -> float:
     """Baseline: one dedicated round trip per stop, no consolidation."""
-    return sum(2 * _dist(depot.x, depot.y, s.x, s.y) for s in stops)
+    return sum(
+        2 * pair_distance(
+            depot.x, depot.y, s.x, s.y,
+            id_a="depot", id_b=s.stop_id, matrix=matrix,
+            is_geographic=is_geographic, circuity_factor=circuity_factor,
+        )
+        for s in stops
+    )
 
 
-def route_distance(stop_ids: tuple[str, ...], stops_by_id: dict[str, Stop], depot: Depot) -> float:
+def route_distance(
+    stop_ids: tuple[str, ...],
+    stops_by_id: dict[str, Stop],
+    depot: Depot,
+    *,
+    matrix: dict[tuple[str, str], float] | None = None,
+    is_geographic: bool = False,
+    circuity_factor: float = DEFAULT_CIRCUITY_FACTOR,
+) -> float:
     """Total distance of depot -> stop_ids in order -> depot."""
-    points = [(depot.x, depot.y)]
-    points += [(stops_by_id[sid].x, stops_by_id[sid].y) for sid in stop_ids]
-    points.append((depot.x, depot.y))
-    return sum(_dist(*points[i], *points[i + 1]) for i in range(len(points) - 1))
+    nodes: list[tuple[str, float, float]] = [("depot", depot.x, depot.y)]
+    nodes += [(sid, stops_by_id[sid].x, stops_by_id[sid].y) for sid in stop_ids]
+    nodes.append(("depot", depot.x, depot.y))
+    return sum(
+        pair_distance(
+            nodes[i][1], nodes[i][2], nodes[i + 1][1], nodes[i + 1][2],
+            id_a=nodes[i][0], id_b=nodes[i + 1][0], matrix=matrix,
+            is_geographic=is_geographic, circuity_factor=circuity_factor,
+        )
+        for i in range(len(nodes) - 1)
+    )
 
 
 def arrival_times(
-    stop_ids: tuple[str, ...], stops_by_id: dict[str, Stop], depot: Depot, speed: float = 1.0,
+    stop_ids: tuple[str, ...],
+    stops_by_id: dict[str, Stop],
+    depot: Depot,
+    speed: float = 1.0,
+    *,
+    matrix: dict[tuple[str, str], float] | None = None,
+    is_geographic: bool = False,
+    circuity_factor: float = DEFAULT_CIRCUITY_FACTOR,
 ) -> list[float]:
     """Cumulative arrival time at each stop, departing the depot at t=0.
 
@@ -80,16 +159,21 @@ def arrival_times(
     """
     times: list[float] = []
     t = 0.0
-    cur_x, cur_y = depot.x, depot.y
+    cur_id, cur_x, cur_y = "depot", depot.x, depot.y
     for sid in stop_ids:
         stop = stops_by_id[sid]
-        travel = _dist(cur_x, cur_y, stop.x, stop.y) / speed
+        d_leg = pair_distance(
+            cur_x, cur_y, stop.x, stop.y,
+            id_a=cur_id, id_b=sid, matrix=matrix,
+            is_geographic=is_geographic, circuity_factor=circuity_factor,
+        )
+        travel = d_leg / speed
         arrival = t + travel
         if stop.tw_start is not None and arrival < stop.tw_start:
             arrival = stop.tw_start
         times.append(arrival)
         t = arrival + stop.service_time
-        cur_x, cur_y = stop.x, stop.y
+        cur_id, cur_x, cur_y = sid, stop.x, stop.y
     return times
 
 
@@ -104,13 +188,27 @@ def time_window_violations(
 
 
 def _build_route(
-    stop_ids: tuple[str, ...], stops_by_id: dict[str, Stop], depot: Depot, speed: float,
+    stop_ids: tuple[str, ...],
+    stops_by_id: dict[str, Stop],
+    depot: Depot,
+    speed: float,
+    *,
+    matrix: dict[tuple[str, str], float] | None = None,
+    is_geographic: bool = False,
+    circuity_factor: float = DEFAULT_CIRCUITY_FACTOR,
 ) -> Route:
-    arrivals = arrival_times(stop_ids, stops_by_id, depot, speed=speed)
+    arrivals = arrival_times(
+        stop_ids, stops_by_id, depot, speed=speed,
+        matrix=matrix, is_geographic=is_geographic, circuity_factor=circuity_factor,
+    )
     late = time_window_violations(stop_ids, arrivals, stops_by_id)
     load = sum(stops_by_id[sid].demand for sid in stop_ids)
+    dist = route_distance(
+        stop_ids, stops_by_id, depot,
+        matrix=matrix, is_geographic=is_geographic, circuity_factor=circuity_factor,
+    )
     return Route(
-        stop_ids=stop_ids, distance=route_distance(stop_ids, stops_by_id, depot), load=load,
+        stop_ids=stop_ids, distance=dist, load=load,
         arrivals=tuple(arrivals), late_stops=tuple(late),
     )
 
@@ -131,18 +229,36 @@ def _validate(stops: list[Stop], capacity: float, speed: float) -> None:
 
 
 def clarke_wright_savings(
-    stops: list[Stop], depot: Depot, capacity: float, speed: float = 1.0,
+    stops: list[Stop],
+    depot: Depot,
+    capacity: float,
+    speed: float = 1.0,
+    *,
+    matrix: dict[tuple[str, str], float] | None = None,
+    is_geographic: bool = False,
+    circuity_factor: float = DEFAULT_CIRCUITY_FACTOR,
 ) -> RoutingPlan:
     """Clarke-Wright savings algorithm: greedy route merging under a capacity constraint."""
     _validate(stops, capacity, speed)
     stops_by_id = {s.stop_id: s for s in stops}
     ids = [s.stop_id for s in stops]
 
-    d_depot = {sid: _dist(depot.x, depot.y, s.x, s.y) for sid, s in stops_by_id.items()}
+    d_depot = {
+        sid: pair_distance(
+            depot.x, depot.y, s.x, s.y,
+            id_a="depot", id_b=sid, matrix=matrix,
+            is_geographic=is_geographic, circuity_factor=circuity_factor,
+        )
+        for sid, s in stops_by_id.items()
+    }
 
     def d(a: str, b: str) -> float:
         sa, sb = stops_by_id[a], stops_by_id[b]
-        return _dist(sa.x, sa.y, sb.x, sb.y)
+        return pair_distance(
+            sa.x, sa.y, sb.x, sb.y,
+            id_a=a, id_b=b, matrix=matrix,
+            is_geographic=is_geographic, circuity_factor=circuity_factor,
+        )
 
     routes: dict[int, list[str]] = {i: [sid] for i, sid in enumerate(ids)}
     route_of: dict[str, int] = {sid: i for i, sid in enumerate(ids)}
@@ -179,26 +295,58 @@ def clarke_wright_savings(
         del routes[rb]
         del loads[rb]
 
-    final_routes = tuple(_build_route(tuple(r), stops_by_id, depot, speed) for r in routes.values())
+    final_routes = tuple(
+        _build_route(
+            tuple(r), stops_by_id, depot, speed,
+            matrix=matrix, is_geographic=is_geographic, circuity_factor=circuity_factor,
+        )
+        for r in routes.values()
+    )
+    dist_src = "matrix" if matrix else ("haversine_circuity" if is_geographic else "euclidean")
     return RoutingPlan(
         method="savings", routes=final_routes,
         total_distance=sum(r.distance for r in final_routes), n_vehicles=len(final_routes),
+        distance_source=dist_src,
     )
 
 
-def _nearest_neighbor_order(stop_ids: list[str], stops_by_id: dict[str, Stop], depot: Depot) -> list[str]:
+def _nearest_neighbor_order(
+    stop_ids: list[str],
+    stops_by_id: dict[str, Stop],
+    depot: Depot,
+    *,
+    matrix: dict[tuple[str, str], float] | None = None,
+    is_geographic: bool = False,
+    circuity_factor: float = DEFAULT_CIRCUITY_FACTOR,
+) -> list[str]:
     remaining = list(stop_ids)
     seq: list[str] = []
-    cur_x, cur_y = depot.x, depot.y
+    cur_id, cur_x, cur_y = "depot", depot.x, depot.y
     while remaining:
-        nxt = min(remaining, key=lambda sid: _dist(cur_x, cur_y, stops_by_id[sid].x, stops_by_id[sid].y))
+        nxt = min(
+            remaining,
+            key=lambda sid: pair_distance(
+                cur_x, cur_y, stops_by_id[sid].x, stops_by_id[sid].y,
+                id_a=cur_id, id_b=sid, matrix=matrix,
+                is_geographic=is_geographic, circuity_factor=circuity_factor,
+            ),
+        )
         seq.append(nxt)
         remaining.remove(nxt)
-        cur_x, cur_y = stops_by_id[nxt].x, stops_by_id[nxt].y
+        cur_id, cur_x, cur_y = nxt, stops_by_id[nxt].x, stops_by_id[nxt].y
     return seq
 
 
-def sweep(stops: list[Stop], depot: Depot, capacity: float, speed: float = 1.0) -> RoutingPlan:
+def sweep(
+    stops: list[Stop],
+    depot: Depot,
+    capacity: float,
+    speed: float = 1.0,
+    *,
+    matrix: dict[tuple[str, str], float] | None = None,
+    is_geographic: bool = False,
+    circuity_factor: float = DEFAULT_CIRCUITY_FACTOR,
+) -> RoutingPlan:
     """Sweep algorithm: cluster stops by polar angle around the depot, then sequence each cluster."""
     _validate(stops, capacity, speed)
     stops_by_id = {s.stop_id: s for s in stops}
@@ -221,10 +369,19 @@ def sweep(stops: list[Stop], depot: Depot, capacity: float, speed: float = 1.0) 
         clusters.append(current)
 
     final_routes = tuple(
-        _build_route(tuple(_nearest_neighbor_order(cluster, stops_by_id, depot)), stops_by_id, depot, speed)
+        _build_route(
+            tuple(_nearest_neighbor_order(
+                cluster, stops_by_id, depot,
+                matrix=matrix, is_geographic=is_geographic, circuity_factor=circuity_factor,
+            )),
+            stops_by_id, depot, speed,
+            matrix=matrix, is_geographic=is_geographic, circuity_factor=circuity_factor,
+        )
         for cluster in clusters
     )
+    dist_src = "matrix" if matrix else ("haversine_circuity" if is_geographic else "euclidean")
     return RoutingPlan(
         method="sweep", routes=final_routes,
         total_distance=sum(r.distance for r in final_routes), n_vehicles=len(final_routes),
+        distance_source=dist_src,
     )

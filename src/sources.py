@@ -188,7 +188,16 @@ def _metadata_from_frame(
         lead_time_std_periods=lt_std_periods,
         minimum_order_quantity=_positive_max(sku, "moq"),
         order_multiple=_positive_max(sku, "order_multiple"),
+        days_to_expiry=_positive_median_or_none(sku, "days_to_expiry") if "days_to_expiry" in sku.columns else _positive_median_or_none(sku, "shelf_life_days"),
     )
+
+
+def _positive_median_or_none(sku: pd.DataFrame, column: str) -> float | None:
+    if column not in sku.columns:
+        return None
+    values = pd.to_numeric(sku[column], errors="coerce").dropna()
+    values = values[values > 0]
+    return float(values.median()) if len(values) else None
 
 
 def _positive_max(sku: pd.DataFrame, column: str) -> float:

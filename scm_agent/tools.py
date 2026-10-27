@@ -759,9 +759,14 @@ def _sourcing_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
 
 
 def _sourcing_run(payload: object, params: dict) -> Produced:
+    p_dict = payload if isinstance(payload, dict) else {}
     report = sourcing_job.run(
         payload["scorecards"], payload["prices"], weights=params.get("weights"),
         notes=payload.get("notes"),
+        demand=params.get("demand") or p_dict.get("demand"),
+        capacities=params.get("capacities") or p_dict.get("capacities"),
+        max_single_supplier_share=params.get("max_single_supplier_share", params.get("max_share_pct", p_dict.get("max_single_supplier_share"))),
+        tradeoff_lambda=float(params.get("tradeoff_lambda", p_dict.get("tradeoff_lambda", 0.0))),
     )
     return Produced(report=report, summary=report.summary)
 

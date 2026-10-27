@@ -1,12 +1,12 @@
-# Graph Report - f233  (2026-09-15)
+# Graph Report - kern  (2026-10-26)
 
 ## Corpus Check
-- 46 files · ~0 words
+- 47 files · ~0 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 3103 nodes · 6393 edges · 206 communities (181 shown, 25 thin omitted)
-- Extraction: 73% EXTRACTED · 27% INFERRED · 0% AMBIGUOUS · INFERRED: 1710 edges (avg confidence: 0.82)
+- 3110 nodes · 6421 edges · 207 communities (182 shown, 25 thin omitted)
+- Extraction: 73% EXTRACTED · 27% INFERRED · 0% AMBIGUOUS · INFERRED: 1714 edges (avg confidence: 0.82)
 - Token cost: 0 input · 0 output
 
 ## Community Hubs (Navigation)
@@ -161,7 +161,6 @@
 - Returns Manager
 - ISCEA CSSCP
 - COO (foco en operaciones)
-- Reminder: Evaluar embeddings con modelos mas actualizados: Fable 5, Kimi 3, o cualquier SO
 - Supply Chain Resilience: Reconceptualizing Risk Management in a Post-Pandemic World
 - Globalization of Supply Chains
 - Ripple Effect
@@ -216,9 +215,10 @@
 - Brechas de lanzamiento de Kern
 - Control Plan (Six Sigma Control phase)
 - Vandeput: Data Science for Supply Chain Forecasting (2nd ed.)
+- Supply Chain Analytics
 
 ## God Nodes (most connected - your core abstractions)
-1. `Chopra & Meindl: Supply Chain Management` - 356 edges
+1. `Chopra & Meindl: Supply Chain Management` - 357 edges
 2. `Palamariu & Alicke: From Source to Sold (Stories of Leadership in Supply Chain)` - 291 edges
 3. `Christopher: Logistics and Supply Chain Management (4th ed.)` - 265 edges
 4. `Heizer, Render & Munson: Operations Management (12th ed.)` - 194 edges
@@ -244,11 +244,11 @@
 ## Import Cycles
 - None detected.
 
-## Communities (206 total, 25 thin omitted)
+## Communities (207 total, 25 thin omitted)
 
 ### Community 4 - "Boylan & Syntetos: Intermittent Demand Forecasting (Context, Methods and Applications)"
 Cohesion: 0.07
-Nodes (54): Boylan & Syntetos: Intermittent Demand Forecasting (Context, Methods and Applications), Gilliland et al.: Business Forecasting: Practical Problems and Solutions, Intermittent Demand, Erratic Demand, Demand Classification / Categorisation, Average Inter-Demand Interval (ADI), Squared Coefficient of Variation of Demand Size (CV^2), Syntetos-Boylan-Croston (SBC) Classification (+46 more)
+Nodes (51): Boylan & Syntetos: Intermittent Demand Forecasting (Context, Methods and Applications), Gilliland et al.: Business Forecasting: Practical Problems and Solutions, Intermittent Demand, Erratic Demand, Demand Classification / Categorisation, Average Inter-Demand Interval (ADI), Squared Coefficient of Variation of Demand Size (CV^2), Syntetos-Boylan-Croston (SBC) Classification (+43 more)
 
 ### Community 5 - "Safety Stock"
 Cohesion: 0.06
@@ -284,7 +284,7 @@ Nodes (4): Willingness-to-Pay, Value Communication, Price-Response Function, Mat
 
 ### Community 69 - "Dynamic Pricing"
 Cohesion: 0.19
-Nodes (16): Yield Management, Price Elasticity of Demand, Dynamic Pricing, Demand-Intensity / Price Control, An Exact Pricing Algorithm for Revenue Maximization under the Logit Demand Function, Revenue Maximization, Logit Demand Function, Demand Function (+8 more)
+Nodes (15): Yield Management, Price Elasticity of Demand, Dynamic Pricing, Demand-Intensity / Price Control, An Exact Pricing Algorithm for Revenue Maximization under the Logit Demand Function, Revenue Maximization, Logit Demand Function, Demand Function (+7 more)
 
 ### Community 9 - "Gallego & Topaloglu: Revenue Management and Pricing Analytics"
 Cohesion: 0.07
@@ -308,11 +308,11 @@ Nodes (16): Capacity Allocation / Capacity Control, Unconstraining / Censored De
 
 ### Community 28 - "A Practical Price Optimization Approach for Omnichannel Retailing"
 Cohesion: 0.13
-Nodes (25): Discrete Choice Model, Random Utility Maximization Model, Multinomial Logit (MNL) Model, Independence of Irrelevant Alternatives (IIA), Nested Logit Model, Generalized Attraction Model, Mixtures of Attraction / Logit Models, A Practical Price Optimization Approach for Omnichannel Retailing (+17 more)
+Nodes (23): Discrete Choice Model, Random Utility Maximization Model, Multinomial Logit (MNL) Model, Independence of Irrelevant Alternatives (IIA), Nested Logit Model, Generalized Attraction Model, Mixtures of Attraction / Logit Models, A Practical Price Optimization Approach for Omnichannel Retailing (+15 more)
 
 ### Community 65 - "No-Regret Learning for Stackelberg Equilibrium in Newsvendor Pricing Games"
 Cohesion: 0.19
-Nodes (16): Online Learning in Pricing, Learning-and-Earning (Explore-Exploit) Trade-off, Regret, Demand Learning / Estimation, No-Regret Learning for Stackelberg Equilibrium in Newsvendor Pricing Games, Stackelberg Game, Stackelberg Equilibrium, Price-Setting Newsvendor (+8 more)
+Nodes (15): Online Learning in Pricing, Learning-and-Earning (Explore-Exploit) Trade-off, Regret, Demand Learning / Estimation, No-Regret Learning for Stackelberg Equilibrium in Newsvendor Pricing Games, Stackelberg Game, Stackelberg Equilibrium, Price-Setting Newsvendor (+7 more)
 
 ### Community 41 - "Operations and Supply Chain Management"
 Cohesion: 0.13
@@ -332,7 +332,7 @@ Nodes (22): Sustainability, Sustainability as a Principled Stand, Practical, Com
 
 ### Community 21 - "Dynamic Pricing on E-commerce Platform with Deep RL: A Field Experiment"
 Cohesion: 0.09
-Nodes (33): Dynamic Pricing on E-commerce Platform with Deep RL: A Field Experiment, Multi-Agent RL for Dynamic Pricing in Supply Chains, Reinforcement Learning, Deep Reinforcement Learning, Markov Decision Process, Q-Learning, Deep Q-Network (DQN), Deep Deterministic Policy Gradient (DDPG) (+25 more)
+Nodes (31): Dynamic Pricing on E-commerce Platform with Deep RL: A Field Experiment, Multi-Agent RL for Dynamic Pricing in Supply Chains, Reinforcement Learning, Deep Reinforcement Learning, Markov Decision Process, Q-Learning, Deep Q-Network (DQN), Deep Deterministic Policy Gradient (DDPG) (+23 more)
 
 ### Community 61 - "Plant Manager / Operations Manager"
 Cohesion: 0.17
@@ -708,7 +708,7 @@ Nodes (8): Global Operations Strategy Options, International Strategy, Multidome
 
 ### Community 52 - "Sourcing Manager"
 Cohesion: 0.15
-Nodes (17): Inspection, Acceptance Sampling, Buyer / Comprador Tactico, Sourcing Manager, Quality Manager, Trade Compliance Officer, Supply Chain Data Analyst / Data Scientist, CIPS Level 4 Diploma in Procurement and Supply (+9 more)
+Nodes (16): Inspection, Acceptance Sampling, Buyer / Comprador Tactico, Sourcing Manager, Quality Manager, Trade Compliance Officer, Supply Chain Data Analyst / Data Scientist, CIPS Level 4 Diploma in Procurement and Supply (+8 more)
 
 ### Community 157 - "Process Analysis and Design"
 Cohesion: 0.40
@@ -740,7 +740,7 @@ Nodes (14): Demand Planner, Inventory Planner, Master Scheduler (S&OP -> MPS), P
 
 ### Community 70 - "Chief Supply Chain Officer (CSCO)"
 Cohesion: 0.19
-Nodes (15): S&OP Manager / Director, Chief Procurement Officer (CPO), Chief Supply Chain Officer (CSCO), IBF programa formativo S&OP/IBP, ISM CPSM (Certified Professional in Supply Management), CIPS MCIPS (Chartered), CSCMP SCPro L1/L2, ASCM SCOR-P (+7 more)
+Nodes (13): S&OP Manager / Director, Chief Procurement Officer (CPO), Chief Supply Chain Officer (CSCO), IBF programa formativo S&OP/IBP, ISM CPSM (Certified Professional in Supply Management), CIPS MCIPS (Chartered), CSCMP SCPro L1/L2, ASCM SCOR-P (+5 more)
 
 ### Community 102 - "Logistics Manager"
 Cohesion: 0.27
@@ -970,6 +970,10 @@ Nodes (12): Documented Information (ISO 9001:2015 clause 7.5), Document Review C
 Cohesion: 0.08
 Nodes (60): Vandeput: Data Science for Supply Chain Forecasting (2nd ed.), RMSE, MAE Optimises Toward the Demand Median, RMSE Optimises Toward the Demand Mean, Report One KPI, Optimise Another, Level, Reactivity vs Stability Trade-off, Data Leakage (+52 more)
 
+### Community 206 - "Supply Chain Analytics"
+Cohesion: 0.48
+Nodes (7): Liu: Supply Chain Analytics (2022), Supply Chain Analytics, Descriptive, Diagnostic, Predictive and Prescriptive Analytics, Operations Research vs Supply Chain Analytics, SMART Goals for Supply Chain Analytics, When a Small Firm Does Need Analytics Software, Tracking Signal Band (+-6)
+
 ## Ambiguous Edges - Review These
 - `Employee Empowerment` → `Specialization`  [AMBIGUOUS]
   khan-supply-chain-resilience.txt · relation: conceptually_related_to
@@ -1007,24 +1011,28 @@ Nodes (60): Vandeput: Data Science for Supply Chain Forecasting (2nd ed.), RMSE,
   khan-supply-chain-resilience.txt · relation: conceptually_related_to
 
 ## Knowledge Gaps
-- **567 isolated node(s):** `Box & Jenkins: Time Series Analysis: Forecasting and Control`, `Erratic Demand`, `Hyperbolic Exponential Smoothing (HES)`, `Cross-Sectional Aggregation`, `Brier Score` (+562 more)
-  These have ≤1 connection - possible missing edges or undocumented components.
+- **565 isolated node(s):** `Box & Jenkins: Time Series Analysis: Forecasting and Control`, `Erratic Demand`, `Hyperbolic Exponential Smoothing (HES)`, `Cross-Sectional Aggregation`, `Brier Score` (+560 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 571 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
 - **25 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
+- **Why does `Chopra & Meindl: Supply Chain Management` connect `Chopra & Meindl: Supply Chain Management` to `Heizer, Render & Munson: Operations Management (12th ed.)`, `Safety Stock`, `Grant, Trautrims & Wong: Sustainable Logistics and Supply Chain Management`, `Gallego & Topaloglu: Revenue Management and Pricing Analytics`, `Postponement`, `Supply Chain Strategy or Design`, `Sustainability in the Supply Chain`, `Supply Chain Visibility`, `Customer Service`, `Supply Chain Risk`, `Network Design`, `Talluri & van Ryzin: The Theory and Practice of Revenue Management`, `Supplier Relationship Management (SRM)`, `Supply Chain Risk Mitigation`, `Economies of Scale`, `Sustainability`, `Operations and Supply Chain Management`, `Offshoring / Low-Cost Country Sourcing`, `Bullwhip Effect`, `Container Dashboard (Real-Time Container Exception Monitoring)`, `End-to-End Visibility`, `Quick Response`, `Aggregate Planning`, `Cleaner Production`, `Corporate Social Responsibility (CSR)`, `Capacity Planning`, `Facility Location and Capacity Allocation`, `Revenue Management`, `Demand Forecasting`, `Dynamic Pricing`, `Supply Chain Orchestration`, `Supply Chain Analytics`, `Decision Analysis`, `Reverse Logistics`, `Strategic Lead-Time Management`, `Just-in-Time (JIT)`?**
+  _High betweenness centrality (0.261) - this node is a cross-community bridge._
+- **What connects `Box & Jenkins: Time Series Analysis: Forecasting and Control`, `Erratic Demand`, `Hyperbolic Exponential Smoothing (HES)` to the rest of the system?**
+  _565 weakly-connected nodes found - possible documentation gaps or missing edges._
+- **Should `Boylan & Syntetos: Intermittent Demand Forecasting (Context, Methods and Applications)` be split into smaller, more focused modules?**
+  _Cohesion score 0.06848357791754019 - nodes in this community are weakly interconnected._
+- **Why does `Supply Chain Resilience` connect `Supply Chain Resilience` to `Palamariu & Alicke: From Source to Sold (Stories of Leadership in Supply Chain)`, `Payment Terms Extension`, `Heizer, Render & Munson: Operations Management (12th ed.)`, `Christopher: Logistics and Supply Chain Management (4th ed.)`, `Safety Stock`, `Grant, Trautrims & Wong: Sustainable Logistics and Supply Chain Management`, `Viable Supply Chain Model`, `Supply Chain Strategy or Design`, `Supply Chain Visibility`, `Sustainability in the Supply Chain`, `Supply Chain Risk`, `Supply Chain Agility`, `Crisis Leadership`, `Network Design`, `Supplier Relationship Management (SRM)`, `COVID-19 and Pandemic-Era Disruption`, `Process Analysis and Design`, `Supply Chain Risk Mitigation`, `Aigbogun (2022) - Exploration of Resilience in Medical Gloves Supply Chain During COVID-19`, `Nearshoring`, `What Is New vs What Is Not New in Pandemic Risk Management (Table 13.1)`, `Sustainability`, `COVID-19 Medical Device Supply Chain Survey (Italy and Finland, 2020)`, `Simulation Service Component for Rapid Reconfiguration`, `Bullwhip Effect`, `Supply Chain Capability Driver`, `Simulation Modelling`, `Impacts and SC Resilience Strategies to Cope with COVID-19: A Literature Review (Ch 1)`, `Container Dashboard (Real-Time Container Exception Monitoring)`, `End-to-End Visibility`, `Learning from Mistakes`, `Cleaner Production`, `Risk Management Methods (SCRM Methods)`, `Supply Chain Financing (SCF)`, `Supply Chain Vulnerability`, `Redundancy, Inventory Tolerance, and Flexibility`, `Financial Management (SCM Impact Area)`, `Enterprise Risk Management`, `Multi-Tier Supplier Visibility`, `Logistics Service Provider (LSP)`, `Supply Chain Risk Management Process`, `BME Logistics Survey 2020: Supply Chain Risk Management`, `Supply Chain Configuration`, `Supply Chain Agility`, `Blockchain Technology`, `Supply Chain Resilience: Reconceptualizing Risk Management in a Post-Pandemic World`, `Employee Empowerment`, `Reactivity`, `Challenging the Status Quo and Innovating`, `Segment 2 - Unprepared`, `Four-Phase Disruption Management Model`, `Three-Tiered Reserve (Inventory, Capacity, Capability)`, `Supply Chain Mapping`?**
+  _High betweenness centrality (0.144) - this node is a cross-community bridge._
+- **Should `Safety Stock` be split into smaller, more focused modules?**
+  _Cohesion score 0.05952380952380952 - nodes in this community are weakly interconnected._
+
+### Low-confidence Hints
+_AMBIGUOUS edges — the extractor was unsure. Verify before acting on these._
+
 - **What is the exact relationship between `Employee Empowerment` and `Specialization`?**
   _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
 - **What is the exact relationship between `Supply Chain Agility` and `Supply Chain Vulnerability`?**
   _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
-- **What is the exact relationship between `What-If Scenario Planning` and `VUCA (Volatile, Uncertain, Complex, Ambiguous) Market`?**
-  _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
-- **What is the exact relationship between `Forecasting & Anticipating Disruption` and `COVID-19 Medical Device Supply Chain Survey (Italy and Finland, 2020)`?**
-  _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
-- **What is the exact relationship between `Business Continuity Management` and `Concrete Action Plan for Securing Supply Chains`?**
-  _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
-- **What is the exact relationship between `Modal Shift` and `Air Cargo Capacity Shortage`?**
-  _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
-- **What is the exact relationship between `Nearshoring` and `Xu et al. (2021) - Compounded Effects of COVID-19 and Desert Locust Outbreak on Food Security and Food Supply Chain`?**
-  _Edge tagged AMBIGUOUS (relation: references) - confidence is low._

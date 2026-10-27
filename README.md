@@ -28,7 +28,7 @@ $$\textbf{LLMs reason, interpret, and translate} \quad \longleftrightarrow \quad
 * **Pure Functional Mathematics (`src/`):** All numerical calculations (reorder thresholds, safety buffers, elasticity markups, multi-echelon allocations) are executed by pure functions in Python, cross-validated against Monte Carlo simulations.
 * **Deterministic QA Gating:** Computed plans are verified against physical constraints (supplier MOQs, case pack increments, non-negative bounds, cash limits). **If QA validation fails, zero deliverables ship.**
 * **Safe-Staging Writeback:** The orchestrator never mutates an enterprise system of record directly. ERP mutations are prepared as dry-run changesets with 900s TTLs, cryptographic checksums, and one-click rollback mechanisms.
-* **Epistemological Grounding:** Every figure links back to an academic and empirical knowledge base spanning **27 curated external sources** alongside the exact `src/` modules that executed the calculation.
+* **Epistemological Grounding:** Every figure links back to an academic and empirical knowledge base spanning **28 curated external sources** over 43 external source files alongside the exact `src/` modules that executed the calculation. The books graph carries **3,111 nodes**, 2,980 of them from those external sources and the rest Kern's own internal documents (searchable, never citable).
 
 ---
 
@@ -39,7 +39,7 @@ flowchart LR
     A["<b>1. Ingest</b><br/>Unstructured Brief<br/>+ Raw CSV / SQL DB"] --> B{"<b>2. Classify</b><br/>Intent Router<br/>(Rules + Claude)"}
     B --> C["<b>3. Compute</b><br/>Deterministic Engine<br/>(Pure Functions in src/)"]
     C --> D{"<b>4. QA Gate</b><br/>Budget & Constraints<br/>Feasibility Checks"}
-    D -->|Pass| E["<b>5. Ground</b><br/>Theory ↔ Code Bridge<br/>(27 SCM Sources)"]
+    D -->|Pass| E["<b>5. Ground</b><br/>Theory ↔ Code Bridge<br/>(28 SCM Sources)"]
     D -->|Fail| F["<b>5. Intercept</b><br/>Halt & Flag Discrepancy<br/>(Zero Phantom Data)"]
     E --> G["<b>6. Deliver & Stage</b><br/>Grounded Audit Report<br/>+ Staged Diff (900s TTL)"]
 ```

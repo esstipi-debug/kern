@@ -87,6 +87,20 @@ class ForecastResult:
     # warm-up NaN that TSB and Croston emit in their fitted values. 0 on the
     # closed-form legacy paths, which have no warm-up row to discard.
     n_error_obs_dropped: int = 0
+    #: Los errores one-step que produjeron ``bias``/``mae``/``error_std``, en orden y
+    #: con el signo de ``forecast_metrics.bias``: **``fitted - actual``**, positivo =
+    #: el metodo corre ALTO. La serie viaja porque ``bias`` es su promedio y el
+    #: promedio no dice si los errores apuntaron siempre para el mismo lado -- que es
+    #: exactamente lo que mide el tracking signal (``forecast_metrics``) y lo que
+    #: separa "ruido" de "el nivel esta mal".
+    #:
+    #: Convencion, y es la unica del repo: ``verify.backtest.BacktestResult.errors``
+    #: guarda la misma (``predicted - actual``) y ``forecast_metrics.bias`` la
+    #: promedia igual. Hasta que este campo existio, ``bias`` se calculaba con el
+    #: signo CONTRARIO (``actual - fitted``) mientras las otras tres superficies
+    #: documentaban y probaban el opuesto; un sesgo publicado con el signo invertido
+    #: manda al planner a recortar compras en el SKU que en realidad se queda corto.
+    errors: tuple[float, ...] = ()
 
     @property
     def sigma_source(self) -> str:
@@ -173,15 +187,22 @@ def _std(arr: np.ndarray) -> float:
     return float(np.std(arr, ddof=1)) if arr.size > 1 else 0.0
 
 
-def _error_stats(actual: np.ndarray, fitted: np.ndarray) -> tuple[float, float, float]:
-    """Return (error_std, bias, mae) for one-step-ahead forecasts."""
-    errors = actual - fitted
+def _error_stats(actual: np.ndarray, fitted: np.ndarray) -> tuple[float, float, float, np.ndarray]:
+    """Return (error_std, bias, mae, errors) for one-step-ahead forecasts.
+
+    ``errors`` es ``fitted - actual`` (positivo = el metodo corre ALTO), la misma
+    convencion que ``forecast_metrics.bias`` y que ``verify.backtest``. El signo
+    del promedio ES el signo que se publica: con ``actual - fitted`` un
+    sobre-pronostico salia como bias negativo, o sea la direccion invertida en la
+    unica superficie que el cliente lee como "para que lado me estoy equivocando".
+    """
+    errors = fitted - actual
     if errors.size == 0:
-        return 0.0, 0.0, 0.0
+        return 0.0, 0.0, 0.0, errors
     bias = float(np.mean(errors))
     mae = float(np.mean(np.abs(errors)))
     error_std = float(np.std(errors, ddof=1)) if errors.size > 1 else 0.0
-    return error_std, bias, mae
+    return error_std, bias, mae, errors
 
 
 def average_demand_interval(history: object) -> float:
@@ -206,7 +227,7 @@ def moving_average(history: object, window: int = 3) -> ForecastResult:
     window = min(window, arr.size)
 
     preds = np.array([arr[t - window : t].mean() for t in range(window, arr.size)])
-    error_std, bias, mae = _error_stats(arr[window:], preds)
+    error_std, bias, mae, errors = _error_stats(arr[window:], preds)
     forecast = float(arr[-window:].mean())
 
     return ForecastResult(
@@ -219,6 +240,7 @@ def moving_average(history: object, window: int = 3) -> ForecastResult:
         mae=mae,
         n_periods=arr.size,
         is_intermittent=is_intermittent(arr),
+        errors=tuple(float(e) for e in errors),
     )
 
 
@@ -234,7 +256,7 @@ def simple_exponential_smoothing(history: object, alpha: float = 0.3) -> Forecas
         preds.append(level)  # one-step forecast for period t
         level = alpha * arr[t] + (1 - alpha) * level
 
-    error_std, bias, mae = _error_stats(arr[1:], np.array(preds))
+    error_std, bias, mae, errors = _error_stats(arr[1:], np.array(preds))
 
     return ForecastResult(
         method="ses",
@@ -246,6 +268,7 @@ def simple_exponential_smoothing(history: object, alpha: float = 0.3) -> Forecas
         mae=mae,
         n_periods=arr.size,
         is_intermittent=is_intermittent(arr),
+        errors=tuple(float(e) for e in errors),
     )
 
 
@@ -285,7 +308,7 @@ def croston(history: object, alpha: float = 0.1) -> ForecastResult:
         else:
             since_demand += 1
 
-    error_std, bias, mae = _error_stats(arr[1:], forecasts[1:])
+    error_std, bias, mae, errors = _error_stats(arr[1:], forecasts[1:])
 
     return ForecastResult(
         method="croston",
@@ -297,6 +320,7 @@ def croston(history: object, alpha: float = 0.1) -> ForecastResult:
         mae=mae,
         n_periods=arr.size,
         is_intermittent=True,
+        errors=tuple(float(e) for e in errors),
     )
 
 

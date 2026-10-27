@@ -27,15 +27,46 @@ import pandas as pd
 from jobs import forecast_cycle
 from jobs.forecast_cycle import CycleMemory, mean_finite
 from nosilo_core.guided import GuidedOutcome, Residual, recommend, verify_guided
+from src.causal_forecasting import CausalForecastResult, fit_causal_forecast
 from src.decision_options import Objective, Scenario, decide
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.export import write_summary_csv
-from src.forecast_metrics import compute_metrics
+from src.forecast_metrics import (
+    BIAS_VERDICTS,
+    TRACKING_SIGNAL_BAND,
+    bias_verdict,
+    compute_metrics,
+    tracking_signal_from_errors,
+)
 from src.forecastability import segment
 from src.forecasting import forecast_demand
 from src.outliers import OutlierReport, scan_outliers
 from src.seasonality import detect_season_length
 from src.state.store import StateStore
+
+_COVARIATE_CANDIDATES = (
+    "promo", "promotion", "promotions", "is_promo", "price", "unit_price",
+    "discount", "event", "events", "holiday", "marketing", "ad_spend", "temperature"
+)
+
+
+class ForecastPayload(dict):
+    """A dictionary mapping SKU name -> list of historical demand quantities.
+
+    Carries optional exogenous covariates and future covariate estimates per SKU.
+    Because it inherits from dict, it maintains 100% backward compatibility with all
+    consumers expecting a plain dict[str, list[float]].
+    """
+
+    def __init__(
+        self,
+        series_by_name: dict[str, list[float]],
+        covariates_by_sku: dict[str, dict[str, list[float]]] | None = None,
+        future_covariates_by_sku: dict[str, dict[str, float]] | None = None,
+    ):
+        super().__init__(series_by_name)
+        self.covariates_by_sku: dict[str, dict[str, list[float]]] = covariates_by_sku or {}
+        self.future_covariates_by_sku: dict[str, dict[str, float]] = future_covariates_by_sku or {}
 
 _PRODUCT_COLS = ("sku", "product_id", "product", "item", "SKU", "Product", "material")
 _QTY_COLS = ("demand", "quantity", "qty", "units", "sales", "Demand", "Quantity", "value")
@@ -73,10 +104,26 @@ class SkuForecast:
     #: serie corregida en silencio es un pronostico que nadie puede auditar.
     n_outliers: int = 0
     outlier_periods: tuple[int, ...] = ()
-    #: Signed forecast error over the fitted history: positive = the method runs HIGH.
-    #: MAPE says how wrong, this says in which direction, which is the half a planner
-    #: acts on (Vandeput 2021, sec 2.2) and the half the job used to discard.
+    #: Signed forecast error over the fitted history, **`fitted - actual`**: positive means
+    #: the method runs HIGH. The sign is this repo's own (`forecast_metrics.bias`,
+    #: `verify.backtest`, `outliers.py`), and it is stated because the field once carried
+    #: the opposite sign while claiming this one. MAPE says how wrong, this says in which
+    #: direction, which is the half a planner acts on (Vandeput 2021, sec 2.2) and the half
+    #: the job used to discard.
     bias: float = float("nan")
+    #: Tracking signal de la historia: error acumulado / MAD acumulada, y su veredicto
+    #: contra :data:`TRACKING_SIGNAL_BAND` (``in_band`` | ``over`` | ``under`` |
+    #: ``undefined``). ``bias`` dice cuanto y para que lado; esto dice si el signo se
+    #: SOSTUVO periodo a periodo. La diferencia es la accion: un error grande y
+    #: compensado se cubre con buffer (``sigma_e``), un error sostenido se arregla
+    #: reajustando el metodo -- ningun z-factor corrige un error de nivel.
+    tracking_signal: float = float("nan")
+    bias_verdict: str = "undefined"
+    #: Sobre cuantos errores one-step se calculo ese TS. Sin este numero el veredicto
+    #: no es auditable: con n errores, |TS| <= n, asi que "in_band" sobre 4 errores no
+    #: dice "sin sesgo", dice "la banda era inalcanzable". 0 = no se publico veredicto
+    #: (demanda intermitente: los residuos por periodo miden la intermitencia, no el sesgo).
+    tracking_signal_periods: int = 0
     #: Dispersion of the forecast, and which one it is (see ForecastResult.sigma_source):
     #: forecast_error | demand_std_fallback | unavailable. Safety stock cannot be sized
     #: from a point, so shipping the point alone was never enough.
@@ -91,6 +138,9 @@ class SkuForecast:
     #: new SKU has no track record, and calling that 0.0 would invent one.
     previous_mape: float | None = None
     mape_change_vs_previous: float | None = None
+    causal_result: CausalForecastResult | None = None
+    causal_accepted: bool = False
+    delta_aic: float | None = None
 
 
 @dataclass(frozen=True)
@@ -125,6 +175,13 @@ class ForecastJobReport:
     #: three the same, and only one of them is the client's fault to fix.
     no_baseline_reason: str = ""
     cycle_comparison: str = ""
+    #: SKUs cuyo pronostico esta SESGADO (|TS| fuera de banda) sobre los residuos one-step
+    #: de la historia -- no sobre el holdout: con 3 errores no hay veredicto posible. Se
+    #: cuenta aparte de ``n_beating_naive``: un metodo puede ganarle al naive Y estar
+    #: sesgado (le gana porque el naive esta peor, no porque el nivel este bien).
+    n_biased: int = 0
+    n_causal_accepted: int = 0
+    causal_covariates: tuple[str, ...] = ()
 
 
 def _pick_column(df: pd.DataFrame, override: object, candidates: tuple[str, ...]) -> str | None:
@@ -133,11 +190,12 @@ def _pick_column(df: pd.DataFrame, override: object, candidates: tuple[str, ...]
     return next((c for c in candidates if c in df.columns), None)
 
 
-def prepare_records(df: pd.DataFrame, params: dict | None = None) -> dict[str, list[float]]:
-    """Sniff the demand columns and build one cleaned, period-ordered series per SKU.
+def prepare_records(df: pd.DataFrame, params: dict | None = None) -> ForecastPayload:
+    """Sniff demand columns and optional exogenous covariates, building per-SKU series.
 
     Required columns: product and quantity (raises ValueError listing any missing). A period
     column, when present, orders each SKU's series. Missing demand -> 0; negatives floored.
+    Exogenous covariates (promo, price, events) are extracted into ForecastPayload.
     """
     params = params or {}
     product_col = _pick_column(df, params.get("product_col"), _PRODUCT_COLS)
@@ -150,18 +208,61 @@ def prepare_records(df: pd.DataFrame, params: dict | None = None) -> dict[str, l
         )
     period_col = _pick_column(df, params.get("period_col"), _PERIOD_COLS)
 
-    cols = [product_col, qty_col] + ([period_col] if period_col else [])
+    covar_param = params.get("covariate_cols") or params.get("covariates")
+    if covar_param:
+        covar_cols = [str(c) for c in covar_param if str(c) in df.columns]
+    else:
+        known_non_covars = {product_col, qty_col}
+        if period_col:
+            known_non_covars.add(period_col)
+        covar_cols = [
+            c for c in df.columns
+            if c not in known_non_covars
+            and (
+                str(c).lower() in _COVARIATE_CANDIDATES
+                or any(cand in str(c).lower() for cand in ("promo", "discount", "event", "holiday", "price", "marketing"))
+            )
+        ]
+
+    cols = [product_col, qty_col] + ([period_col] if period_col else []) + covar_cols
     work = df[cols].copy()
     work[qty_col] = pd.to_numeric(work[qty_col], errors="coerce").fillna(0.0).clip(lower=0.0)
+    for c in covar_cols:
+        work[c] = pd.to_numeric(work[c], errors="coerce").fillna(0.0)
 
     series_by_name: dict[str, list[float]] = {}
+    covariates_by_sku: dict[str, dict[str, list[float]]] = {}
+    future_covariates_by_sku: dict[str, dict[str, float]] = {}
+
+    fut_param = params.get("future_covariates") or {}
+
     for product, group in work.groupby(product_col, sort=False):
         if period_col:
             group = group.sort_values(period_col)
-        series_by_name[str(product)] = [float(v) for v in group[qty_col].tolist()]
+        sku_name = str(product)
+        series_by_name[sku_name] = [float(v) for v in group[qty_col].tolist()]
+
+        if covar_cols:
+            covars: dict[str, list[float]] = {}
+            futs: dict[str, float] = {}
+            for c in covar_cols:
+                vals = [float(v) for v in group[c].tolist()]
+                covars[c] = vals
+                if isinstance(fut_param, dict) and sku_name in fut_param and isinstance(fut_param[sku_name], dict) and c in fut_param[sku_name]:
+                    futs[c] = float(fut_param[sku_name][c])
+                elif isinstance(fut_param, dict) and c in fut_param:
+                    futs[c] = float(fut_param[c])
+                else:
+                    if any(w in c.lower() for w in ("promo", "event", "holiday", "discount")):
+                        futs[c] = 0.0
+                    else:
+                        futs[c] = float(vals[-1]) if vals else 0.0
+            covariates_by_sku[sku_name] = covars
+            future_covariates_by_sku[sku_name] = futs
+
     if not series_by_name:
         raise ValueError("no demand series found in the data")
-    return series_by_name
+    return ForecastPayload(series_by_name, covariates_by_sku, future_covariates_by_sku)
 
 
 def prepare(data_path: str, params: dict | None = None) -> dict[str, list[float]]:
@@ -195,6 +296,7 @@ def _backtest(series: list[float], method: str, *, holdout_fraction: float, min_
 def _policy_outcome(
     *, base_summary: str, beating_share: float, regular_share: float, lumpy_share: float,
     n_unvalidated: int = 0, n_skus: int = 0,
+    n_biased: int = 0, biased_names: tuple[str, ...] = (),
 ) -> GuidedOutcome:
     """Rank three forecasting policies (accuracy vs ops simplicity vs manual effort).
 
@@ -203,6 +305,12 @@ def _policy_outcome(
     of silently shipping the same confident label as a well-backed forecast, this
     states the gap as a residual (never a bare/empty risk) and dampens confidence
     proportionally to how much of the portfolio could not be validated.
+
+    ``n_biased`` es otra cosa y por eso NO toca la confianza: el sesgo se MIDIO (el
+    tracking signal salio de la banda), asi que no es un hueco de datos sino un
+    resultado incomodo. Va como residual porque cambia lo que hay que hacer -- esos
+    SKUs no se arreglan con mas buffer -- y la confianza del entregable no es el
+    lugar donde se castiga una mala noticia bien medida.
     """
     scenarios = [
         Scenario(
@@ -233,17 +341,28 @@ def _policy_outcome(
         Objective("manual_effort", weight=0.5),  # cost-like -> minimized
     ]
     confidence = 0.8
-    residuals: list[Residual] | None = None
+    residuals: list[Residual] = []
     if n_unvalidated > 0:
         unvalidated_share = n_unvalidated / n_skus if n_skus else 0.0
         confidence = round(confidence * (1.0 - 0.5 * unvalidated_share), 2)
-        residuals = [Residual(
+        residuals.append(Residual(
             description=f"{n_unvalidated} of {n_skus} SKU(s) had too little demand history to "
                         "backtest - their forecast accuracy (MASE) could not be validated.",
             risk_if_skipped="the chosen method for these SKUs is unverified; a poor fit could go "
                             "unnoticed until a stockout or an excess-stock event exposes it.",
-        )]
-    return decide(base_summary, scenarios, objectives, confidence=confidence, residuals=residuals)
+        ))
+    if n_biased > 0:
+        named = ", ".join(biased_names[:3]) + ("..." if len(biased_names) > 3 else "")
+        residuals.append(Residual(
+            description=f"{n_biased} SKU(s) carry a biased forecast (|tracking signal| > "
+                        f"{TRACKING_SIGNAL_BAND:g}): {named}. Their one-step errors point the same "
+                        "way period after period, so the LEVEL is wrong, not just noisy.",
+            risk_if_skipped="safety stock sized on a biased forecast inherits a directional error - "
+                            "an over-forecast piles up excess, an under-forecast runs dry, and a "
+                            "larger z-factor corrects neither. Re-fit the method before locking the plan.",
+        ))
+    return decide(base_summary, scenarios, objectives, confidence=confidence,
+                  residuals=residuals or None)
 
 
 #: z(0.90): half-width of an 80% band (P10-P90) under a normal error.
@@ -277,20 +396,42 @@ def _benchmark_state(metrics) -> str:
 def _sku_forecast(
     f, series: list[float], memory: CycleMemory,
     *, holdout_fraction: float, min_periods: int,
+    covariates: dict[str, list[float]] | None = None,
+    future_covariates: dict[str, float] | None = None,
+    aic_tolerance: float = 2.0,
 ) -> SkuForecast:
     """One SKU's row: point, band, backtest, and last cycle's error beside today's."""
     _m = detect_season_length(series)
-    # Se escanea con el MISMO m que puntua el benchmark: un pico de temporada no es
-    # un outlier, es la temporada. Contra una linea base sin fase, diciembre entero
-    # saldria marcado todos los anios.
     try:
         _outliers = scan_outliers(series, season_length=_m)
     except ValueError:
-        # Historia inutilizable para el escaner (vacia, no finita, negativa). El
-        # pronostico ya la rechaza por su cuenta; aca no se inventa un cero.
         _outliers = OutlierReport(cleaned=tuple(series), flagged=(), n_flagged=0)
     fc = forecast_demand(series, method=f.recommended_method)
     point = float(fc.forecast)
+    chosen_method = f.recommended_method
+    causal_res: CausalForecastResult | None = None
+    causal_accepted = False
+    delta_aic: float | None = None
+
+    if covariates and len(series) >= 6:
+        fut = dict(future_covariates or {})
+        for cname, cvals in covariates.items():
+            if cname not in fut:
+                fut[cname] = float(cvals[-1]) if cvals else 0.0
+        try:
+            causal_res = fit_causal_forecast(
+                y=series,
+                covariates=covariates,
+                future_covariates=fut,
+                aic_tolerance=aic_tolerance,
+            )
+            delta_aic = causal_res.delta_aic
+            if causal_res.verdict == "causal_accepted":
+                causal_accepted = True
+                point = float(causal_res.forecast)
+                chosen_method = causal_res.method
+        except Exception:
+            pass
     sigma = _dispersion(fc)
     metrics = _backtest(
         series, f.recommended_method,
@@ -303,8 +444,25 @@ def _sku_forecast(
         mase, mape, mae = float("inf"), float("inf"), float("nan")
         fva, beats = 0.0, False
     was = None if memory.previous is None else memory.previous.mape_by_sku.get(f.name)
+    # El tracking signal se lee de la MISMA serie que ``bias``: los errores one-step
+    # que el motor ya guarda en ``ForecastResult.errors``. Se probo antes contra el
+    # holdout del backtest y no sirve para veredicto: con h errores, |TS| <= h
+    # siempre, asi que con el 25% de una serie de 12 periodos (h=3) la banda +-6 es
+    # inalcanzable y "in_band" habria sido una tranquilidad fabricada.
+    #
+    # Demanda intermitente: el TS NO se publica. Los residuos por periodo de
+    # Croston/TSB son estructuralmente de un solo signo (cada periodo sin demanda
+    # aporta un error chico positivo, cada ocurrencia uno grande negativo), asi que
+    # el cociente mide la intermitencia, no el sesgo, y marcaria a todos los SKU
+    # lentos como "corre bajo".
+    ts = float("nan") if fc.is_intermittent else tracking_signal_from_errors(fc.errors)
+    verdict = (
+        "undefined"
+        if fc.is_intermittent
+        else bias_verdict(ts, n_errors=len(fc.errors))
+    )
     return SkuForecast(
-        name=f.name, quadrant=f.quadrant, adi=f.adi, cv2=f.cv2, method=f.recommended_method,
+        name=f.name, quadrant=f.quadrant, adi=f.adi, cv2=f.cv2, method=chosen_method,
         season_length=_m,
         benchmark_state=_benchmark_state(metrics),
         n_outliers=_outliers.n_flagged,
@@ -312,12 +470,17 @@ def _sku_forecast(
         forecast=point, mae=mae, mape=mape, mase=mase, fva=fva, beats_naive=beats,
         n_periods=f.n_periods,
         bias=float(fc.bias), error_std=float(fc.error_std), sigma_source=fc.sigma_source,
+        tracking_signal=ts, bias_verdict=verdict,
+        tracking_signal_periods=(0 if fc.is_intermittent else len(fc.errors)),
         p10=(max(0.0, point - _Z80 * sigma) if sigma is not None else None),
         p90=(point + _Z80 * sigma if sigma is not None else None),
         previous_mape=was,
         mape_change_vs_previous=(
             None if was is None or not math.isfinite(mape) else mape - was
         ),
+        causal_result=causal_res,
+        causal_accepted=causal_accepted,
+        delta_aic=delta_aic,
     )
 
 
@@ -329,6 +492,7 @@ def _policy_and_summary(seg, skus: list[SkuForecast]) -> tuple[GuidedOutcome, st
     # puede ganarle a repetir el ciclo anterior"). Contarlo como hueco de datos le
     # bajaba la confianza al entregable por una medicion que SI se hizo.
     n_validated = sum(1 for s in skus if s.benchmark_state in ("scaled", "exact"))
+    biased = tuple(s.name for s in skus if s.bias_verdict in ("over", "under"))
     base_summary = (
         f"{n} SKUs segmented (smooth {seg.mix['smooth']}, erratic {seg.mix['erratic']}, "
         f"intermittent {seg.mix['intermittent']}, lumpy {seg.mix['lumpy']}); "
@@ -341,8 +505,13 @@ def _policy_and_summary(seg, skus: list[SkuForecast]) -> tuple[GuidedOutcome, st
         lumpy_share=(seg.mix["lumpy"] / n if n else 0.0),
         n_unvalidated=n - n_validated,
         n_skus=n,
+        n_biased=len(biased),
+        biased_names=biased,
     )
-    return outcome, f"{base_summary} Recommended policy: {recommend(outcome.options).label}."
+    biased_txt = f" {len(biased)} of {n} carry a biased forecast (|TS| > {TRACKING_SIGNAL_BAND:g})." if biased else ""
+    return outcome, (
+        f"{base_summary}{biased_txt} Recommended policy: {recommend(outcome.options).label}."
+    )
 
 
 def _read_memory(store: StateStore | None) -> CycleMemory:
@@ -366,6 +535,9 @@ def run(
     min_backtest_periods: int = 4,
     store: StateStore | None = None,
     cycle_id: str | None = None,
+    covariates_by_sku: dict[str, dict[str, list[float]]] | None = None,
+    future_covariates_by_sku: dict[str, dict[str, float]] | None = None,
+    aic_tolerance: float = 2.0,
 ) -> ForecastJobReport:
     """Segment, auto-forecast + backtest each SKU, and present ranked forecasting policies.
 
@@ -385,9 +557,17 @@ def run(
     """
     memory = _read_memory(store)
     seg = segment(series_by_name)
+    covars_map = covariates_by_sku or getattr(series_by_name, "covariates_by_sku", {})
+    fut_covars_map = future_covariates_by_sku or getattr(series_by_name, "future_covariates_by_sku", {})
+
     skus = [
-        _sku_forecast(f, series_by_name[f.name], memory,
-                      holdout_fraction=holdout_fraction, min_periods=min_backtest_periods)
+        _sku_forecast(
+            f, series_by_name[f.name], memory,
+            holdout_fraction=holdout_fraction, min_periods=min_backtest_periods,
+            covariates=covars_map.get(f.name),
+            future_covariates=fut_covars_map.get(f.name),
+            aic_tolerance=aic_tolerance,
+        )
         for f in seg.items
     ]
 
@@ -395,7 +575,15 @@ def run(
     mean_mape = mean_finite(s.mape for s in skus)
     mean_bias = mean_finite(s.bias for s in skus)
     outcome, summary = _policy_and_summary(seg, skus)
+    n_causal = sum(1 for s in skus if s.causal_accepted)
+    if n_causal > 0:
+        summary += f" {n_causal} SKU(s) adopted causal multivariate forecast (ΔAIC <= -{aic_tolerance:g})."
     frozen = _freeze(store, cycle_id, skus)
+
+    all_covar_names = tuple(sorted({
+        cname for s in skus if s.causal_result and s.causal_result.covariates_retained
+        for cname in s.causal_result.covariates_retained
+    }))
 
     return ForecastJobReport(
         skus=tuple(skus),
@@ -406,8 +594,11 @@ def run(
         mean_mase=(sum(finite_mases) / len(finite_mases) if finite_mases else float("inf")),
         mean_mape=mean_mape,
         mean_bias=mean_bias,
+        n_biased=sum(1 for s in skus if s.bias_verdict in ("over", "under")),
         outcome=outcome,
         summary=summary,
+        n_causal_accepted=n_causal,
+        causal_covariates=all_covar_names,
         **forecast_cycle.compare(memory, mean_mape, mean_bias, frozen),
     )
 
@@ -432,6 +623,25 @@ def verify(report: ForecastJobReport) -> list[str]:
     # to prevent, so the gate is on the reason being said, not just on the None.
     if report.previous_cycle_id is None and not report.no_baseline_reason.strip():
         issues.append("there is no previous cycle and the report does not say why")
+    # El veredicto de sesgo y el numero que lo sostiene tienen que poder auditarse
+    # juntos: un SKU que dice "over" con un TS en banda (o "in_band" con un NaN) es
+    # una superficie que afirma algo que su propia medicion no respalda.
+    for s in report.skus:
+        if s.bias_verdict not in BIAS_VERDICTS:
+            issues.append(f"{s.name}: unknown bias verdict {s.bias_verdict!r}")
+        elif s.tracking_signal_periods <= 0:
+            # Sin errores medidos no se puede afirmar NADA: ni "en banda" ni un
+            # numero que lo insinue. Es la misma regla que la negativa del motor.
+            if s.bias_verdict != "undefined" or math.isfinite(s.tracking_signal):
+                issues.append(
+                    f"{s.name}: bias verdict {s.bias_verdict!r} with no measured error "
+                    "series - it must be 'undefined' with no tracking signal"
+                )
+        elif s.bias_verdict != bias_verdict(s.tracking_signal, n_errors=s.tracking_signal_periods):
+            issues.append(
+                f"{s.name}: bias verdict {s.bias_verdict!r} does not match "
+                f"tracking signal {s.tracking_signal:g} over {s.tracking_signal_periods} error(s)"
+            )
     return issues
 
 
@@ -474,6 +684,12 @@ def write_operational(report: ForecastJobReport, out_dir: str | Path, client: st
             "sigma": _fmt(s.error_std),
             "sigma_source": s.sigma_source,
             "bias": _fmt(s.bias),
+            # El TS y su veredicto viajan juntos al CSV por la misma razon que
+            # sigma y sigma_source: un numero sin la regla que lo interpreta obliga
+            # al cliente a re-derivar contra que banda se lo comparo.
+            "tracking_signal": _fmt(s.tracking_signal),
+            "bias_verdict": s.bias_verdict,
+            "tracking_signal_periods": s.tracking_signal_periods,
             "mape": _fmt(s.mape),
             "previous_mape": "" if s.previous_mape is None else round(s.previous_mape, 4),
             "mape_change_vs_previous": (
@@ -482,6 +698,8 @@ def write_operational(report: ForecastJobReport, out_dir: str | Path, client: st
             "mase": _fmt(s.mase),
             "fva": round(s.fva, 4),
             "beats_naive": s.beats_naive,
+            "causal_accepted": s.causal_accepted,
+            "delta_aic": round(s.delta_aic, 2) if s.delta_aic is not None else "",
             "n_periods": s.n_periods,
         }
         for s in report.skus
@@ -524,6 +742,28 @@ def build_deck(
             impact="adopt the method only where it beats naive; elsewhere naive is the honest default",
         ),
     ]
+    if report.n_causal_accepted > 0:
+        findings.append(Finding(
+            f"Causal Multivariate Forecast ({report.n_causal_accepted} SKU(s) accepted)",
+            f"{report.n_causal_accepted} of {n} SKU(s) met strict AIC gating (ΔAIC <= -2.0) with "
+            f"exogenous covariates ({', '.join(report.causal_covariates)}). Causal models replace "
+            "the univariate baseline with verified explanatory power.",
+            impact="forward promotional and pricing schedules directly uplift the demand projection",
+        ))
+    biased = [s for s in report.skus if s.bias_verdict in ("over", "under")]
+    if biased:
+        listed = ", ".join(
+            f"{s.name} TS {s.tracking_signal:+.1f} ({'runs high' if s.bias_verdict == 'over' else 'runs low'})"
+            for s in biased[:4]
+        ) + ("..." if len(biased) > 4 else "")
+        findings.append(Finding(
+            "Forecast bias (tracking signal)",
+            f"{len(biased)}/{n} SKU(s) outside the +/-{TRACKING_SIGNAL_BAND:g} band: {listed}. "
+            "Their one-step errors point the same way period after period - the LEVEL is wrong, "
+            "not just noisy.",
+            impact="an over-forecast piles up excess and an under-forecast runs dry; the remedy is "
+                   "re-fitting the method, not a bigger buffer (a larger z does not correct a level error)",
+        ))
     worse = sorted(
         (s for s in report.skus if (s.mape_change_vs_previous or 0.0) > 0.0),
         key=lambda s: s.mape_change_vs_previous, reverse=True,
@@ -573,6 +813,8 @@ def build_deck(
             rationale="Mean scaled error across backtested SKUs (< 1 is better than naive)"),
         Kpi("Mean MAPE", _pct(report.mean_mape), target="minimize",
             rationale="Mean absolute percentage error across backtested SKUs"),
+        Kpi("Biased SKUs (|TS| > 6)", f"{report.n_biased}/{n}", target="minimize",
+            rationale="SKUs whose one-step errors are consistently signed (tracking signal out of band)"),
         Kpi("MAPE vs previous cycle",
             _delta_pp(report.mean_mape_vs_previous, report.no_baseline_reason), target="minimize",
             rationale="Change in mean MAPE since the previous frozen cycle (negative = improving)"),
