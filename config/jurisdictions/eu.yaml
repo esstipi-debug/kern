@@ -1,0 +1,27 @@
+code: eu
+country_name: European Union
+
+transport:
+  statutory_citation: "Regulation (EC) No 561/2006 & Council Directive 96/53/EC"
+  max_standard_gvw_kg: 40000.0       # Standard 5-axle
+  max_payload_kg: 25000.0
+  max_high_capacity_gvw_kg: 44000.0  # Combined intermodal transport
+  max_continuous_driving_hours: 4.5
+  mandatory_break_minutes: 45.0
+  max_daily_driving_hours: 9.0
+  min_daily_rest_hours: 11.0
+
+customs:
+  statutory_manifest_name: "EU Single Window / Entry Summary Declaration (ENS - ICS2)"
+  manifest_mandatory_before_dispatch: true
+  standard_customs_clearance_days: 2.0
+  sanitary_inspection_buffer_days: 4.0
+  authority_name: "EFSA / TRACES / National Customs"
+
+financial:
+  benchmark_interest_rate: 0.035
+  default_annual_holding_cost_rate: 0.18
+  local_currency: EUR
+
+cold_chain_standard: "Regulation (EC) No 852/2004 & 853/2004 (Food Hygiene)"
+hazmat_standard: "Agreement concerning the Carriage of Dangerous Goods by Road (ADR)"

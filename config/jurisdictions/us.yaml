@@ -1,0 +1,27 @@
+code: us
+country_name: United States
+
+transport:
+  statutory_citation: "FMCSA 49 CFR Part 395 & Federal Bridge Formula (23 CFR § 658.17)"
+  max_standard_gvw_kg: 36287.4       # 80,000 lbs GVW
+  max_payload_kg: 20412.0            # ~45,000 lbs
+  max_high_capacity_gvw_kg: 47627.0  # LCV permit
+  max_continuous_driving_hours: 8.0
+  mandatory_break_minutes: 30.0
+  max_daily_driving_hours: 11.0
+  min_daily_rest_hours: 10.0
+
+customs:
+  statutory_manifest_name: "ACE e-Manifest (CBP)"
+  manifest_mandatory_before_dispatch: true
+  standard_customs_clearance_days: 1.0
+  sanitary_inspection_buffer_days: 3.0
+  authority_name: "FDA / USDA / CBP"
+
+financial:
+  benchmark_interest_rate: 0.050
+  default_annual_holding_cost_rate: 0.20
+  local_currency: USD
+
+cold_chain_standard: "FDA FSMA 21 CFR § 1.908 (Sanitary Transportation Rule)"
+hazmat_standard: "US DOT 49 CFR § 177.848"

@@ -1,0 +1,27 @@
+code: uk
+country_name: United Kingdom
+
+transport:
+  statutory_citation: "Road Vehicles (Construction & Use) 1986 & Retained Reg (EC) 561/2006"
+  max_standard_gvw_kg: 44000.0       # 6-axle articulated vehicle
+  max_payload_kg: 28000.0
+  max_high_capacity_gvw_kg: 44000.0
+  max_continuous_driving_hours: 4.5
+  mandatory_break_minutes: 45.0
+  max_daily_driving_hours: 9.0
+  min_daily_rest_hours: 11.0
+
+customs:
+  statutory_manifest_name: "GVMS / GMR (Goods Movement Record - HMRC)"
+  manifest_mandatory_before_dispatch: true
+  standard_customs_clearance_days: 1.5
+  sanitary_inspection_buffer_days: 3.0
+  authority_name: "FSA / DEFRA / HMRC CDS"
+
+financial:
+  benchmark_interest_rate: 0.050
+  default_annual_holding_cost_rate: 0.20
+  local_currency: GBP
+
+cold_chain_standard: "Food Safety and Hygiene (England) Regulations 2013 Sched 4 (8°C)"
+hazmat_standard: "Carriage of Dangerous Goods (CDG) / ADR"

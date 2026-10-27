@@ -1,0 +1,27 @@
+code: cl
+country_name: Chile
+
+transport:
+  statutory_citation: "Decreto Supremo MOP Nº 158 / 80 & Código del Trabajo Art. 25 bis"
+  max_standard_gvw_kg: 45000.0       # 45 t PBV máximo nacional
+  max_payload_kg: 26500.0
+  max_high_capacity_gvw_kg: 45000.0
+  max_continuous_driving_hours: 5.0
+  mandatory_break_minutes: 120.0     # Descanso obligatorio 2h mín tras 5h
+  max_daily_driving_hours: 10.0
+  min_daily_rest_hours: 10.0
+
+customs:
+  statutory_manifest_name: "Guía de Despacho Electrónica (SII)"
+  manifest_mandatory_before_dispatch: true
+  standard_customs_clearance_days: 1.5
+  sanitary_inspection_buffer_days: 3.5
+  authority_name: "SAG / ISP / Servicio Nacional de Aduanas"
+
+financial:
+  benchmark_interest_rate: 0.055
+  default_annual_holding_cost_rate: 0.22
+  local_currency: CLP
+
+cold_chain_standard: "Decreto Supremo Nº 977/96 (Reglamento Sanitario de los Alimentos)"
+hazmat_standard: "NCh 382 / NCh 2120 & D.S. 298 MMTT"
