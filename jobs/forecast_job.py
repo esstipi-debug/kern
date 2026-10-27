@@ -40,6 +40,7 @@ from src.forecast_metrics import (
 from src.forecastability import segment
 from src.forecasting import forecast_demand
 from src.outliers import OutlierReport, scan_outliers
+from src.quantile_forecasting import QuantileBand, band_score, quantile_band
 from src.seasonality import detect_season_length
 from src.state.store import StateStore
 
@@ -106,8 +107,31 @@ class SkuForecast:
     sigma_source: str = "unavailable"
     #: 80% band around the point (P10 floored at zero: negative demand is not a scenario).
     #: ``None`` when no dispersion was estimable - never a fabricated zero-width band.
+    #: ESTA es la banda publicada y es la normal (punto +/- z*sigma): ``band_method`` es
+    #: ``normal`` o ``unavailable``. P50 = el punto.
     p10: float | None = None
     p90: float | None = None
+    p50: float | None = None
+    band_method: str = "unavailable"
+    #: La banda RETADORA, medida sin supuesto normal: ``two_part`` (intermitente: P(venta)
+    #: x tamanos medidos) o ``residual_empirical`` (cuantiles de los errores one-step);
+    #: ``unavailable`` sin historia para ninguna. Se calcula y se puntua, NO se publica:
+    #: sobre 1000 SKUs del M5 no le gano a la normal a un paso (scripts/banda_m5_*.py), y
+    #: cada cliente puede ser distinto -- por eso se mide en cada corrida sobre SUS datos.
+    challenger_method: str = "unavailable"
+    challenger_p10: float | None = None
+    challenger_p50: float | None = None
+    challenger_p90: float | None = None
+    #: Las dos bandas puntuadas a UN paso con origen rodante sobre los ultimos origenes de
+    #: la serie: pinball promedio sobre P10/P50/P90 y fraccion de reales dentro de
+    #: [P10, P90] (la meta es ~0,8). A un paso porque la banda es del PROXIMO periodo; un
+    #: holdout plano de muchos periodos premia bandas anchas y estaticas y declaraba
+    #: ganadora a la de dos partes que a un paso perdia. ``None`` sin origenes puntuables.
+    challenger_pinball: float | None = None
+    normal_pinball: float | None = None
+    challenger_coverage: float | None = None
+    normal_coverage: float | None = None
+    challenger_scored_origins: int = 0
     #: This SKU's MAPE in the previous frozen cycle, and the change since (negative
     #: = the forecast improved). ``None`` when the SKU was not in that cycle - a
     #: new SKU has no track record, and calling that 0.0 would invent one.
@@ -152,6 +176,12 @@ class ForecastJobReport:
     #: cuenta aparte de ``n_beating_naive``: un metodo puede ganarle al naive Y estar
     #: sesgado (le gana porque el naive esta peor, no porque el nivel este bien).
     n_biased: int = 0
+    #: SKUs cuya banda retadora se pudo puntuar contra la normal, y en cuantos gano
+    #: (pinball menor). Se cuentan victorias y no se promedia el pinball: esta en las
+    #: unidades de cada SKU y promediar escalas distintas no dice nada. Una victoria se
+    #: REPORTA, no cambia la banda publicada: esa decision es del operador.
+    n_challenger_scored: int = 0
+    n_challenger_beats_normal: int = 0
 
 
 def _pick_column(df: pd.DataFrame, override: object, candidates: tuple[str, ...]) -> str | None:
@@ -294,6 +324,11 @@ def _policy_outcome(
 #: z(0.90): half-width of an 80% band (P10-P90) under a normal error.
 _Z80 = 1.2815515655446004
 
+#: La banda publicada es la normal; la retadora es una de las medidas. Que una se cuele
+#: en el lugar de la otra es justo lo que esta rama decidio NO hacer, y QA lo frena.
+PUBLISHED_BAND_METHODS = frozenset({"normal", "unavailable"})
+CHALLENGER_BAND_METHODS = frozenset({"two_part", "residual_empirical", "unavailable"})
+
 
 def _dispersion(fc) -> float | None:
     """The sigma the band is drawn with, or ``None`` when none was estimable.
@@ -310,6 +345,64 @@ def _dispersion(fc) -> float | None:
     return None
 
 
+def _normal_band(fc) -> QuantileBand | None:
+    """La banda de siempre, punto +/- z(0,90)*sigma, o ``None`` sin dispersion."""
+    sigma = _dispersion(fc)
+    if sigma is None:
+        return None
+    point = float(fc.forecast)
+    return QuantileBand(
+        p10=max(0.0, point - _Z80 * sigma), p50=point, p90=point + _Z80 * sigma,
+        method="normal",
+    )
+
+
+#: Origenes de un paso sobre los que se puntua la banda retadora. Cada uno es un ajuste
+#: mas del metodo (con AutoETS, lo caro); ``challenger_origins=0`` lo apaga.
+DEFAULT_CHALLENGER_ORIGINS = 6
+
+#: Con menos origenes puntuados no hay comparacion: un solo periodo es una moneda.
+_MIN_SCORED_ORIGINS = 2
+
+
+@dataclass(frozen=True)
+class _ChallengerScore:
+    challenger_pinball: float | None = None
+    normal_pinball: float | None = None
+    challenger_coverage: float | None = None
+    normal_coverage: float | None = None
+    challenger_scored_origins: int = 0
+
+
+def _challenger_score(
+    series: list[float], method: str, challenger: QuantileBand | None, *, origins: int,
+) -> _ChallengerScore:
+    """Las dos bandas, a UN paso, sobre los ultimos ``origins`` periodos.
+
+    En cada origen ``t`` se ajusta sobre ``series[:t]`` solamente y se puntua contra
+    ``series[t]``, que el ajuste no vio. Un origen cuenta solo si ahi la retadora sale
+    con el MISMO metodo que la de la serie completa: puntuar otra banda y firmarla con
+    este nombre seria un elogio prestado.
+    """
+    if challenger is None or origins <= 0:
+        return _ChallengerScore()
+    n = len(series)
+    acc: list[tuple[float, float, float, float]] = []
+    for t in range(max(1, n - origins), n):
+        fc_t = forecast_demand(series[:t], method=method)
+        ch, nb = quantile_band(series[:t], fc_t), _normal_band(fc_t)
+        if ch is None or nb is None or ch.method != challenger.method:
+            continue
+        cp, cc = band_score([series[t]], ch)
+        np_, nc = band_score([series[t]], nb)
+        acc.append((cp, np_, cc, nc))
+    if len(acc) < _MIN_SCORED_ORIGINS:
+        return _ChallengerScore()
+    cols = list(zip(*acc))
+    mean = [sum(c) / len(c) for c in cols]
+    return _ChallengerScore(*mean, challenger_scored_origins=len(acc))
+
+
 def _benchmark_state(metrics) -> str:
     """`scaled` | `exact` | `unavailable` -- que pudo decir el naive de referencia."""
     if metrics is None or metrics.naive_obs <= 0:
@@ -322,6 +415,7 @@ def _benchmark_state(metrics) -> str:
 def _sku_forecast(
     f, series: list[float], memory: CycleMemory,
     *, holdout_fraction: float, min_periods: int,
+    challenger_origins: int = DEFAULT_CHALLENGER_ORIGINS,
 ) -> SkuForecast:
     """One SKU's row: point, band, backtest, and last cycle's error beside today's."""
     _m = detect_season_length(series)
@@ -336,7 +430,11 @@ def _sku_forecast(
         _outliers = OutlierReport(cleaned=tuple(series), flagged=(), n_flagged=0)
     fc = forecast_demand(series, method=f.recommended_method)
     point = float(fc.forecast)
-    sigma = _dispersion(fc)
+    band = _normal_band(fc)
+    challenger = quantile_band(series, fc)
+    score = _challenger_score(
+        series, f.recommended_method, challenger, origins=challenger_origins,
+    )
     metrics = _backtest(
         series, f.recommended_method,
         holdout_fraction=holdout_fraction, min_periods=min_periods,
@@ -376,8 +474,19 @@ def _sku_forecast(
         bias=float(fc.bias), error_std=float(fc.error_std), sigma_source=fc.sigma_source,
         tracking_signal=ts, bias_verdict=verdict,
         tracking_signal_periods=(0 if fc.is_intermittent else len(fc.errors)),
-        p10=(max(0.0, point - _Z80 * sigma) if sigma is not None else None),
-        p90=(point + _Z80 * sigma if sigma is not None else None),
+        p10=None if band is None else band.p10,
+        p50=None if band is None else band.p50,
+        p90=None if band is None else band.p90,
+        band_method="unavailable" if band is None else band.method,
+        challenger_method="unavailable" if challenger is None else challenger.method,
+        challenger_p10=None if challenger is None else challenger.p10,
+        challenger_p50=None if challenger is None else challenger.p50,
+        challenger_p90=None if challenger is None else challenger.p90,
+        challenger_pinball=score.challenger_pinball,
+        normal_pinball=score.normal_pinball,
+        challenger_coverage=score.challenger_coverage,
+        normal_coverage=score.normal_coverage,
+        challenger_scored_origins=score.challenger_scored_origins,
         previous_mape=was,
         mape_change_vs_previous=(
             None if was is None or not math.isfinite(mape) else mape - was
@@ -436,8 +545,13 @@ def run(
     min_backtest_periods: int = 4,
     store: StateStore | None = None,
     cycle_id: str | None = None,
+    challenger_origins: int = DEFAULT_CHALLENGER_ORIGINS,
 ) -> ForecastJobReport:
     """Segment, auto-forecast + backtest each SKU, and present ranked forecasting policies.
+
+    ``challenger_origins`` is how many one-step origins the challenger band is scored
+    on (see ``SkuForecast.challenger_method``); each one is one more fit per SKU, and
+    ``0`` turns the scoring off without touching the published band.
 
     Carries the cycle memory too, and it is OPT-IN. With a ``store``, the
     previous frozen cycle is read BEFORE anything is written (read after the
@@ -457,7 +571,8 @@ def run(
     seg = segment(series_by_name)
     skus = [
         _sku_forecast(f, series_by_name[f.name], memory,
-                      holdout_fraction=holdout_fraction, min_periods=min_backtest_periods)
+                      holdout_fraction=holdout_fraction, min_periods=min_backtest_periods,
+                      challenger_origins=challenger_origins)
         for f in seg.items
     ]
 
@@ -466,6 +581,7 @@ def run(
     mean_bias = mean_finite(s.bias for s in skus)
     outcome, summary = _policy_and_summary(seg, skus)
     frozen = _freeze(store, cycle_id, skus)
+    scored = [s for s in skus if s.challenger_scored_origins > 0]
 
     return ForecastJobReport(
         skus=tuple(skus),
@@ -477,10 +593,46 @@ def run(
         mean_mape=mean_mape,
         mean_bias=mean_bias,
         n_biased=sum(1 for s in skus if s.bias_verdict in ("over", "under")),
+        n_challenger_scored=len(scored),
+        n_challenger_beats_normal=sum(
+            1 for s in scored if s.challenger_pinball < s.normal_pinball
+        ),
         outcome=outcome,
         summary=summary,
         **forecast_cycle.compare(memory, mean_mape, mean_bias, frozen),
     )
+
+
+def _one_band_issues(name: str, label: str, method: str, values: tuple, allowed) -> list[str]:
+    """Una banda se gatea en las dos direcciones, como la negativa del motor: un metodo
+    ``unavailable`` no puede traer numeros, y uno con nombre no puede venir vacio ni
+    cruzado (un P10 sobre el P50 es una banda que se contradice a si misma)."""
+    if method not in allowed:
+        return [f"{name}: unknown {label} method {method!r}"]
+    if method == "unavailable":
+        if any(v is not None for v in values):
+            return [f"{name}: {label} method 'unavailable' but the {label} carries numbers"]
+        return []
+    if any(v is None or not math.isfinite(v) for v in values):
+        return [f"{name}: {label} method {method!r} with a missing or non-finite quantile"]
+    p10, p50, p90 = values
+    if not (p10 <= p50 <= p90):
+        return [f"{name}: crossed {label} P10 {p10:g} / P50 {p50:g} / P90 {p90:g}"]
+    return []
+
+
+def _band_issues(s: SkuForecast) -> list[str]:
+    """La publicada solo puede ser la normal; la retadora, solo una de las medidas."""
+    issues = _one_band_issues(
+        s.name, "band", s.band_method, (s.p10, s.p50, s.p90), PUBLISHED_BAND_METHODS
+    )
+    issues += _one_band_issues(
+        s.name, "challenger band", s.challenger_method,
+        (s.challenger_p10, s.challenger_p50, s.challenger_p90), CHALLENGER_BAND_METHODS,
+    )
+    if s.challenger_scored_origins > 0 and (s.challenger_pinball is None or s.normal_pinball is None):
+        issues.append(f"{s.name}: challenger scored on origins but carries no pinball")
+    return issues
 
 
 def verify(report: ForecastJobReport) -> list[str]:
@@ -507,6 +659,7 @@ def verify(report: ForecastJobReport) -> list[str]:
     # juntos: un SKU que dice "over" con un TS en banda (o "in_band" con un NaN) es
     # una superficie que afirma algo que su propia medicion no respalda.
     for s in report.skus:
+        issues.extend(_band_issues(s))
         if s.bias_verdict not in BIAS_VERDICTS:
             issues.append(f"{s.name}: unknown bias verdict {s.bias_verdict!r}")
         elif s.tracking_signal_periods <= 0:
@@ -528,6 +681,11 @@ def verify(report: ForecastJobReport) -> list[str]:
 def _fmt(x: float) -> object:
     """Round for the operational CSV, leaving non-finite values blank-friendly."""
     return round(x, 4) if math.isfinite(x) else ""
+
+
+def _opt(x: float | None, digits: int) -> object:
+    """Un opcional para el CSV: en blanco cuando no se midio, nunca un cero."""
+    return "" if x is None else round(x, digits)
 
 
 def _pct(x: float | None) -> str:
@@ -560,7 +718,20 @@ def write_operational(report: ForecastJobReport, out_dir: str | Path, client: st
             "method": s.method,
             "forecast": round(s.forecast, 2),
             "p10": "" if s.p10 is None else round(s.p10, 2),
+            "p50": "" if s.p50 is None else round(s.p50, 2),
             "p90": "" if s.p90 is None else round(s.p90, 2),
+            "band_method": s.band_method,
+            # La retadora viaja con su metodo y su puntaje al lado: tres numeros que se
+            # parecen a la banda publicada y no lo son, sin la columna que lo dice.
+            "challenger_method": s.challenger_method,
+            "challenger_p10": _opt(s.challenger_p10, 2),
+            "challenger_p50": _opt(s.challenger_p50, 2),
+            "challenger_p90": _opt(s.challenger_p90, 2),
+            "challenger_pinball": _opt(s.challenger_pinball, 4),
+            "normal_pinball": _opt(s.normal_pinball, 4),
+            "challenger_coverage": _opt(s.challenger_coverage, 4),
+            "normal_coverage": _opt(s.normal_coverage, 4),
+            "challenger_scored_origins": s.challenger_scored_origins,
             "sigma": _fmt(s.error_std),
             "sigma_source": s.sigma_source,
             "bias": _fmt(s.bias),
@@ -583,6 +754,31 @@ def write_operational(report: ForecastJobReport, out_dir: str | Path, client: st
         for s in report.skus
     ]
     return {"csv": write_summary_csv(rows, d / "forecast_register.csv")}
+
+
+def _band_finding(report: ForecastJobReport) -> Finding:
+    """La banda publicada (normal) y como le fue a la retadora contra ella, a un paso."""
+    counts = {m: 0 for m in ("two_part", "residual_empirical", "unavailable")}
+    for s in report.skus:
+        counts[s.challenger_method] = counts.get(s.challenger_method, 0) + 1
+    mix = ", ".join(f"{m} {c}" for m, c in counts.items() if c)
+    if report.n_challenger_scored:
+        verdict = (
+            f" Scored one step ahead on the last origins of each series, the challenger beat "
+            f"the normal band on {report.n_challenger_beats_normal}/{report.n_challenger_scored} "
+            "SKU(s) (lower pinball loss)."
+        )
+    else:
+        verdict = " No SKU had enough history to score the challenger against the normal band."
+    return Finding(
+        "Forecast band P10-P90: published normal, measured challenger",
+        f"The published band is point +/- 1.28 sigma. A challenger band is measured without "
+        f"assuming normal errors ({mix}; two_part = P(sale) x measured sizes for intermittent "
+        f"SKUs, residual_empirical = quantiles of the method's own one-step errors).{verdict}",
+        impact="a win is reported, not acted on: on 1000 real M5 SKUs the challenger did not beat "
+               "the normal band one step ahead, so promoting it is the planner's call on this "
+               "client's own track record; neither band sizes safety stock",
+    )
 
 
 def build_deck(
@@ -634,6 +830,7 @@ def build_deck(
             impact="an over-forecast piles up excess and an under-forecast runs dry; the remedy is "
                    "re-fitting the method, not a bigger buffer (a larger z does not correct a level error)",
         ))
+    findings.append(_band_finding(report))
     worse = sorted(
         (s for s in report.skus if (s.mape_change_vs_previous or 0.0) > 0.0),
         key=lambda s: s.mape_change_vs_previous, reverse=True,
