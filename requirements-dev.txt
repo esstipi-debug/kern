@@ -19,7 +19,7 @@ utilsforecast>=0.2
 # Capped below 2.0: mcp 2.0.0 (2026-07-28) dropped `mcp.server.fastmcp`. Keep this
 # cap in lockstep with pyproject [mcp] — CI installs from THIS file, so changing
 # only one of the two silently does nothing.
-mcp>=1.0,<2
+mcp>=1.30.0,<2
 # data-quality dedup + matching primitives (src/sku_dedup.py, pricing_intel/match/) — mirrors pyproject [dataquality]
 rapidfuzz>=3.0
 python-stdnum>=1.19
