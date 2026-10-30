@@ -805,10 +805,14 @@ El otro guard es **estructural y sobre los 60 tools**: recorre por AST toda llam
 escrito por que no. Entiende dos cosas o acusa de mas: que un destino se llama desde
 VARIOS sitios (alcanza con que uno lo reenvie -- eso daba cuatro falsos positivos) y que
 un kwarg puede viajar dentro de un `**{...}` condicional. Las exenciones van por NOMBRE
-cuando son genericas (`prepared`, `lang`, `data_source`, `residual`: 65 de las 75 que
-quedan) y por `modulo.funcion.parametro` cuando la razon es propia -- `min_periods` esta
-ahi porque exponerla dejaria saltear la negativa del motor desde afuera, y
-`sop_job.confidence` porque una confianza que el llamador TIPEA no es una medicion.
+cuando son genericas (`prepared`, `lang`, `data_source`, `residual`: 65 de las 77 que
+quedan, medido sobre `ce8ec0c`) y por `modulo.funcion.parametro` cuando la razon es
+propia -- `min_periods` esta ahi porque exponerla dejaria saltear la negativa del motor
+desde afuera, y `sop_job.confidence` porque una confianza que el llamador TIPEA no es una
+medicion. Una exencion que dice "ya viaja por otro camino" (las covariables del
+pronostico dentro del payload, la matriz de distancias del ruteo por `params`) es una
+afirmacion sobre la caneria y la exencion le tapa la boca al guard, asi que la sostiene
+un test por el orquestador que se pone rojo si ese camino se corta.
 
 **Un shock que no puede golpear se RECHAZA**, no se avisa: un `demand_surge` en las
 primeras `INITIAL_STOCK_WEEKS` semanas (el mundo dimensiona el stock inicial con esa

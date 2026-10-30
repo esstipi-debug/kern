@@ -90,6 +90,16 @@ NO_EXPUESTOS_POR_DESTINO = {
         "costo/precision del motor. No es un hecho del cliente ni cambia lo que se le "
         "promete"
     ),
+    "jobs.forecast_job.run.aic_tolerance": (
+        "es la compuerta de evidencia del modelo causal: `fit_causal_forecast` adopta "
+        "las covariables solo si el AIC mejora al menos esto, y si no se niega a usarlas "
+        "para no sobreajustar. No es un hecho del cliente, y exponerla dejaria que quien "
+        "la baja -- o la pone negativa -- haga adoptar covariables que no pagan sus "
+        "parametros: la negativa del motor salteada desde afuera, igual que "
+        "`inventory_optimization.run.min_periods`. Y el deck imprime el umbral como "
+        "literal ('<= -2.0' en `build_deck`): con la perilla expuesta, el entregable "
+        "diria un umbral y gatearia con otro"
+    ),
     "jobs.sop_job.run.confidence": (
         "la confianza declarada del plan S&OP. Una confianza que el llamador TIPEA no "
         "es una medicion, es un numero inventado con nombre de medicion -- exactamente "
@@ -115,6 +125,33 @@ NO_EXPUESTOS_POR_DESTINO = {
         "sale de `report.params['periods_per_year']` del propio reporte, que es el que "
         "de verdad se uso. Recibirlo aparte permitiria convertir la tasa diaria con un "
         "periodo distinto del que dimensiono la politica"
+    ),
+    # Las tres que siguen no se reenvian porque el hecho YA llega por otro camino. Esa
+    # afirmacion la sostienen los tests de "Los que se declaran porque YA viajan por
+    # otro camino", al final de este archivo: si el camino se corta, se ponen rojos
+    # ellos, y no este dict.
+    "jobs.forecast_job.run.covariates_by_sku": (
+        "la historia de covariables YA viaja, dentro del payload: `forecast_job.prepare` "
+        "la lee del MISMO archivo que la demanda -- mismo SKU, mismo orden por periodo -- "
+        "y la cuelga del `ForecastPayload` que el orquestador le pasa entero a `run`. El "
+        "kwarg es la puerta de quien llama al job desde Python con series sueltas. "
+        "Reenviarlo desde `params` abriria una segunda historia, tipeada por el llamador, "
+        "cuya alineacion con la serie nadie controla, y que le GANARIA a la del archivo: "
+        "`run` prefiere el kwarg al payload"
+    ),
+    "jobs.forecast_job.run.future_covariates_by_sku": (
+        "el valor futuro de cada covariable YA tiene canal: `params['future_covariates']` "
+        "(global o por SKU), que `prepare_records` lee y cuelga del mismo payload. "
+        "Reenviar el kwarg seria el mismo hecho del cliente por un segundo camino con "
+        "otro nombre, y como `run` prefiere el kwarg al payload, la segunda copia "
+        "pisaria a la primera sin que el entregable lo diga"
+    ),
+    "jobs.vehicle_routing_job.prepare.distance_matrix": (
+        "la matriz YA viaja, por `params`: `_vehicle_routing_prepare` le pasa "
+        "`request.params` entero a `prepare`, y `prepare_records` lee "
+        "`params['distance_matrix']` (y sus alias `matrix`, `matrix_path` y "
+        "`distance_matrix_path`). El kwarg es la puerta de quien llama desde Python y "
+        "escribe en esa MISMA clave: reenviarlo mandaria la misma matriz dos veces"
     ),
 }
 
@@ -485,3 +522,110 @@ def test_la_clave_de_idempotencia_del_restock_se_puede_declarar():
     assert clave({}).startswith("channel-replenish-")
     assert clave({}) != "channel-replenish-1", "volvio la constante"
     assert clave({"idempotency_key": "restock-2026-W38"}) == "restock-2026-W38"
+
+
+# ---------------------------------------------------------------------------
+# Los que se declaran porque YA viajan por otro camino: que ese camino ande
+# ---------------------------------------------------------------------------
+#
+# `forecast_job.run.covariates_by_sku`, `forecast_job.run.future_covariates_by_sku`
+# y `vehicle_routing_job.prepare.distance_matrix` estan en NO_EXPUESTOS_POR_DESTINO
+# con una razon que es una afirmacion sobre la caneria: "el hecho ya llega, por el
+# payload o por `params`". Si ese camino se cortara, el guard estructural seguiria
+# verde -- la exencion lo tapa --, asi que la razon la sostienen estos tests y no la
+# prosa.
+
+
+def _demanda_con_promo(tmp: Path, *, con_columna: bool = True) -> str:
+    """Doce periodos donde la promo suma 25 unidades sobre una base de ~10."""
+    promo = [0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0]
+    filas = pd.DataFrame({
+        "sku": ["P"] * 12, "period": range(12),
+        "demand": [10.0 + 25.0 * p + (i % 3) * 0.4 for i, p in enumerate(promo)],
+    })
+    if con_columna:
+        filas["promo"] = promo
+    ruta = tmp / ("con_promo.csv" if con_columna else "sin_promo.csv")
+    filas.to_csv(ruta, index=False)
+    return str(ruta)
+
+
+def _pronostico(ruta: str, salida: Path, **overrides):
+    res = Orchestrator(clients_root=None).run(
+        "forecast demand per SKU", data_path=ruta, job_type="forecast",
+        out_dir=str(salida), overrides=overrides,
+    )
+    assert res.status == "ok", res.summary
+    return res.report.skus[0]
+
+
+def test_la_historia_de_covariables_viaja_DENTRO_del_payload_por_el_camino_del_agente(tmp_path):
+    """La razon de `forecast_job.run.covariates_by_sku`, puesta a prueba.
+
+    La promo vive como COLUMNA del mismo archivo que la demanda, y viaja como
+    atributo del `ForecastPayload` que `prepare` arma. Un `dict(payload)` en el
+    camino alcanzaria para perderla, y entonces `delta_aic` saldria vacio, igual que
+    en un archivo sin la columna.
+    """
+    sin = _pronostico(_demanda_con_promo(tmp_path, con_columna=False), tmp_path / "sin")
+    con = _pronostico(_demanda_con_promo(tmp_path), tmp_path / "con")
+
+    assert sin.delta_aic is None and not sin.causal_accepted
+    assert con.delta_aic is not None and con.delta_aic <= -2.0, (
+        "la historia de la promo no llego al modelo causal por el camino del agente"
+    )
+    assert con.causal_accepted and con.method == "causal_multivariate_aic"
+
+
+def test_el_valor_futuro_de_la_covariable_viaja_por_params_y_mueve_el_pronostico(tmp_path):
+    """La razon de `forecast_job.run.future_covariates_by_sku`, puesta a prueba.
+
+    "El proximo periodo hay promo" es un hecho del cliente, y su canal es
+    `params['future_covariates']`. Las dos formas que `prepare_records` acepta --
+    global y por SKU -- tienen que llegar y mover el punto: si no llegaran, las dos
+    corridas tomarian el default (sin promo) y saldrian iguales.
+    """
+    ruta = _demanda_con_promo(tmp_path)
+    sin_promo = _pronostico(ruta, tmp_path / "0", future_covariates={"promo": 0.0})
+    global_ = _pronostico(ruta, tmp_path / "g", future_covariates={"promo": 1.0})
+    por_sku = _pronostico(ruta, tmp_path / "s", future_covariates={"P": {"promo": 1.0}})
+
+    assert global_.forecast == pytest.approx(por_sku.forecast)
+    assert global_.forecast - sin_promo.forecast == pytest.approx(25.0, abs=2.0), (
+        f"{sin_promo.forecast:.2f} -> {global_.forecast:.2f}: la promo declarada no "
+        "movio el pronostico lo que la historia dice que mueve"
+    )
+
+
+def test_la_matriz_de_distancias_viaja_por_params_por_el_camino_del_agente(tmp_path):
+    """La razon de `vehicle_routing_job.prepare.distance_matrix`, puesta a prueba.
+
+    La forma es la que puede llegar por `/api/jobs`: JSON no tiene claves-tupla, asi
+    que la matriz viaja anidada (`{origen: {destino: distancia}}`). Si se perdiera en
+    el camino, el ruteo volveria a la linea recta y solo el residual del deck lo
+    diria.
+    """
+    ruta = tmp_path / "paradas.csv"
+    pd.DataFrame({
+        "stop_id": ["A", "B", "C"], "x": [3.0, 6.0, 9.0], "y": [4.0, 8.0, 12.0],
+        "demand": [1.0, 1.0, 1.0],
+    }).to_csv(ruta, index=False)
+
+    def corrida(etiqueta: str, **ov):
+        res = Orchestrator(clients_root=None).run(
+            "route the delivery vehicles", data_path=str(ruta), job_type="vehicle_routing",
+            out_dir=str(tmp_path / etiqueta), overrides={"capacity": 3, **ov},
+        )
+        assert res.status == "ok", res.summary
+        return res.report
+
+    recta = corrida("recta")
+    vial = corrida("vial", distance_matrix={
+        "depot": {"A": 10.0, "B": 20.0, "C": 30.0},
+        "A": {"B": 5.0, "C": 12.0},
+        "B": {"C": 5.0},
+    })
+
+    assert recta.distance_source == "euclidean"
+    assert vial.distance_source == "matrix", "la matriz declarada no llego al ruteo"
+    assert vial.recommended_distance != pytest.approx(recta.recommended_distance)
