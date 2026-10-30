@@ -116,6 +116,36 @@ NO_EXPUESTOS_POR_DESTINO = {
         "de verdad se uso. Recibirlo aparte permitiria convertir la tasa diaria con un "
         "periodo distinto del que dimensiono la politica"
     ),
+    "jobs.forecast_job.run.aic_tolerance": (
+        "es la compuerta de evidencia con la que el motor cambia el pronostico "
+        "univariado por el causal (2 unidades de AIC). No es un hecho del cliente: "
+        "bajarla desde afuera adoptaria un modelo que los datos no sostienen -- la misma "
+        "razon que `min_periods` --, y `build_deck` imprime el 2,0 literal, asi que "
+        "publicaria una compuerta que no se aplico"
+    ),
+    # Los tres que siguen NO se tiran: llegan por otra puerta. "Ya viaja" es una
+    # afirmacion sobre el codigo y puede dejar de ser cierta, asi que se PRUEBA por el
+    # orquestador al final de este archivo: si la puerta se cierra, la exencion pasa a
+    # tapar justo lo que este guard persigue, y esa prueba se pone roja.
+    "jobs.forecast_job.run.covariates_by_sku": (
+        "ya viaja DENTRO del payload: `prepare_records` arma las covariables del archivo "
+        "con las MISMAS filas y el MISMO orden por periodo que la demanda, que es lo que "
+        "las mantiene alineadas. Recibirlas aparte reemplaza el mapa entero, y una "
+        "covariable desalineada hace levantar el ajuste causal, que `_sku_forecast` se "
+        "traga: el SKU sale univariado sin decirlo"
+    ),
+    "jobs.forecast_job.run.future_covariates_by_sku": (
+        "ya viaja como `params['future_covariates']` (global o por SKU), que "
+        "`prepare_records` mete en el payload junto a las covariables que aplica. Una "
+        "segunda puerta pondria a competir dos versiones del mismo plan, y la del kwarg "
+        "reemplaza el mapa entero sin avisar"
+    ),
+    "jobs.vehicle_routing_job.prepare.distance_matrix": (
+        "ya viaja: `_vehicle_routing_prepare` le pasa `request.params` entero y "
+        "`prepare_records` lee la matriz de ahi (`distance_matrix`, `matrix`, "
+        "`matrix_path` o `distance_matrix_path`). El kwarg es la puerta de quien llama "
+        "al job desde Python; pasarlo ademas seria el mismo dato dos veces"
+    ),
 }
 
 
@@ -485,3 +515,95 @@ def test_la_clave_de_idempotencia_del_restock_se_puede_declarar():
     assert clave({}).startswith("channel-replenish-")
     assert clave({}) != "channel-replenish-1", "volvio la constante"
     assert clave({"idempotency_key": "restock-2026-W38"}) == "restock-2026-W38"
+
+
+# ---------------------------------------------------------------------------
+# Las exenciones que dicen "ya viaja": se prueba la puerta, no el kwarg
+# ---------------------------------------------------------------------------
+
+
+def test_la_matriz_de_distancias_llega_por_params_sin_el_kwarg(tmp_path):
+    """La razon de `vehicle_routing_job.prepare.distance_matrix`, medida.
+
+    El guard acusa el kwarg porque el agente no lo nombra, y el dato llega igual:
+    `prepare_records` lo lee de los `params` que el agente le pasa enteros. Se prueba
+    con la forma en que cruza JSON -- un dict de dicts, porque una clave tupla no
+    sobrevive la frontera -- y con el alias de archivo, la otra forma de declararla.
+    """
+    paradas = tmp_path / "paradas.csv"
+    paradas.write_text("stop_id,x,y,demand\nA,3,4,1\nB,6,8,1\nC,9,12,1\n", encoding="utf-8")
+    matriz = {
+        "depot": {"A": 10.0, "B": 20.0, "C": 30.0},
+        "A": {"depot": 10.0, "B": 5.0, "C": 12.0},
+        "B": {"depot": 20.0, "A": 5.0, "C": 5.0},
+        "C": {"depot": 30.0, "A": 12.0, "B": 5.0},
+    }
+    archivo = tmp_path / "distancias.csv"
+    pd.DataFrame([
+        {"origin": origen, "dest": destino, "distance": km}
+        for origen, fila in matriz.items() for destino, km in fila.items()
+    ]).to_csv(archivo, index=False)
+
+    def corrida(etiqueta, **ov):
+        res = Orchestrator(clients_root=None).run(
+            "route the delivery vehicles", data_path=str(paradas), job_type="vehicle_routing",
+            out_dir=str(tmp_path / etiqueta), overrides={"capacity": 3, **ov},
+        )
+        assert res.status == "ok", res.summary
+        return res.report
+
+    base = corrida("base")
+    por_json = corrida("json", distance_matrix=matriz)
+    por_archivo = corrida("archivo", matrix_path=str(archivo))
+
+    assert base.distance_source == "euclidean"
+    assert por_json.distance_source == por_archivo.distance_source == "matrix"
+    # Y no es una etiqueta: la distancia recomendada sale de la matriz, no de la recta.
+    assert por_json.recommended_distance != base.recommended_distance
+    assert por_archivo.recommended_distance == por_json.recommended_distance
+
+
+def _serie_con_promo(ruta: Path, *, con_columna: bool) -> str:
+    """Doce periodos donde la promo explica la demanda: base 10, +20 con promo."""
+    promo = [0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0]
+    ruido = [0.2, -0.1, 0.3, -0.2, 0.1, -0.3, 0.2, 0.0, -0.1, 0.3, -0.2, 0.1]
+    filas = {
+        "sku": ["P"] * 12,
+        "period": list(range(12)),
+        "demand": [10.0 + 20.0 * p + e for p, e in zip(promo, ruido)],
+    }
+    if con_columna:
+        filas["promo"] = promo
+    pd.DataFrame(filas).to_csv(ruta, index=False)
+    return str(ruta)
+
+
+def test_las_covariables_llegan_en_el_payload_y_el_plan_por_params(tmp_path):
+    """Las razones de `forecast_job.run.covariates_by_sku` y `.future_covariates_by_sku`.
+
+    El agente no nombra ninguna de las dos, y las dos llegan: la columna del archivo
+    viaja dentro del `ForecastPayload` que arma `prepare`, y el plan del proximo
+    periodo como `params['future_covariates']`. Se mide por el numero que cada una
+    tiene que mover, no por una etiqueta.
+    """
+    def corrida(ruta, etiqueta, **ov):
+        res = Orchestrator(clients_root=None).run(
+            "forecast demand for each SKU", data_path=ruta, job_type="forecast",
+            out_dir=str(tmp_path / etiqueta), overrides=ov,
+        )
+        assert res.status == "ok", res.summary
+        return res.report
+
+    sin_columna = corrida(_serie_con_promo(tmp_path / "sin.csv", con_columna=False), "sin")
+    con_columna = _serie_con_promo(tmp_path / "con.csv", con_columna=True)
+    sin_plan = corrida(con_columna, "sin_plan")
+    con_plan = corrida(con_columna, "con_plan", future_covariates={"promo": 1.0})
+
+    # La columna llega: sin ella no hay modelo causal contra el cual medir; con ella,
+    # la promo explica la demanda y el motor lo adopta.
+    assert sin_columna.skus[0].delta_aic is None
+    assert sin_plan.causal_covariates == ("promo",)
+    assert sin_plan.skus[0].causal_accepted
+    # Y el plan llega: sin el, una promo futura se asume en cero; con el, el pronostico
+    # sube lo que la promo le agrega a esta serie (20 sobre una base de 10).
+    assert con_plan.skus[0].forecast == pytest.approx(sin_plan.skus[0].forecast + 20.0, abs=2.0)

@@ -243,8 +243,14 @@ _SERIE_ESTABLE = (100.0, 102.0, 98.0, 101.0, 99.0, 103.0, 97.0, 100.0,
 _SERIE_VOLATIL = (60.0, 140.0, 55.0, 150.0, 70.0, 130.0, 45.0, 160.0,
                   80.0, 120.0, 50.0, 155.0, 65.0, 145.0, 75.0, 125.0)
 
-#: Nombres con los que la comparacion contra el ciclo anterior podria llegar.
-_CAMPOS_CICLO_PREVIO = ("previo", "anterior", "previous", "delta", "vs_")
+#: Nombres con los que la comparacion contra el ciclo anterior podria llegar. Cada
+#: aguja NOMBRA el ciclo previo: una que solo nombra UNA comparacion se lleva lo que
+#: no es. Por "delta" entraba `delta_aic` -- el AIC del modelo causal menos el del
+#: univariado, sobre la misma serie y en el MISMO ciclo --, y por "vs_" entraria un
+#: `mape_vs_naive`. Sacarlas no mueve el veredicto (`_reproducen` recorre todos los
+#: campos, no estos), solo lo que la evidencia llama campo de ciclo previo; y los
+#: tres que hoy llevan "vs_" dicen tambien "previous".
+_CAMPOS_CICLO_PREVIO = ("previo", "anterior", "previous")
 
 #: Periodos del primer ciclo de la sonda de T02. El segundo corre sobre la serie
 #: entera, asi que los dos ciclos tienen error distinto y el ciclo PREVIO tambien
