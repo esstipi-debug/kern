@@ -191,9 +191,9 @@ def test_t02_cumple_con_su_propio_store_aislado():
 def test_t02_los_campos_que_solo_se_mueven_ya_no_acreditan():
     """La prueba de que esto endurecio, sobre el entregable real y sin inyectar nada.
 
-    Siete campos del entregable llevan nombre de comparacion y cinco de ellos se
+    Siete campos del entregable llevan nombre de comparacion y seis de ellos se
     MUEVEN entre las dos corridas. Con el gate viejo -- ``se_mueve`` -- cualquiera
-    de los cinco acreditaba "comparo contra el ciclo previo", incluidos los de
+    de los seis acreditaba "comparo contra el ciclo previo", incluidos los de
     nivel PORTAFOLIO, que no tienen nada que ver con el ciclo congelado de este
     SKU. Con el gate nuevo solo acreditan los dos que devuelven el numero real.
     """
