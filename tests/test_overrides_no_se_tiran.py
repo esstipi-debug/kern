@@ -96,7 +96,9 @@ NO_EXPUESTOS_POR_DESTINO = {
         "para no sobreajustar. No es un hecho del cliente, y exponerla dejaria que quien "
         "la baja -- o la pone negativa -- haga adoptar covariables que no pagan sus "
         "parametros: la negativa del motor salteada desde afuera, igual que "
-        "`inventory_optimization.run.min_periods`"
+        "`inventory_optimization.run.min_periods`. Y el deck imprime el umbral como "
+        "literal ('<= -2.0' en `build_deck`): con la perilla expuesta, el entregable "
+        "diria un umbral y gatearia con otro"
     ),
     "jobs.sop_job.run.confidence": (
         "la confianza declarada del plan S&OP. Una confianza que el llamador TIPEA no "

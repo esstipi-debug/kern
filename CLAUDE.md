@@ -806,7 +806,7 @@ escrito por que no. Entiende dos cosas o acusa de mas: que un destino se llama d
 VARIOS sitios (alcanza con que uno lo reenvie -- eso daba cuatro falsos positivos) y que
 un kwarg puede viajar dentro de un `**{...}` condicional. Las exenciones van por NOMBRE
 cuando son genericas (`prepared`, `lang`, `data_source`, `residual`: 65 de las 77 que
-quedan, medido sobre `7b6a64f`) y por `modulo.funcion.parametro` cuando la razon es
+quedan, medido sobre `ce8ec0c`) y por `modulo.funcion.parametro` cuando la razon es
 propia -- `min_periods` esta ahi porque exponerla dejaria saltear la negativa del motor
 desde afuera, y `sop_job.confidence` porque una confianza que el llamador TIPEA no es una
 medicion. Una exencion que dice "ya viaja por otro camino" (las covariables del
