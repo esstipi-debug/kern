@@ -191,11 +191,19 @@ def test_t02_cumple_con_su_propio_store_aislado():
 def test_t02_los_campos_que_solo_se_mueven_ya_no_acreditan():
     """La prueba de que esto endurecio, sobre el entregable real y sin inyectar nada.
 
-    Siete campos del entregable llevan nombre de comparacion y cinco de ellos se
-    MUEVEN entre las dos corridas. Con el gate viejo -- ``se_mueve`` -- cualquiera
-    de los cinco acreditaba "comparo contra el ciclo previo", incluidos los de
-    nivel PORTAFOLIO, que no tienen nada que ver con el ciclo congelado de este
-    SKU. Con el gate nuevo solo acreditan los dos que devuelven el numero real.
+    El entregable trae mas campos con nombre de comparacion que los dos que
+    acreditan, y la mayoria se MUEVE entre las dos corridas de la sonda. Con el
+    gate viejo -- ``se_mueve`` -- cualquiera de ellos acreditaba "comparo contra el
+    ciclo previo", incluidos los de nivel PORTAFOLIO, que no tienen nada que ver
+    con el ciclo congelado de este SKU. Con el gate nuevo solo acreditan los dos
+    que devuelven el numero real.
+
+    El conjunto de abajo es exacto a proposito: un campo NUEVO con nombre de
+    comparacion lo pone rojo, para que alguien mire si acredita por el nombre. Asi
+    entro ``delta_aic`` (pronostico causal, 2026-10-27): tambien es una resta, pero
+    entre DOS MODELOS del MISMO ciclo -- el causal contra el univariado --, no entre
+    este ciclo y el anterior. En la sonda sale vacio, porque no trae covariables,
+    y no reproduce el MAPE congelado: queda afuera, que es lo correcto.
     """
     d = _resultado(puntuar(), "T02").detalle
     acreditan = set(
@@ -206,6 +214,7 @@ def test_t02_los_campos_que_solo_se_mueven_ya_no_acreditan():
     assert acreditan == {"previous_mape", "mape_change_vs_previous"}
     # Los que quedan afuera existen, llevan el nombre y no alcanzan.
     assert con_nombre - acreditan == {
+        "delta_aic",
         "mean_bias_vs_previous",
         "mean_mape_vs_previous",
         "previous_cycle_id",
